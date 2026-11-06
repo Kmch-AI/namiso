@@ -1,0 +1,3 @@
+{"id": "P01-C001/d00", "interval_days": 0, "retrieval_required": true, "rubric": {"required": ["程序员"], "forbidden": []}, "anchors": [{"last_turn": 2, "time": "2026-01-02T10:00:00+08:00"}]}
+{"id": "P01-C002/d00", "interval_days": 0, "retrieval_required": true, "rubric": {"required": ["IndexTTS2"], "forbidden": ["仍在使用 TTS-A"]}, "anchors": [{"last_turn": 5, "time": "2026-01-05T10:00:00+08:00"}]}
+{"id": "P01-C003/d00", "interval_days": 0, "retrieval_required": true, "rubric": {"required": ["苏州", "评弹"], "forbidden": []}, "anchors": [{"last_turn": 6, "time": "2026-01-06T10:00:00+08:00"}]}

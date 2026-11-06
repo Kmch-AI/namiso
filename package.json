@@ -1,0 +1,44 @@
+{
+  "name": "namiso",
+  "version": "0.1.0",
+  "description": "Standalone long-term memory engine for AI agents",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "spec",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "test": "node --test test",
+    "bench": "node bench/run.ts",
+    "verify": "npm run typecheck && npm run lint && npm run fmt:check && npm test"
+  },
+  "dependencies": {
+    "sqlite-vec": "^0.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "oxfmt": "^0.76.0",
+    "oxlint": "^1.91.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -1,0 +1,95 @@
+# Decision log
+
+This file records the choices behind Namiso 0.1.0 and the verification run that supports the release. It exists so a reviewer can see why the code looks the way it does.
+
+## D1. One package, not a monorepo
+
+The design brief sketches `packages/core`, `packages/storage`, `packages/providers`, and `packages/sdk`. Namiso ships as one ESM package with folder boundaries instead.
+
+Why: a first release has one consumer and one build. Workspace packages add versioning, build order, and dependency rules without removing any code. The folder layout and the spec map preserve the boundaries, and a package split remains possible when a second consumer appears.
+
+## D2. `node:sqlite` instead of `better-sqlite3`
+
+`node:sqlite` ships with Node 24 and later. It provides synchronous statements, FTS5, and extension loading. It removes a native build step and a dependency from the install path.
+
+Trade-off: the minimum Node version is 24, and the API is younger than `better-sqlite3`. The storage layer isolates the choice behind `src/storage/database.ts`.
+
+## D3. Pre-segment Chinese text for FTS5
+
+SQLite's default FTS5 tokenizer does not segment Chinese. A custom tokenizer would add a native extension. Namiso uses `Intl.Segmenter('zh', { granularity: 'word' })` at index and query time, then stores space-separated words in an FTS5 table with the default tokenizer.
+
+Trade-off: segmentation follows the ICU dictionary and is not customizable. The index is derived, so a future tokenizer change can rebuild it with `reindex()`.
+
+## D4. Offline deterministic defaults
+
+The default extraction, embedding, and reranking providers are rule-based or hash-based. They make tests reproducible and let the engine run without network access or credentials.
+
+Trade-off: the default embedding is not semantic, and the rule extractor covers a small pattern set. The benchmark results describe this offline stack. Production users should pass an HTTP provider or implement the interfaces. The provider boundary keeps model code out of the core.
+
+## D5. Claims and events are separate
+
+Facts such as "user uses IndexTTS2" are claims. "User changed from TTS-A to IndexTTS2" is an event. A claim has a state and can be superseded. An event stays in history and links to the event it follows.
+
+Why: collapsing them loses the difference between current state and the sequence that produced it. The state tests assert both: the active claim is current, and the superseded claim remains queryable.
+
+## D6. Only asserted claims change state
+
+The rule extractor marks uncertain statements with a modality. The linker skips claim creation for uncertain, negated, hypothetical, and quoted statements. It may still write an event with the uncertain modality.
+
+Why: "I might switch back" is not a switch. The benchmark and tests both exercise this case. The cost is that an uncertain statement cannot later become a claim without another asserted message.
+
+## D7. Two-pass, query-aware evidence selection
+
+The first implementation selected evidence in time order and capped the list. On long histories, the top-ranked chunk filled the evidence slots with messages before the answer, so a correct retrieval still produced a context without the anchor. The fix selects messages by query-token overlap first, then fills remaining slots.
+
+Evidence: public demo evidence recall moved from 87% to 93% with query-aware selection, then to 97% with the two-pass fill. Removing generic intent events moved it to 100%. The formal set settled at 74% with the raw baseline at 73%.
+
+## D8. Remove generic intent events
+
+The rule extractor originally wrote an `intent` event for every uncertain sentence, including "I want to cook earlier". On 360 turns this created more than a hundred low-value events that crowded retrieval and produced spurious supersession chains. The extractor now records only state-change events it can identify (`usage_change`, `usage_stop`, `recommendation`, `loan`).
+
+Uncertain state changes still produce an uncertain event. Other uncertain statements remain in raw messages and chunks.
+
+## D9. `sqlite-vec` with an exact fallback
+
+The vector store loads `sqlite-vec` when available and otherwise scans stored float32 vectors with cosine similarity. The exact path keeps tests and unsupported platforms working. `health()` reports which backend is active.
+
+Trade-off: the fallback is O(n) per query. For the first version's scale, correctness and portability matter more than approximate nearest-neighbor speed.
+
+## D10. No export, import, or HTTP server in 0.1.0
+
+The brief lists these as admin and integration work. The first release implements the memory core, retrieval, forgetting, and reindexing. Export and import need a stable serialized format and conflict rules, and an HTTP server needs authentication and tenancy decisions. Both are deferred and recorded in `spec/roadmap.md`.
+
+## D11. Single writer per database
+
+`node:sqlite` is synchronous and job claiming is a local transaction. The engine assumes one process owns a database file. WAL mode serves readers, but the engine does not coordinate writers across processes.
+
+Why: multi-process write coordination needs a lease or an external queue. Adding one before there is a deployment would be speculative. The constraint is documented in `AGENTS.md` and `spec/ingestion.md`.
+
+## D12. Benchmark measures retrieval evidence, not answers
+
+The official benchmark requires an answer model and a grader. Namiso has no API key or paid model in this environment, and a deterministic answerer would not measure the product.
+
+The harness therefore scores whether the answer key's anchor messages appear in the context. It exports contexts for an external answer model. Every report states the limit. The benchmark table never claims an official score or a ranking.
+
+## Verification record
+
+Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
+
+| Check                         | Result                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `npm run typecheck`           | Pass                                                                        |
+| `npm run lint`                | Pass, no findings                                                           |
+| `npm run fmt:check`           | Pass                                                                        |
+| `npm test`                    | 25 tests pass                                                               |
+| `npm run build`               | Pass                                                                        |
+| Built `dist/` smoke test      | Message ingested, 2 jobs completed, context contained the `IndexTTS2` claim |
+| `npm run bench` local fixture | 3 questions, 100% evidence recall, 0 errors                                 |
+| Demo, hybrid                  | 108 questions, 104 scored, 100% evidence recall, 100% context hit           |
+| Demo, raw baseline            | 104 scored, 100% evidence recall, 100% context hit                          |
+| Formal, hybrid, 5 runs        | 714 scored, 74% evidence recall, 78% context hit, 0 errors                  |
+| Formal, raw baseline          | 714 scored, 73% evidence recall, 77% context hit                            |
+
+The first full benchmark attempt reported 23% evidence recall. The cause was a harness bug: `getMessages()` defaults to 100 rows, so anchor messages after turn 50 were missing from the index map. Fixing the harness to request all messages raised the result to 87%. The retrieval engine had not been the limiter. This is why the benchmark notes must state whether the observation method was checked before the system.
+
+The formal-set latency was 10.87 to 13.29 ms p50 and 26.68 to 30.71 ms p95 across five runs. Ingest was 17.1 to 19.3 seconds for 2240 turns. These are single-process measurements, not throughput claims. No profiler run was used to name a hardware limiter, so the report does not claim one.
