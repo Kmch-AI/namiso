@@ -73,10 +73,11 @@ Formal set, 714 scored questions, 6 personas, 2240 turns:
 | 3   | hybrid     | 74%             | 78%         | 725 / 1538 / 1609      | 12.56 / 29.73 ms    | 18.6 s |
 | 4   | hybrid     | 74%             | 78%         | 725 / 1541 / 1609      | 11.01 / 26.86 ms    | 17.1 s |
 | 5   | hybrid     | 74%             | 78%         | 725 / 1539 / 1609      | 10.87 / 26.68 ms    | 17.1 s |
+| 6   | hybrid     | 74%             | 78%         | 725 / 1541 / 1609      | 11.32 / 26.43 ms    | 17.0 s |
 | 1   | raw chunks | 73%             | 77%         | 699 / 1515 / 1584      | 12.56 / 31.04 ms    | 19.1 s |
 | 2   | raw chunks | 73%             | 77%         | 699 / 1515 / 1584      | 12.01 / 30.19 ms    | 18.8 s |
 
-Recall and hit rate are identical across the five hybrid runs because extraction, embedding, and ranking are deterministic. Latency varies with machine load.
+Recall and hit rate are identical across the six hybrid runs because extraction, embedding, and ranking are deterministic. Latency varies with machine load.
 
 By interval, hybrid run 1:
 

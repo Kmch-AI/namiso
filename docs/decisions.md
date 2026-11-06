@@ -109,7 +109,7 @@ Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
 | `npm run bench` local fixture | 3 questions, 100% evidence recall, 0 errors                                 |
 | Demo, hybrid                  | 108 questions, 104 scored, 100% evidence recall, 100% context hit           |
 | Demo, raw baseline            | 104 scored, 100% evidence recall, 100% context hit                          |
-| Formal, hybrid, 5 runs        | 714 scored, 74% evidence recall, 78% context hit, 0 errors                  |
+| Formal, hybrid, 6 runs        | 714 scored, 74% evidence recall, 78% context hit, 0 errors                  |
 | Formal, raw baseline          | 714 scored, 73% evidence recall, 77% context hit                            |
 
 The first full benchmark attempt reported 23% evidence recall. The cause was a harness bug: `getMessages()` defaults to 100 rows, so anchor messages after turn 50 were missing from the index map. Fixing the harness to request all messages raised the result to 87%. The retrieval engine had not been the limiter. This is why the benchmark notes must state whether the observation method was checked before the system.

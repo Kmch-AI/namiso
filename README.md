@@ -102,7 +102,7 @@ Formal set, 714 questions, 6 personas, 2240 turns, ranges over repeated runs:
 
 | Mode               | Evidence recall | Context hit rate | Retrieval p50   | Retrieval p95   |
 | ------------------ | --------------- | ---------------- | --------------- | --------------- |
-| Hybrid             | 74%             | 78%              | 10.9 to 13.3 ms | 26.7 to 30.7 ms |
+| Hybrid             | 74%             | 78%              | 10.9 to 13.3 ms | 26.4 to 30.7 ms |
 | Raw chunk baseline | 73%             | 77%              | 12.0 to 12.6 ms | 30.2 to 31.0 ms |
 
 Public demo, 108 questions (104 scored), 299 turns: 100% evidence recall in both modes.
