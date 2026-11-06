@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json",
     "lint": "oxlint -c oxlint.config.ts",
     "lint:fix": "oxlint -c oxlint.config.ts --fix",
     "fmt": "oxfmt -c oxfmt.config.ts .",
@@ -30,7 +30,8 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run test/models.integration.test.ts",
     "bench": "node bench/run.ts",
-    "verify": "npm run typecheck && npm run lint && npm run fmt:check && npm test"
+    "verify": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test",
+    "prepare": "simple-git-hooks"
   },
   "dependencies": {
     "sqlite-vec": "^0.1.9"
@@ -38,12 +39,28 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^5.1.0",
+    "lint-staged": "^17.6.0",
     "oxfmt": "^0.76.0",
     "oxlint": "^1.91.0",
+    "oxlint-tsgolint": "7.0.2005",
+    "simple-git-hooks": "^2.14.0",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "oxlint -c oxlint.config.ts --fix",
+      "oxfmt -c oxfmt.config.ts"
+    ],
+    "*.{json,jsonc,md,yml,yaml}": [
+      "oxfmt -c oxfmt.config.ts"
+    ]
+  },
   "engines": {
     "node": ">=24"
-  }
+  },
+  "packageManager": "pnpm@12.16.1"
 }
