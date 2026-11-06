@@ -19,30 +19,30 @@ Node.js 24 or newer and pnpm 12. The package is ESM and uses the built-in `node:
 ## Quick start
 
 ```ts
-import { Namiso } from "namiso";
+import { Namiso } from 'namiso'
 
 const memory = await Namiso.open({
-  databasePath: "./memory.db",
-  memorySpace: { name: "assistant" },
-});
+  databasePath: './memory.db',
+  memorySpace: { name: 'assistant' },
+})
 
-const conversation = memory.createConversation({ title: "first" });
+const conversation = memory.createConversation({ title: 'first' })
 
 await memory.ingest({
   conversationId: conversation.id,
-  speakerId: "user",
-  role: "user",
-  content: "我在使用 IndexTTS2。",
-});
+  speakerId: 'user',
+  role: 'user',
+  content: '我在使用 IndexTTS2。',
+})
 
-await memory.drain();
+await memory.drain()
 
 const context = await memory.getContext({
-  query: "我现在使用什么模型？",
-});
+  query: '我现在使用什么模型？',
+})
 
-console.log(context.text);
-memory.close();
+console.log(context.text)
+memory.close()
 ```
 
 `drain()` runs extraction, link updates, and index writes. For lower ingest latency, batch several messages and call `drain()` once.
@@ -64,12 +64,12 @@ Production deployments should pass an LLM extraction provider and a real embeddi
 Providers are injected in `Namiso.open()`. Pass `embedding`, `extraction`, and `reranker` directly, or build them from environment variables:
 
 ```ts
-import { Namiso, providersFromEnv } from "namiso";
+import { Namiso, providersFromEnv } from 'namiso'
 
 const memory = await Namiso.open({
-  databasePath: "./memory.db",
+  databasePath: './memory.db',
   ...providersFromEnv(process.env),
-});
+})
 ```
 
 `providersFromEnv()` reads the variables in `.env.example`. An endpoint URL and a model name must be set together. Embedding also requires `NAMISO_EMBEDDING_DIMENSIONS` to match the model output. Empty variables are ignored, so the offline defaults stay active.

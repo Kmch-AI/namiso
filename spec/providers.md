@@ -6,8 +6,8 @@ Namiso calls three model interfaces. The core stores only the interface outputs 
 
 ```ts
 interface ExtractionProvider {
-  readonly version: string;
-  extract(input: ExtractionInput): Promise<ExtractionResult>;
+  readonly version: string
+  extract(input: ExtractionInput): Promise<ExtractionResult>
 }
 ```
 
@@ -21,10 +21,10 @@ The default `RuleExtractionProvider` uses deterministic regular expressions. It 
 
 ```ts
 interface EmbeddingProvider {
-  readonly model: string;
-  readonly version: string;
-  readonly dimensions: number;
-  embed(texts: readonly string[]): Promise<number[][]>;
+  readonly model: string
+  readonly version: string
+  readonly dimensions: number
+  embed(texts: readonly string[]): Promise<number[][]>
 }
 ```
 
@@ -40,11 +40,11 @@ Document identity is `(source_type, source_id, model_name)`. After a model or di
 
 ```ts
 interface RerankerProvider {
-  readonly model: string;
+  readonly model: string
   rerank(input: {
-    query: string;
-    documents: readonly string[];
-  }): Promise<Array<{ index: number; score: number }>>;
+    query: string
+    documents: readonly string[]
+  }): Promise<Array<{ index: number; score: number }>>
 }
 ```
 

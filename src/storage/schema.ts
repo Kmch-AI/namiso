@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 1
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -287,4 +287,4 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_documents USING fts5(
   text,
   tokenize = 'unicode61 remove_diacritics 2'
 );
-`;
+`

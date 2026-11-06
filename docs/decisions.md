@@ -82,6 +82,8 @@ The suite runs with `vitest run`; `pnpm test:watch` and `pnpm test:coverage` use
 
 `oxlint.config.ts` and `oxfmt.config.ts` replace the JSON files. Both tools export `defineConfig`, so rule and formatting options are typed and the project has one configuration language. The scripts pass `-c` explicitly so a future config filename change cannot silently select another file.
 
+`oxfmt` uses single quotes, no semicolons, and sorted imports. Type-only imports come first, then the remaining groups by path kind. Formatting also applies to TypeScript code fences in Markdown.
+
 ## D15. No Drizzle ORM in 0.1.0
 
 Drizzle supports `node:sqlite`, so the driver is not the blocker. The storage layer depends on SQLite features that the schema layer would not own: FTS5, `vec0`, partial unique indexes, `INSERT OR IGNORE`, `ON CONFLICT` upserts, `json_extract`, and `bm25` ranking. A Drizzle schema would either omit those or leave raw SQL beside an ORM schema, creating two sources of truth.

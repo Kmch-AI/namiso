@@ -1,85 +1,86 @@
-import { asDocumentId, asMemorySpaceId } from "../ids.ts";
-import type { DocumentId, MemorySourceType, MemorySpaceId } from "../types.ts";
-import { hashText, toFtsQuery, toIndexText } from "../text.ts";
-import type { Database } from "./database.ts";
-import { count, oneOf, readNumber, text } from "./database.ts";
-import { blobToVector } from "./vector-store.ts";
+import type { DocumentId, MemorySourceType, MemorySpaceId } from '../types.ts'
+import type { Database } from './database.ts'
 
-const SOURCE_TYPES = ["chunk", "entity", "claim", "event"] as const;
+import { asDocumentId, asMemorySpaceId } from '../ids.ts'
+import { hashText, toFtsQuery, toIndexText } from '../text.ts'
+import { count, oneOf, readNumber, text } from './database.ts'
+import { blobToVector } from './vector-store.ts'
+
+const SOURCE_TYPES = ['chunk', 'entity', 'claim', 'event'] as const
 
 export interface EmbeddingDocument {
-  id: DocumentId;
-  memorySpaceId: MemorySpaceId;
-  sourceType: MemorySourceType;
-  sourceId: string;
-  content: string;
-  contentHash: string;
-  modelName: string;
-  modelVersion: string;
-  dimensions: number;
-  vector: number[] | null;
-  createdAt: number;
-  updatedAt: number;
+  id: DocumentId
+  memorySpaceId: MemorySpaceId
+  sourceType: MemorySourceType
+  sourceId: string
+  content: string
+  contentHash: string
+  modelName: string
+  modelVersion: string
+  dimensions: number
+  vector: number[] | null
+  createdAt: number
+  updatedAt: number
 }
 
 function mapDocument(row: Record<string, unknown>): EmbeddingDocument {
   return {
-    id: asDocumentId(text(row, "id")),
-    memorySpaceId: asMemorySpaceId(text(row, "memory_space_id")),
-    sourceType: oneOf(row, "source_type", SOURCE_TYPES),
-    sourceId: text(row, "source_id"),
-    content: text(row, "content"),
-    contentHash: text(row, "content_hash"),
-    modelName: text(row, "model_name"),
-    modelVersion: text(row, "model_version"),
-    dimensions: readNumber(row, "dimensions"),
-    vector: blobToVector(row["vector"]),
-    createdAt: readNumber(row, "created_at"),
-    updatedAt: readNumber(row, "updated_at"),
-  };
+    id: asDocumentId(text(row, 'id')),
+    memorySpaceId: asMemorySpaceId(text(row, 'memory_space_id')),
+    sourceType: oneOf(row, 'source_type', SOURCE_TYPES),
+    sourceId: text(row, 'source_id'),
+    content: text(row, 'content'),
+    contentHash: text(row, 'content_hash'),
+    modelName: text(row, 'model_name'),
+    modelVersion: text(row, 'model_version'),
+    dimensions: readNumber(row, 'dimensions'),
+    vector: blobToVector(row['vector']),
+    createdAt: readNumber(row, 'created_at'),
+    updatedAt: readNumber(row, 'updated_at'),
+  }
 }
 
 export interface UpsertDocumentInput {
-  spaceId: MemorySpaceId;
-  sourceType: MemorySourceType;
-  sourceId: string;
-  content: string;
-  modelName: string;
-  modelVersion: string;
-  dimensions: number;
-  now: number;
+  spaceId: MemorySpaceId
+  sourceType: MemorySourceType
+  sourceId: string
+  content: string
+  modelName: string
+  modelVersion: string
+  dimensions: number
+  now: number
 }
 
 export interface UpsertDocumentResult {
-  document: EmbeddingDocument;
-  needsEmbedding: boolean;
+  document: EmbeddingDocument
+  needsEmbedding: boolean
 }
 
 export function upsertDocument(db: Database, input: UpsertDocumentInput): UpsertDocumentResult {
-  const contentHash = hashText(input.content);
+  const contentHash = hashText(input.content)
   const existingRow = db.get(
     `SELECT * FROM embedding_documents
      WHERE source_type = ? AND source_id = ? AND model_name = ?`,
     input.sourceType,
     input.sourceId,
     input.modelName,
-  );
+  )
   if (existingRow !== undefined) {
-    const existing = mapDocument(existingRow);
+    const existing = mapDocument(existingRow)
     db.run(
       `DELETE FROM embedding_documents
        WHERE source_type = ? AND source_id = ? AND model_name <> ?`,
       input.sourceType,
       input.sourceId,
       input.modelName,
-    );
+    )
     const upToDate =
       existing.contentHash === contentHash &&
       existing.modelVersion === input.modelVersion &&
       existing.dimensions === input.dimensions &&
-      existing.vector !== null;
+      existing.vector !== null
     if (upToDate) {
-      return { document: existing, needsEmbedding: false };
+      return { document: existing, needsEmbedding: false }
     }
     db.run(
       `UPDATE embedding_documents
@@ -92,8 +93,8 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
       input.dimensions,
       input.now,
       existing.id,
-    );
-    deleteFtsDocument(db, existing.id);
+    )
+    deleteFtsDocument(db, existing.id)
     return {
       document: {
         ...existing,
@@ -105,9 +106,9 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
         updatedAt: input.now,
       },
       needsEmbedding: true,
-    };
+    }
   }
-  const id = asDocumentId(crypto.randomUUID());
+  const id = asDocumentId(crypto.randomUUID())
   db.run(
     `INSERT INTO embedding_documents (
       id, memory_space_id, source_type, source_id, content, content_hash,
@@ -124,7 +125,7 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
     input.dimensions,
     input.now,
     input.now,
-  );
+  )
   return {
     document: {
       id,
@@ -141,7 +142,7 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
       updatedAt: input.now,
     },
     needsEmbedding: true,
-  };
+  }
 }
 
 export function setDocumentVector(
@@ -150,16 +151,16 @@ export function setDocumentVector(
   vector: readonly number[],
 ): void {
   db.run(
-    "UPDATE embedding_documents SET vector = ?, updated_at = ? WHERE id = ?",
+    'UPDATE embedding_documents SET vector = ?, updated_at = ? WHERE id = ?',
     new Uint8Array(new Float32Array(vector).buffer),
     Math.floor(Date.now() / 1000),
     documentId,
-  );
+  )
 }
 
 export function getDocument(db: Database, documentId: DocumentId): EmbeddingDocument | null {
-  const row = db.get("SELECT * FROM embedding_documents WHERE id = ?", documentId);
-  return row === undefined ? null : mapDocument(row);
+  const row = db.get('SELECT * FROM embedding_documents WHERE id = ?', documentId)
+  return row === undefined ? null : mapDocument(row)
 }
 
 export function findDocument(
@@ -174,8 +175,8 @@ export function findDocument(
     sourceType,
     sourceId,
     modelName,
-  );
-  return row === undefined ? null : mapDocument(row);
+  )
+  return row === undefined ? null : mapDocument(row)
 }
 
 export function listDocuments(
@@ -186,7 +187,7 @@ export function listDocuments(
   const rows =
     sourceType === undefined
       ? db.all(
-          "SELECT * FROM embedding_documents WHERE memory_space_id = ? ORDER BY created_at ASC",
+          'SELECT * FROM embedding_documents WHERE memory_space_id = ? ORDER BY created_at ASC',
           spaceId,
         )
       : db.all(
@@ -194,8 +195,8 @@ export function listDocuments(
            WHERE memory_space_id = ? AND source_type = ? ORDER BY created_at ASC`,
           spaceId,
           sourceType,
-        );
-  return rows.map(mapDocument);
+        )
+  return rows.map(mapDocument)
 }
 
 export function removeDocument(
@@ -204,24 +205,24 @@ export function removeDocument(
   sourceId: string,
 ): DocumentId[] {
   const rows = db.all(
-    "SELECT id FROM embedding_documents WHERE source_type = ? AND source_id = ?",
+    'SELECT id FROM embedding_documents WHERE source_type = ? AND source_id = ?',
     sourceType,
     sourceId,
-  );
-  const ids = rows.map((row) => asDocumentId(text(row, "id")));
+  )
+  const ids = rows.map((row) => asDocumentId(text(row, 'id')))
   for (const id of ids) {
-    deleteFtsDocument(db, id);
+    deleteFtsDocument(db, id)
   }
   db.run(
-    "DELETE FROM embedding_documents WHERE source_type = ? AND source_id = ?",
+    'DELETE FROM embedding_documents WHERE source_type = ? AND source_id = ?',
     sourceType,
     sourceId,
-  );
-  return ids;
+  )
+  return ids
 }
 
 export function indexDocument(db: Database, document: EmbeddingDocument): void {
-  deleteFtsDocument(db, document.id);
+  deleteFtsDocument(db, document.id)
   db.run(
     `INSERT INTO fts_documents (document_key, memory_space_id, kind, source_id, text)
      VALUES (?, ?, ?, ?, ?)`,
@@ -230,18 +231,18 @@ export function indexDocument(db: Database, document: EmbeddingDocument): void {
     document.sourceType,
     document.sourceId,
     toIndexText(document.content),
-  );
+  )
 }
 
 export function deleteFtsDocument(db: Database, documentId: DocumentId): void {
-  db.run("DELETE FROM fts_documents WHERE document_key = ?", documentId);
+  db.run('DELETE FROM fts_documents WHERE document_key = ?', documentId)
 }
 
 export interface FtsHit {
-  documentId: DocumentId;
-  sourceId: string;
-  kind: MemorySourceType;
-  score: number;
+  documentId: DocumentId
+  sourceId: string
+  kind: MemorySourceType
+  score: number
 }
 
 export function searchFts(
@@ -250,8 +251,8 @@ export function searchFts(
   query: string,
   limit: number,
 ): FtsHit[] {
-  const ftsQuery = toFtsQuery(query);
-  if (ftsQuery.length === 0) return [];
+  const ftsQuery = toFtsQuery(query)
+  if (ftsQuery.length === 0) return []
   return db
     .all(
       `SELECT document_key, source_id, kind, bm25(fts_documents) AS rank
@@ -263,18 +264,18 @@ export function searchFts(
       limit,
     )
     .map((row) => ({
-      documentId: asDocumentId(text(row, "document_key")),
-      sourceId: text(row, "source_id"),
-      kind: oneOf(row, "kind", SOURCE_TYPES),
-      score: -Number(row["rank"]),
-    }));
+      documentId: asDocumentId(text(row, 'document_key')),
+      sourceId: text(row, 'source_id'),
+      kind: oneOf(row, 'kind', SOURCE_TYPES),
+      score: -Number(row['rank']),
+    }))
 }
 
 export function documentCount(db: Database, spaceId: MemorySpaceId): number {
   return count(
-    db.get("SELECT COUNT(*) AS n FROM embedding_documents WHERE memory_space_id = ?", spaceId),
-    "n",
-  );
+    db.get('SELECT COUNT(*) AS n FROM embedding_documents WHERE memory_space_id = ?', spaceId),
+    'n',
+  )
 }
 
 export function missingVectorCount(db: Database, spaceId: MemorySpaceId): number {
@@ -284,8 +285,8 @@ export function missingVectorCount(db: Database, spaceId: MemorySpaceId): number
        WHERE memory_space_id = ? AND vector IS NULL`,
       spaceId,
     ),
-    "n",
-  );
+    'n',
+  )
 }
 
 export function listMissingVectors(
@@ -301,5 +302,5 @@ export function listMissingVectors(
       spaceId,
       limit,
     )
-    .map(mapDocument);
+    .map(mapDocument)
 }

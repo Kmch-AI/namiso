@@ -1,25 +1,26 @@
-import { asJobId, nowSeconds } from "../ids.ts";
-import type { Job, JobId, MemorySpaceId } from "../types.ts";
-import type { Database } from "./database.ts";
-import { count, text } from "./database.ts";
-import { mapJob } from "./mappers.ts";
+import type { Job, JobId, MemorySpaceId } from '../types.ts'
+import type { Database } from './database.ts'
+
+import { asJobId, nowSeconds } from '../ids.ts'
+import { count, text } from './database.ts'
+import { mapJob } from './mappers.ts'
 
 export function enqueueAnnotate(db: Database, spaceId: MemorySpaceId, messageId: string): void {
-  enqueue(db, spaceId, "annotate", `annotate:${messageId}`, { messageId });
+  enqueue(db, spaceId, 'annotate', `annotate:${messageId}`, { messageId })
 }
 
 export function enqueueChunk(db: Database, spaceId: MemorySpaceId, conversationId: string): void {
-  enqueue(db, spaceId, "chunk", `chunk:${conversationId}`, { conversationId });
+  enqueue(db, spaceId, 'chunk', `chunk:${conversationId}`, { conversationId })
 }
 
 function enqueue(
   db: Database,
   spaceId: MemorySpaceId,
-  type: "annotate" | "chunk",
+  type: 'annotate' | 'chunk',
   dedupeKey: string,
   payload: Record<string, unknown>,
 ): void {
-  const now = nowSeconds();
+  const now = nowSeconds()
   db.run(
     `INSERT INTO jobs (
       id, memory_space_id, type, dedupe_key, payload, status, attempts,
@@ -49,7 +50,7 @@ function enqueue(
     now,
     now,
     now,
-  );
+  )
 }
 
 export function claimNextJob(db: Database, now: number): Job | null {
@@ -59,19 +60,19 @@ export function claimNextJob(db: Database, now: number): Job | null {
        WHERE status = 'pending' AND run_after <= ?
        ORDER BY created_at ASC, rowid ASC LIMIT 1`,
       now,
-    );
-    if (row === undefined) return null;
-    const id = asJobId(text(row, "id"));
+    )
+    if (row === undefined) return null
+    const id = asJobId(text(row, 'id'))
     const changed = db.run(
       `UPDATE jobs SET status = 'running', attempts = attempts + 1, updated_at = ?
        WHERE id = ? AND status = 'pending'`,
       now,
       id,
-    );
-    if (changed !== 1) return null;
-    const claimed = db.get("SELECT * FROM jobs WHERE id = ?", id);
-    return claimed === undefined ? null : mapJob(claimed);
-  });
+    )
+    if (changed !== 1) return null
+    const claimed = db.get('SELECT * FROM jobs WHERE id = ?', id)
+    return claimed === undefined ? null : mapJob(claimed)
+  })
 }
 
 export function completeJob(db: Database, jobId: JobId): void {
@@ -79,15 +80,15 @@ export function completeJob(db: Database, jobId: JobId): void {
     "UPDATE jobs SET status = 'completed', last_error = NULL, updated_at = ? WHERE id = ?",
     nowSeconds(),
     jobId,
-  );
+  )
 }
 
 export function failJob(db: Database, jobId: JobId, error: unknown): void {
-  const row = db.get("SELECT * FROM jobs WHERE id = ?", jobId);
-  if (row === undefined) return;
-  const job = mapJob(row);
-  const message = error instanceof Error ? error.message : String(error);
-  const now = nowSeconds();
+  const row = db.get('SELECT * FROM jobs WHERE id = ?', jobId)
+  if (row === undefined) return
+  const job = mapJob(row)
+  const message = error instanceof Error ? error.message : String(error)
+  const now = nowSeconds()
   if (job.attempts >= job.maxAttempts) {
     db.run(
       `UPDATE jobs SET status = 'failed', last_error = ?, run_after = ?, updated_at = ?
@@ -96,10 +97,10 @@ export function failJob(db: Database, jobId: JobId, error: unknown): void {
       now + 300,
       now,
       jobId,
-    );
-    return;
+    )
+    return
   }
-  const backoff = Math.min(10 * 2 ** job.attempts, 300);
+  const backoff = Math.min(10 * 2 ** job.attempts, 300)
   db.run(
     `UPDATE jobs SET status = 'pending', last_error = ?, run_after = ?, updated_at = ?
      WHERE id = ?`,
@@ -107,17 +108,17 @@ export function failJob(db: Database, jobId: JobId, error: unknown): void {
     now + backoff,
     now,
     jobId,
-  );
+  )
 }
 
 export function requeueStaleJobs(db: Database, staleAfterSeconds = 300): number {
-  const now = nowSeconds();
+  const now = nowSeconds()
   return db.run(
     `UPDATE jobs SET status = 'pending', updated_at = ?
      WHERE status = 'running' AND updated_at < ?`,
     now,
     now - staleAfterSeconds,
-  );
+  )
 }
 
 export function retryFailedJobs(db: Database, spaceId: MemorySpaceId): number {
@@ -127,19 +128,19 @@ export function retryFailedJobs(db: Database, spaceId: MemorySpaceId): number {
     nowSeconds(),
     nowSeconds(),
     spaceId,
-  );
+  )
 }
 
 export function jobCounts(db: Database, spaceId: MemorySpaceId): Record<string, number> {
   const rows = db.all(
-    "SELECT status, COUNT(*) AS n FROM jobs WHERE memory_space_id = ? GROUP BY status",
+    'SELECT status, COUNT(*) AS n FROM jobs WHERE memory_space_id = ? GROUP BY status',
     spaceId,
-  );
-  const result: Record<string, number> = {};
+  )
+  const result: Record<string, number> = {}
   for (const row of rows) {
-    result[text(row, "status")] = count(row, "n");
+    result[text(row, 'status')] = count(row, 'n')
   }
-  return result;
+  return result
 }
 
 export function pendingJobCount(db: Database, spaceId: MemorySpaceId): number {
@@ -149,11 +150,11 @@ export function pendingJobCount(db: Database, spaceId: MemorySpaceId): number {
        WHERE memory_space_id = ? AND status IN ('pending', 'running')`,
       spaceId,
     ),
-    "n",
-  );
+    'n',
+  )
 }
 
 export function getJob(db: Database, jobId: JobId): Job | null {
-  const row = db.get("SELECT * FROM jobs WHERE id = ?", jobId);
-  return row === undefined ? null : mapJob(row);
+  const row = db.get('SELECT * FROM jobs WHERE id = ?', jobId)
+  return row === undefined ? null : mapJob(row)
 }

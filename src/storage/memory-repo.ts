@@ -1,13 +1,3 @@
-import {
-  asAnnotationId,
-  asClaimId,
-  asEntityId,
-  asEventId,
-  asEvidenceId,
-  asMemorySpaceId,
-  asMessageId,
-  nowSeconds,
-} from "../ids.ts";
 import type {
   Annotation,
   Claim,
@@ -27,23 +17,34 @@ import type {
   MessageId,
   Relation,
   TimePrecision,
-} from "../types.ts";
-import type { Database } from "./database.ts";
-import { count, readNumber, text, textOrNull } from "./database.ts";
-import { mapClaim, mapEntity, mapEvent, mapMemoryLink } from "./mappers.ts";
+} from '../types.ts'
+import type { Database } from './database.ts'
+
+import {
+  asAnnotationId,
+  asClaimId,
+  asEntityId,
+  asEventId,
+  asEvidenceId,
+  asMemorySpaceId,
+  asMessageId,
+  nowSeconds,
+} from '../ids.ts'
+import { count, readNumber, text, textOrNull } from './database.ts'
+import { mapClaim, mapEntity, mapEvent, mapMemoryLink } from './mappers.ts'
 
 export interface InsertEntityInput {
-  spaceId: MemorySpaceId;
-  name: string;
-  type: EntityType;
-  description?: string;
-  metadata?: Record<string, unknown>;
-  createdAt?: number;
+  spaceId: MemorySpaceId
+  name: string
+  type: EntityType
+  description?: string
+  metadata?: Record<string, unknown>
+  createdAt?: number
 }
 
 export function insertEntity(db: Database, input: InsertEntityInput): Entity {
-  const id = asEntityId(crypto.randomUUID());
-  const timestamp = input.createdAt ?? nowSeconds();
+  const id = asEntityId(crypto.randomUUID())
+  const timestamp = input.createdAt ?? nowSeconds()
   db.run(
     `INSERT INTO entities (
       id, memory_space_id, type, name, description, created_at, updated_at, metadata
@@ -56,7 +57,7 @@ export function insertEntity(db: Database, input: InsertEntityInput): Entity {
     timestamp,
     timestamp,
     input.metadata === undefined ? null : JSON.stringify(input.metadata),
-  );
+  )
   return {
     id,
     memorySpaceId: input.spaceId,
@@ -66,12 +67,12 @@ export function insertEntity(db: Database, input: InsertEntityInput): Entity {
     createdAt: timestamp,
     updatedAt: timestamp,
     metadata: input.metadata ?? null,
-  };
+  }
 }
 
 export function getEntity(db: Database, entityId: EntityId): Entity | null {
-  const row = db.get("SELECT * FROM entities WHERE id = ?", entityId);
-  return row === undefined ? null : mapEntity(row);
+  const row = db.get('SELECT * FROM entities WHERE id = ?', entityId)
+  return row === undefined ? null : mapEntity(row)
 }
 
 export function findEntityByName(
@@ -80,11 +81,11 @@ export function findEntityByName(
   name: string,
 ): Entity | null {
   const row = db.get(
-    "SELECT * FROM entities WHERE memory_space_id = ? AND name = ? COLLATE NOCASE LIMIT 1",
+    'SELECT * FROM entities WHERE memory_space_id = ? AND name = ? COLLATE NOCASE LIMIT 1',
     spaceId,
     name,
-  );
-  return row === undefined ? null : mapEntity(row);
+  )
+  return row === undefined ? null : mapEntity(row)
 }
 
 export function findEntityByAlias(
@@ -99,14 +100,14 @@ export function findEntityByAlias(
      LIMIT 1`,
     spaceId,
     alias,
-  );
-  return row === undefined ? null : mapEntity(row);
+  )
+  return row === undefined ? null : mapEntity(row)
 }
 
 export function listEntities(db: Database, spaceId: MemorySpaceId): Entity[] {
   return db
-    .all("SELECT * FROM entities WHERE memory_space_id = ? ORDER BY name ASC", spaceId)
-    .map(mapEntity);
+    .all('SELECT * FROM entities WHERE memory_space_id = ? ORDER BY name ASC', spaceId)
+    .map(mapEntity)
 }
 
 export function findEntityBySpeakerId(
@@ -120,21 +121,21 @@ export function findEntityBySpeakerId(
      LIMIT 1`,
     spaceId,
     speakerId,
-  );
-  return row === undefined ? null : mapEntity(row);
+  )
+  return row === undefined ? null : mapEntity(row)
 }
 
 export function getEntitiesByIds(db: Database, ids: readonly EntityId[]): Map<EntityId, Entity> {
-  const result = new Map<EntityId, Entity>();
-  if (ids.length === 0) return result;
-  const unique = [...new Set(ids)];
-  const placeholders = unique.map(() => "?").join(", ");
-  const rows = db.all(`SELECT * FROM entities WHERE id IN (${placeholders})`, ...unique);
+  const result = new Map<EntityId, Entity>()
+  if (ids.length === 0) return result
+  const unique = [...new Set(ids)]
+  const placeholders = unique.map(() => '?').join(', ')
+  const rows = db.all(`SELECT * FROM entities WHERE id IN (${placeholders})`, ...unique)
   for (const row of rows) {
-    const entity = mapEntity(row);
-    result.set(entity.id, entity);
+    const entity = mapEntity(row)
+    result.set(entity.id, entity)
   }
-  return result;
+  return result
 }
 
 export function updateEntity(
@@ -142,26 +143,26 @@ export function updateEntity(
   entityId: EntityId,
   patch: { description?: string; name?: string; type?: EntityType },
 ): void {
-  const current = getEntity(db, entityId);
-  if (current === null) return;
+  const current = getEntity(db, entityId)
+  if (current === null) return
   db.run(
-    "UPDATE entities SET name = ?, type = ?, description = ?, updated_at = ? WHERE id = ?",
+    'UPDATE entities SET name = ?, type = ?, description = ?, updated_at = ? WHERE id = ?',
     patch.name ?? current.name,
     patch.type ?? current.type,
     patch.description ?? current.description,
     nowSeconds(),
     entityId,
-  );
+  )
 }
 
 export function insertAlias(
   db: Database,
   input: {
-    spaceId: MemorySpaceId;
-    entityId: EntityId;
-    alias: string;
-    sourceMessageId?: MessageId;
-    confidence?: number;
+    spaceId: MemorySpaceId
+    entityId: EntityId
+    alias: string
+    sourceMessageId?: MessageId
+    confidence?: number
   },
 ): void {
   db.run(
@@ -175,56 +176,56 @@ export function insertAlias(
     input.sourceMessageId ?? null,
     input.confidence ?? 1,
     nowSeconds(),
-  );
+  )
 }
 
 export function listAliasesBySpace(db: Database, spaceId: MemorySpaceId): Map<EntityId, string[]> {
-  const result = new Map<EntityId, string[]>();
+  const result = new Map<EntityId, string[]>()
   const rows = db.all(
-    "SELECT entity_id, alias FROM entity_aliases WHERE memory_space_id = ? ORDER BY created_at ASC",
+    'SELECT entity_id, alias FROM entity_aliases WHERE memory_space_id = ? ORDER BY created_at ASC',
     spaceId,
-  );
+  )
   for (const row of rows) {
-    const entityId = asEntityId(text(row, "entity_id"));
-    const aliases = result.get(entityId) ?? [];
-    aliases.push(text(row, "alias"));
-    result.set(entityId, aliases);
+    const entityId = asEntityId(text(row, 'entity_id'))
+    const aliases = result.get(entityId) ?? []
+    aliases.push(text(row, 'alias'))
+    result.set(entityId, aliases)
   }
-  return result;
+  return result
 }
 
 export function listAliases(db: Database, entityId: EntityId): EntityAlias[] {
   return db
-    .all("SELECT * FROM entity_aliases WHERE entity_id = ? ORDER BY created_at ASC", entityId)
+    .all('SELECT * FROM entity_aliases WHERE entity_id = ? ORDER BY created_at ASC', entityId)
     .map((row) => {
-      const sourceMessageId = textOrNull(row, "source_message_id");
+      const sourceMessageId = textOrNull(row, 'source_message_id')
       return {
-        id: text(row, "id"),
-        entityId: asEntityId(text(row, "entity_id")),
-        alias: text(row, "alias"),
+        id: text(row, 'id'),
+        entityId: asEntityId(text(row, 'entity_id')),
+        alias: text(row, 'alias'),
         sourceMessageId: sourceMessageId === null ? null : asMessageId(sourceMessageId),
-        confidence: readNumber(row, "confidence"),
-      };
-    });
+        confidence: readNumber(row, 'confidence'),
+      }
+    })
 }
 
 export interface InsertClaimInput {
-  spaceId: MemorySpaceId;
-  subjectId: EntityId;
-  predicate: string;
-  object: ClaimObject;
-  status?: ClaimStatus;
-  validFrom?: number;
-  validUntil?: number;
-  confidence?: number;
-  metadata?: Record<string, unknown>;
-  createdAt?: number;
+  spaceId: MemorySpaceId
+  subjectId: EntityId
+  predicate: string
+  object: ClaimObject
+  status?: ClaimStatus
+  validFrom?: number
+  validUntil?: number
+  confidence?: number
+  metadata?: Record<string, unknown>
+  createdAt?: number
 }
 
 export function insertClaim(db: Database, input: InsertClaimInput): Claim {
-  const id = asClaimId(crypto.randomUUID());
-  const timestamp = input.createdAt ?? nowSeconds();
-  const status = input.status ?? "active";
+  const id = asClaimId(crypto.randomUUID())
+  const timestamp = input.createdAt ?? nowSeconds()
+  const status = input.status ?? 'active'
   db.run(
     `INSERT INTO claims (
       id, memory_space_id, subject_id, predicate, object_type, object_value,
@@ -236,8 +237,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     input.subjectId,
     input.predicate,
     input.object.kind,
-    input.object.kind === "literal" ? input.object.value : null,
-    input.object.kind === "entity" ? input.object.entityId : null,
+    input.object.kind === 'literal' ? input.object.value : null,
+    input.object.kind === 'entity' ? input.object.entityId : null,
     status,
     input.validFrom ?? null,
     input.validUntil ?? null,
@@ -245,7 +246,7 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     timestamp,
     timestamp,
     input.metadata === undefined ? null : JSON.stringify(input.metadata),
-  );
+  )
   return {
     id,
     memorySpaceId: input.spaceId,
@@ -259,12 +260,12 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     createdAt: timestamp,
     updatedAt: timestamp,
     metadata: input.metadata ?? null,
-  };
+  }
 }
 
 export function getClaim(db: Database, claimId: string): Claim | null {
-  const row = db.get("SELECT * FROM claims WHERE id = ?", claimId);
-  return row === undefined ? null : mapClaim(row);
+  const row = db.get('SELECT * FROM claims WHERE id = ?', claimId)
+  return row === undefined ? null : mapClaim(row)
 }
 
 export function findActiveClaim(
@@ -280,8 +281,8 @@ export function findActiveClaim(
     spaceId,
     subjectId,
     predicate,
-  );
-  return row === undefined ? null : mapClaim(row);
+  )
+  return row === undefined ? null : mapClaim(row)
 }
 
 export function listClaimsBySubject(
@@ -290,7 +291,7 @@ export function listClaimsBySubject(
   subjectId: EntityId,
   options: { includeInactive?: boolean; limit?: number } = {},
 ): Claim[] {
-  const statusClause = options.includeInactive === true ? "" : "AND status = 'active'";
+  const statusClause = options.includeInactive === true ? '' : "AND status = 'active'"
   return db
     .all(
       `SELECT * FROM claims
@@ -300,7 +301,7 @@ export function listClaimsBySubject(
       subjectId,
       options.limit ?? 200,
     )
-    .map(mapClaim);
+    .map(mapClaim)
 }
 
 export function listClaimsForEntities(
@@ -309,9 +310,9 @@ export function listClaimsForEntities(
   entityIds: readonly EntityId[],
   options: { includeInactive?: boolean; limit?: number } = {},
 ): Claim[] {
-  if (entityIds.length === 0) return [];
-  const placeholders = entityIds.map(() => "?").join(", ");
-  const statusClause = options.includeInactive === true ? "" : "AND status = 'active'";
+  if (entityIds.length === 0) return []
+  const placeholders = entityIds.map(() => '?').join(', ')
+  const statusClause = options.includeInactive === true ? '' : "AND status = 'active'"
   return db
     .all(
       `SELECT * FROM claims
@@ -324,13 +325,13 @@ export function listClaimsForEntities(
       ...entityIds,
       options.limit ?? 100,
     )
-    .map(mapClaim);
+    .map(mapClaim)
 }
 
 export function listClaims(db: Database, spaceId: MemorySpaceId): Claim[] {
   return db
-    .all("SELECT * FROM claims WHERE memory_space_id = ? ORDER BY created_at ASC", spaceId)
-    .map(mapClaim);
+    .all('SELECT * FROM claims WHERE memory_space_id = ? ORDER BY created_at ASC', spaceId)
+    .map(mapClaim)
 }
 
 export function listClaimsByEntity(
@@ -338,7 +339,7 @@ export function listClaimsByEntity(
   entityId: EntityId,
   options: { includeInactive?: boolean; limit?: number } = {},
 ): Claim[] {
-  const statusClause = options.includeInactive === true ? "" : "AND status = 'active'";
+  const statusClause = options.includeInactive === true ? '' : "AND status = 'active'"
   return db
     .all(
       `SELECT * FROM claims
@@ -347,7 +348,7 @@ export function listClaimsByEntity(
       entityId,
       options.limit ?? 100,
     )
-    .map(mapClaim);
+    .map(mapClaim)
 }
 
 export function setClaimStatus(
@@ -357,32 +358,32 @@ export function setClaimStatus(
   validUntil?: number | null,
 ): void {
   db.run(
-    "UPDATE claims SET status = ?, valid_until = COALESCE(?, valid_until), updated_at = ? WHERE id = ?",
+    'UPDATE claims SET status = ?, valid_until = COALESCE(?, valid_until), updated_at = ? WHERE id = ?',
     status,
     validUntil ?? null,
     nowSeconds(),
     claimId,
-  );
+  )
 }
 
 export interface InsertEventInput {
-  spaceId: MemorySpaceId;
-  type: string;
-  summary: string;
-  description?: string;
-  occurredAt?: number;
-  timePrecision?: TimePrecision;
-  status?: EventStatus;
-  confidence?: number;
-  metadata?: Record<string, unknown>;
-  createdAt?: number;
+  spaceId: MemorySpaceId
+  type: string
+  summary: string
+  description?: string
+  occurredAt?: number
+  timePrecision?: TimePrecision
+  status?: EventStatus
+  confidence?: number
+  metadata?: Record<string, unknown>
+  createdAt?: number
 }
 
 export function insertEvent(db: Database, input: InsertEventInput): Event {
-  const id = asEventId(crypto.randomUUID());
-  const timestamp = input.createdAt ?? nowSeconds();
-  const timePrecision = input.timePrecision ?? "unknown";
-  const status = input.status ?? "active";
+  const id = asEventId(crypto.randomUUID())
+  const timestamp = input.createdAt ?? nowSeconds()
+  const timePrecision = input.timePrecision ?? 'unknown'
+  const status = input.status ?? 'active'
   db.run(
     `INSERT INTO events (
       id, memory_space_id, type, summary, description, occurred_at, time_precision,
@@ -400,7 +401,7 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     timestamp,
     timestamp,
     input.metadata === undefined ? null : JSON.stringify(input.metadata),
-  );
+  )
   return {
     id,
     memorySpaceId: input.spaceId,
@@ -414,12 +415,12 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     createdAt: timestamp,
     updatedAt: timestamp,
     metadata: input.metadata ?? null,
-  };
+  }
 }
 
 export function getEvent(db: Database, eventId: EventId): Event | null {
-  const row = db.get("SELECT * FROM events WHERE id = ?", eventId);
-  return row === undefined ? null : mapEvent(row);
+  const row = db.get('SELECT * FROM events WHERE id = ?', eventId)
+  return row === undefined ? null : mapEvent(row)
 }
 
 export function findEventBySignature(
@@ -439,8 +440,8 @@ export function findEventBySignature(
     summary,
     occurredAt,
     occurredAt,
-  );
-  return row === undefined ? null : mapEvent(row);
+  )
+  return row === undefined ? null : mapEvent(row)
 }
 
 export function addParticipant(
@@ -450,19 +451,19 @@ export function addParticipant(
   role: string,
 ): void {
   db.run(
-    "INSERT OR IGNORE INTO event_participants (event_id, entity_id, role) VALUES (?, ?, ?)",
+    'INSERT OR IGNORE INTO event_participants (event_id, entity_id, role) VALUES (?, ?, ?)',
     eventId,
     entityId,
     role,
-  );
+  )
 }
 
 export function listEventParticipants(db: Database, eventId: EventId): EventParticipant[] {
-  return db.all("SELECT * FROM event_participants WHERE event_id = ?", eventId).map((row) => ({
-    eventId: asEventId(text(row, "event_id")),
-    entityId: asEntityId(text(row, "entity_id")),
-    role: text(row, "role"),
-  }));
+  return db.all('SELECT * FROM event_participants WHERE event_id = ?', eventId).map((row) => ({
+    eventId: asEventId(text(row, 'event_id')),
+    entityId: asEntityId(text(row, 'entity_id')),
+    role: text(row, 'role'),
+  }))
 }
 
 export function listEventsForEntity(
@@ -470,35 +471,35 @@ export function listEventsForEntity(
   spaceId: MemorySpaceId,
   entityId: EntityId,
   options: {
-    includeInactive?: boolean;
-    from?: number;
-    to?: number;
-    limit?: number;
+    includeInactive?: boolean
+    from?: number
+    to?: number
+    limit?: number
   } = {},
 ): Event[] {
-  const conditions = ["e.memory_space_id = ?", "p.entity_id = ?"];
-  const params: Array<string | number> = [spaceId, entityId];
+  const conditions = ['e.memory_space_id = ?', 'p.entity_id = ?']
+  const params: Array<string | number> = [spaceId, entityId]
   if (options.includeInactive !== true) {
-    conditions.push("e.status = 'active'");
+    conditions.push("e.status = 'active'")
   }
   if (options.from !== undefined) {
-    conditions.push("e.occurred_at >= ?");
-    params.push(options.from);
+    conditions.push('e.occurred_at >= ?')
+    params.push(options.from)
   }
   if (options.to !== undefined) {
-    conditions.push("e.occurred_at <= ?");
-    params.push(options.to);
+    conditions.push('e.occurred_at <= ?')
+    params.push(options.to)
   }
   return db
     .all(
       `SELECT DISTINCT e.* FROM events e
        JOIN event_participants p ON p.event_id = e.id
-       WHERE ${conditions.join(" AND ")}
+       WHERE ${conditions.join(' AND ')}
        ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT ?`,
       ...params,
       options.limit ?? 50,
     )
-    .map(mapEvent);
+    .map(mapEvent)
 }
 
 export function listEventsForEntities(
@@ -506,43 +507,43 @@ export function listEventsForEntities(
   spaceId: MemorySpaceId,
   entityIds: readonly EntityId[],
   options: {
-    includeInactive?: boolean;
-    from?: number;
-    to?: number;
-    limit?: number;
+    includeInactive?: boolean
+    from?: number
+    to?: number
+    limit?: number
   } = {},
 ): Event[] {
-  if (entityIds.length === 0) return [];
-  const placeholders = entityIds.map(() => "?").join(", ");
-  const conditions = ["e.memory_space_id = ?", `p.entity_id IN (${placeholders})`];
-  const params: Array<string | number> = [spaceId, ...entityIds];
+  if (entityIds.length === 0) return []
+  const placeholders = entityIds.map(() => '?').join(', ')
+  const conditions = ['e.memory_space_id = ?', `p.entity_id IN (${placeholders})`]
+  const params: Array<string | number> = [spaceId, ...entityIds]
   if (options.includeInactive !== true) {
-    conditions.push("e.status = 'active'");
+    conditions.push("e.status = 'active'")
   }
   if (options.from !== undefined) {
-    conditions.push("e.occurred_at >= ?");
-    params.push(options.from);
+    conditions.push('e.occurred_at >= ?')
+    params.push(options.from)
   }
   if (options.to !== undefined) {
-    conditions.push("e.occurred_at <= ?");
-    params.push(options.to);
+    conditions.push('e.occurred_at <= ?')
+    params.push(options.to)
   }
   return db
     .all(
       `SELECT DISTINCT e.* FROM events e
        JOIN event_participants p ON p.event_id = e.id
-       WHERE ${conditions.join(" AND ")}
+       WHERE ${conditions.join(' AND ')}
        ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT ?`,
       ...params,
       options.limit ?? 80,
     )
-    .map(mapEvent);
+    .map(mapEvent)
 }
 
 export function listEvents(db: Database, spaceId: MemorySpaceId): Event[] {
   return db
-    .all("SELECT * FROM events WHERE memory_space_id = ? ORDER BY created_at ASC", spaceId)
-    .map(mapEvent);
+    .all('SELECT * FROM events WHERE memory_space_id = ? ORDER BY created_at ASC', spaceId)
+    .map(mapEvent)
 }
 
 export function findPreviousEventForActor(
@@ -561,8 +562,8 @@ export function findPreviousEventForActor(
     type,
     entityId,
     excludeEventId,
-  );
-  return row === undefined ? null : mapEvent(row);
+  )
+  return row === undefined ? null : mapEvent(row)
 }
 
 export function listRecentEvents(db: Database, spaceId: MemorySpaceId, limit: number): Event[] {
@@ -573,33 +574,28 @@ export function listRecentEvents(db: Database, spaceId: MemorySpaceId, limit: nu
       spaceId,
       limit,
     )
-    .map(mapEvent);
+    .map(mapEvent)
 }
 
 export function setEventStatus(db: Database, eventId: EventId, status: EventStatus): void {
-  db.run(
-    "UPDATE events SET status = ?, updated_at = ? WHERE id = ?",
-    status,
-    nowSeconds(),
-    eventId,
-  );
+  db.run('UPDATE events SET status = ?, updated_at = ? WHERE id = ?', status, nowSeconds(), eventId)
 }
 
 export function addAnnotation(
   db: Database,
   input: {
-    spaceId: MemorySpaceId;
-    messageId: MessageId;
-    targetType: "entity" | "claim" | "event";
-    targetId: string;
-    role: string;
-    confidence?: number;
-    extractorVersion?: string;
-    metadata?: Record<string, unknown>;
+    spaceId: MemorySpaceId
+    messageId: MessageId
+    targetType: 'entity' | 'claim' | 'event'
+    targetId: string
+    role: string
+    confidence?: number
+    extractorVersion?: string
+    metadata?: Record<string, unknown>
   },
 ): Annotation {
-  const id = asAnnotationId(crypto.randomUUID());
-  const createdAt = nowSeconds();
+  const id = asAnnotationId(crypto.randomUUID())
+  const createdAt = nowSeconds()
   db.run(
     `INSERT OR IGNORE INTO annotations (
       id, memory_space_id, message_id, target_type, target_id, role, confidence,
@@ -615,7 +611,7 @@ export function addAnnotation(
     input.extractorVersion ?? null,
     createdAt,
     input.metadata === undefined ? null : JSON.stringify(input.metadata),
-  );
+  )
   return {
     id,
     messageId: input.messageId,
@@ -626,18 +622,18 @@ export function addAnnotation(
     extractorVersion: input.extractorVersion ?? null,
     createdAt,
     metadata: input.metadata ?? null,
-  };
+  }
 }
 
 export function getOrCreateEvidence(
   db: Database,
   input: {
-    spaceId: MemorySpaceId;
-    sourceType: string;
-    sourceId: string;
-    evidenceType: string;
-    contentSnapshot?: string;
-    confidence?: number;
+    spaceId: MemorySpaceId
+    sourceType: string
+    sourceId: string
+    evidenceType: string
+    contentSnapshot?: string
+    confidence?: number
   },
 ): EvidenceId {
   const existing = db.get(
@@ -647,11 +643,11 @@ export function getOrCreateEvidence(
     input.sourceType,
     input.sourceId,
     input.evidenceType,
-  );
+  )
   if (existing !== undefined) {
-    return asEvidenceId(text(existing, "id"));
+    return asEvidenceId(text(existing, 'id'))
   }
-  const id = asEvidenceId(crypto.randomUUID());
+  const id = asEvidenceId(crypto.randomUUID())
   db.run(
     `INSERT INTO evidence (
       id, memory_space_id, source_type, source_id, evidence_type, content_snapshot,
@@ -665,27 +661,27 @@ export function getOrCreateEvidence(
     input.contentSnapshot ?? null,
     input.confidence ?? 1,
     nowSeconds(),
-  );
-  return id;
+  )
+  return id
 }
 
 export function linkMemoryEvidence(
   db: Database,
-  memoryType: "claim" | "event",
+  memoryType: 'claim' | 'event',
   memoryId: string,
   evidenceId: EvidenceId,
 ): void {
   db.run(
-    "INSERT OR IGNORE INTO memory_evidence (memory_type, memory_id, evidence_id) VALUES (?, ?, ?)",
+    'INSERT OR IGNORE INTO memory_evidence (memory_type, memory_id, evidence_id) VALUES (?, ?, ?)',
     memoryType,
     memoryId,
     evidenceId,
-  );
+  )
 }
 
 export function evidenceMessageIds(
   db: Database,
-  memoryType: "claim" | "event",
+  memoryType: 'claim' | 'event',
   memoryId: string,
 ): MessageId[] {
   return db
@@ -697,20 +693,20 @@ export function evidenceMessageIds(
       memoryType,
       memoryId,
     )
-    .map((row) => asMessageId(text(row, "source_id")));
+    .map((row) => asMessageId(text(row, 'source_id')))
 }
 
 export function addMemoryLink(
   db: Database,
   input: {
-    spaceId: MemorySpaceId;
-    sourceType: "entity" | "claim" | "event";
-    sourceId: string;
-    relation: Relation;
-    targetType: "entity" | "claim" | "event";
-    targetId: string;
-    confidence?: number;
-    metadata?: Record<string, unknown>;
+    spaceId: MemorySpaceId
+    sourceType: 'entity' | 'claim' | 'event'
+    sourceId: string
+    relation: Relation
+    targetType: 'entity' | 'claim' | 'event'
+    targetId: string
+    confidence?: number
+    metadata?: Record<string, unknown>
   },
 ): void {
   db.run(
@@ -728,46 +724,43 @@ export function addMemoryLink(
     input.confidence ?? 1,
     nowSeconds(),
     input.metadata === undefined ? null : JSON.stringify(input.metadata),
-  );
+  )
 }
 
 export function listLinksFrom(
   db: Database,
-  type: "entity" | "claim" | "event",
+  type: 'entity' | 'claim' | 'event',
   id: string,
 ): MemoryLink[] {
   return db
-    .all("SELECT * FROM memory_links WHERE source_type = ? AND source_id = ?", type, id)
-    .map(mapMemoryLink);
+    .all('SELECT * FROM memory_links WHERE source_type = ? AND source_id = ?', type, id)
+    .map(mapMemoryLink)
 }
 
 export function listLinksTo(
   db: Database,
-  type: "entity" | "claim" | "event",
+  type: 'entity' | 'claim' | 'event',
   id: string,
 ): MemoryLink[] {
   return db
-    .all("SELECT * FROM memory_links WHERE target_type = ? AND target_id = ?", type, id)
-    .map(mapMemoryLink);
+    .all('SELECT * FROM memory_links WHERE target_type = ? AND target_id = ?', type, id)
+    .map(mapMemoryLink)
 }
 
 export function entityCount(db: Database, spaceId: MemorySpaceId): number {
-  return count(
-    db.get("SELECT COUNT(*) AS n FROM entities WHERE memory_space_id = ?", spaceId),
-    "n",
-  );
+  return count(db.get('SELECT COUNT(*) AS n FROM entities WHERE memory_space_id = ?', spaceId), 'n')
 }
 
 export function claimCount(db: Database, spaceId: MemorySpaceId): number {
-  return count(db.get("SELECT COUNT(*) AS n FROM claims WHERE memory_space_id = ?", spaceId), "n");
+  return count(db.get('SELECT COUNT(*) AS n FROM claims WHERE memory_space_id = ?', spaceId), 'n')
 }
 
 export function eventCount(db: Database, spaceId: MemorySpaceId): number {
-  return count(db.get("SELECT COUNT(*) AS n FROM events WHERE memory_space_id = ?", spaceId), "n");
+  return count(db.get('SELECT COUNT(*) AS n FROM events WHERE memory_space_id = ?', spaceId), 'n')
 }
 
 export function invalidateUnsupportedMemories(db: Database, spaceId: MemorySpaceId): void {
-  const now = nowSeconds();
+  const now = nowSeconds()
   db.run(
     `UPDATE claims SET status = 'invalid', updated_at = ?
      WHERE memory_space_id = ? AND status <> 'invalid'
@@ -777,7 +770,7 @@ export function invalidateUnsupportedMemories(db: Database, spaceId: MemorySpace
        )`,
     now,
     spaceId,
-  );
+  )
   db.run(
     `UPDATE events SET status = 'invalid', updated_at = ?
      WHERE memory_space_id = ? AND status <> 'invalid'
@@ -787,11 +780,11 @@ export function invalidateUnsupportedMemories(db: Database, spaceId: MemorySpace
        )`,
     now,
     spaceId,
-  );
+  )
 }
 
 export function listSpaceIds(db: Database): MemorySpaceId[] {
   return db
-    .all("SELECT id FROM memory_spaces ORDER BY created_at ASC")
-    .map((row) => asMemorySpaceId(text(row, "id")));
+    .all('SELECT id FROM memory_spaces ORDER BY created_at ASC')
+    .map((row) => asMemorySpaceId(text(row, 'id')))
 }

@@ -3,7 +3,7 @@
 Import from the package root:
 
 ```ts
-import { Namiso } from "namiso";
+import { Namiso } from 'namiso'
 ```
 
 All methods operate on the memory space configured at `open()`. There is no cross-space query.
@@ -12,15 +12,15 @@ All methods operate on the memory space configured at `open()`. There is no cros
 
 ```ts
 const memory = await Namiso.open({
-  databasePath: "./memory.db",
-  workspace: { name: "default" },
-  memorySpace: { name: "assistant" },
+  databasePath: './memory.db',
+  workspace: { name: 'default' },
+  memorySpace: { name: 'assistant' },
   embedding: new HashEmbeddingProvider(),
   extraction: new RuleExtractionProvider(),
   reranker: new LexicalReranker(),
-  vectorIndex: "auto",
+  vectorIndex: 'auto',
   chunking: { size: 8, overlap: 2 },
-});
+})
 ```
 
 | Option                               | Default                   | Notes                                      |
@@ -85,10 +85,10 @@ Returns:
 
 ```ts
 {
-  messageId: string;
-  conversationId: string;
-  accepted: true;
-  processingStatus: "pending" | "completed";
+  messageId: string
+  conversationId: string
+  accepted: true
+  processingStatus: 'pending' | 'completed'
 }
 ```
 

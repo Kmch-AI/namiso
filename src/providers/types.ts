@@ -5,103 +5,103 @@ import type {
   MessageId,
   MessageRole,
   TimePrecision,
-} from "../types.ts";
+} from '../types.ts'
 
 export interface EmbeddingProvider {
-  readonly model: string;
-  readonly version: string;
-  readonly dimensions: number;
-  embed(texts: readonly string[]): Promise<number[][]>;
+  readonly model: string
+  readonly version: string
+  readonly dimensions: number
+  embed(texts: readonly string[]): Promise<number[][]>
 }
 
 export interface RerankInput {
-  query: string;
-  documents: readonly string[];
+  query: string
+  documents: readonly string[]
 }
 
 export interface RerankScore {
-  index: number;
-  score: number;
+  index: number
+  score: number
 }
 
 export interface RerankerProvider {
-  readonly model: string;
-  rerank(input: RerankInput): Promise<RerankScore[]>;
+  readonly model: string
+  rerank(input: RerankInput): Promise<RerankScore[]>
 }
 
-export type ExtractionModality = "asserted" | "uncertain" | "negated" | "hypothetical" | "quoted";
+export type ExtractionModality = 'asserted' | 'uncertain' | 'negated' | 'hypothetical' | 'quoted'
 
 export interface ExtractionMessage {
-  id: MessageId;
-  role: MessageRole;
-  speakerId: string;
-  speakerName: string;
-  content: string;
-  occurredAt: number;
-  messageIndex: number;
+  id: MessageId
+  role: MessageRole
+  speakerId: string
+  speakerName: string
+  content: string
+  occurredAt: number
+  messageIndex: number
 }
 
 export interface KnownEntity {
-  id: EntityId;
-  name: string;
-  type: EntityType;
-  aliases: string[];
+  id: EntityId
+  name: string
+  type: EntityType
+  aliases: string[]
 }
 
 export interface ExtractionInput {
-  memorySpaceId: MemorySpaceId;
-  focusMessageId: MessageId;
-  messages: readonly ExtractionMessage[];
-  knownEntities: readonly KnownEntity[];
+  memorySpaceId: MemorySpaceId
+  focusMessageId: MessageId
+  messages: readonly ExtractionMessage[]
+  knownEntities: readonly KnownEntity[]
 }
 
 export interface ExtractedEntity {
-  name: string;
-  type: EntityType;
-  aliases?: readonly string[];
-  description?: string;
-  evidenceMessageIds: readonly MessageId[];
+  name: string
+  type: EntityType
+  aliases?: readonly string[]
+  description?: string
+  evidenceMessageIds: readonly MessageId[]
 }
 
 export type ExtractedObject =
-  | { kind: "literal"; value: string }
-  | { kind: "entity"; name: string; type: EntityType };
+  | { kind: 'literal'; value: string }
+  | { kind: 'entity'; name: string; type: EntityType }
 
 export interface ExtractedClaim {
-  subject: { name: string; type: EntityType };
-  predicate: string;
-  object: ExtractedObject;
-  modality: ExtractionModality;
-  confidence: number;
-  validFrom?: number;
-  evidenceMessageIds: readonly MessageId[];
+  subject: { name: string; type: EntityType }
+  predicate: string
+  object: ExtractedObject
+  modality: ExtractionModality
+  confidence: number
+  validFrom?: number
+  evidenceMessageIds: readonly MessageId[]
 }
 
 export interface ExtractedParticipant {
-  name: string;
-  type: EntityType;
-  role: string;
+  name: string
+  type: EntityType
+  role: string
 }
 
 export interface ExtractedEvent {
-  type: string;
-  summary: string;
-  description?: string;
-  occurredAt?: number;
-  timePrecision?: TimePrecision;
-  participants: readonly ExtractedParticipant[];
-  modality: ExtractionModality;
-  confidence: number;
-  evidenceMessageIds: readonly MessageId[];
+  type: string
+  summary: string
+  description?: string
+  occurredAt?: number
+  timePrecision?: TimePrecision
+  participants: readonly ExtractedParticipant[]
+  modality: ExtractionModality
+  confidence: number
+  evidenceMessageIds: readonly MessageId[]
 }
 
 export interface ExtractionResult {
-  entities: readonly ExtractedEntity[];
-  claims: readonly ExtractedClaim[];
-  events: readonly ExtractedEvent[];
+  entities: readonly ExtractedEntity[]
+  claims: readonly ExtractedClaim[]
+  events: readonly ExtractedEvent[]
 }
 
 export interface ExtractionProvider {
-  readonly version: string;
-  extract(input: ExtractionInput): Promise<ExtractionResult>;
+  readonly version: string
+  extract(input: ExtractionInput): Promise<ExtractionResult>
 }
