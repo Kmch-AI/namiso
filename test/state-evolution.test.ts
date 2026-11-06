@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { AI, USER, setup } from "./helpers.ts";
 
 test("state changes supersede old claims without deleting history", async () => {

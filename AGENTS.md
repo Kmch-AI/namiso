@@ -7,7 +7,7 @@ Standalone long-term memory engine for AI agents. It stores raw conversations, e
 - Node.js 24 or newer. Storage uses the built-in `node:sqlite` module.
 - TypeScript 7, ESM only. Node runs the `.ts` sources directly; `npm run build` emits `dist/` with `.js` specifiers.
 - SQLite with FTS5 and `sqlite-vec`. The exact vector scan is the fallback.
-- oxlint for lint, oxfmt for formatting.
+- oxlint for lint, oxfmt for formatting, Vitest for tests.
 - One runtime dependency: `sqlite-vec`. Model providers are interfaces.
 
 ## Commands
@@ -17,6 +17,7 @@ Standalone long-term memory engine for AI agents. It stores raw conversations, e
 | `npm install`                       | Install dependencies                    |
 | `npm run verify`                    | Typecheck, lint, format check, and test |
 | `npm test`                          | Run the test suite                      |
+| `npm run test:watch`                | Run tests in watch mode                 |
 | `npm run build`                     | Emit the ESM package into `dist/`       |
 | `npm run bench -- --dataset <path>` | Run the retrieval benchmark             |
 

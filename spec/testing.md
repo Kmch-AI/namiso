@@ -1,11 +1,13 @@
 # Testing
 
-Tests use the Node test runner and Node's TypeScript type stripping. There is no test framework dependency.
+Tests run on Vitest. Vitest handles TypeScript, watch mode, and coverage. Assertions use `node:assert/strict` because `assert.ok` narrows nullable values without extra guards.
 
 ## Commands
 
 ```bash
 npm test
+npm run test:watch
+npm run test:coverage
 npm run typecheck
 npm run lint
 npm run fmt:check

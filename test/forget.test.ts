@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { USER, setup } from "./helpers.ts";
 
 test("forgetting a message removes its evidence from retrieval", async () => {
