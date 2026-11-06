@@ -59,6 +59,35 @@ The defaults run offline:
 
 Production deployments should pass an LLM extraction provider and a real embedding model. `HttpExtractionProvider`, `HttpEmbeddingProvider`, and `HttpRerankerProvider` accept OpenAI-compatible endpoints. See `spec/providers.md`.
 
+## Real models
+
+Providers are injected in `Namiso.open()`. Pass `embedding`, `extraction`, and `reranker` directly, or build them from environment variables:
+
+```ts
+import { Namiso, providersFromEnv } from "namiso";
+
+const memory = await Namiso.open({
+  databasePath: "./memory.db",
+  ...providersFromEnv(process.env),
+});
+```
+
+`providersFromEnv()` reads the variables in `.env.example`. An endpoint URL and a model name must be set together. Embedding also requires `NAMISO_EMBEDDING_DIMENSIONS` to match the model output. Empty variables are ignored, so the offline defaults stay active.
+
+To run the benchmark against real models, export the variables and add `--models`:
+
+```bash
+node bench/run.ts --dataset <path> --models --out bench/out/models
+```
+
+The report prints the actual embedding, extraction, and reranker identities. The integration test is opt-in and skipped by default:
+
+```bash
+NAMISO_RUN_MODEL_TESTS=1 npm run test:integration
+```
+
+The integration points are in `src/providers/types.ts` (interfaces), `src/providers/http.ts` (HTTP adapters), `src/providers/from-env.ts` (environment factory), and `src/namiso.ts` (`Namiso.open`). The benchmark passes its provider set in `bench/chat-memory-benchmark.ts`. The opt-in test is `test/models.integration.test.ts`.
+
 ## Retrieval
 
 `getContext()` runs SQL, FTS, and vector retrieval, fuses the results with Reciprocal Rank Fusion, reranks the candidates, expands linked memories, checks status and time, and assembles a token-budgeted context with evidence IDs.

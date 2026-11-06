@@ -72,6 +72,28 @@ The official benchmark requires an answer model and a grader. Namiso has no API 
 
 The harness therefore scores whether the answer key's anchor messages appear in the context. It exports contexts for an external answer model. Every report states the limit. The benchmark table never claims an official score or a ranking.
 
+## D13. Vitest is the test runner, `node:assert` stays
+
+Vitest provides TypeScript execution, watch mode, coverage, and readable failures. Tests still call `node:assert/strict` because `assert.ok` narrows nullable values in TypeScript. Replacing it with `expect` would add dozens of non-null guards for no behavior gain.
+
+The suite runs with `vitest run`; `npm run test:watch` and `npm run test:coverage` use the same config.
+
+## D14. Lint and format configuration in TypeScript
+
+`oxlint.config.ts` and `oxfmt.config.ts` replace the JSON files. Both tools export `defineConfig`, so rule and formatting options are typed and the project has one configuration language. The scripts pass `-c` explicitly so a future config filename change cannot silently select another file.
+
+## D15. No Drizzle ORM in 0.1.0
+
+Drizzle supports `node:sqlite`, so the driver is not the blocker. The storage layer depends on SQLite features that the schema layer would not own: FTS5, `vec0`, partial unique indexes, `INSERT OR IGNORE`, `ON CONFLICT` upserts, `json_extract`, and `bm25` ranking. A Drizzle schema would either omit those or leave raw SQL beside an ORM schema, creating two sources of truth.
+
+The repositories are already parameterized and map rows into branded domain types. The seam for a future ORM is `src/storage/*-repo.ts`. Revisit Drizzle when ordinary CRUD dominates the storage layer and generated migrations become the larger problem.
+
+## D16. Real model providers are environment-driven and opt-in
+
+`providersFromEnv()` reads endpoint, model, key, dimension, and timeout variables. The benchmark uses it only with `--models`. The real-model integration test requires `NAMISO_RUN_MODEL_TESTS=1`.
+
+Why: a stray environment variable must not start paid model calls during a normal test run. The offline defaults keep CI deterministic. The report records the actual provider identities, so a result cannot silently mix model and offline runs.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
@@ -81,7 +103,7 @@ Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
 | `npm run typecheck`           | Pass                                                                        |
 | `npm run lint`                | Pass, no findings                                                           |
 | `npm run fmt:check`           | Pass                                                                        |
-| `npm test`                    | 25 tests pass                                                               |
+| `npm test`                    | Vitest, 26 tests pass, 1 real-model test skipped                            |
 | `npm run build`               | Pass                                                                        |
 | Built `dist/` smoke test      | Message ingested, 2 jobs completed, context contained the `IndexTTS2` claim |
 | `npm run bench` local fixture | 3 questions, 100% evidence recall, 0 errors                                 |

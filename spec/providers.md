@@ -54,6 +54,33 @@ interface RerankerProvider {
 
 The engine expects scores on a comparable scale. The final ranking uses 0.7 × reranker score + 0.3 × normalized RRF. A cross-encoder that returns logits should normalize its scores before returning them.
 
+## Environment wiring
+
+`providersFromEnv()` maps environment variables to HTTP providers. It returns an empty object when no provider is configured, so `Namiso.open()` keeps the offline defaults.
+
+| Prefix     | Variables                                                                                                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`                                                           |
+| Embedding  | `NAMISO_EMBEDDING_URL`, `NAMISO_EMBEDDING_MODEL`, `NAMISO_EMBEDDING_DIMENSIONS`, `NAMISO_EMBEDDING_API_KEY`, `NAMISO_EMBEDDING_VERSION`, `NAMISO_EMBEDDING_BATCH_SIZE` |
+| Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`                                                                                                    |
+| Shared     | `NAMISO_MODEL_TIMEOUT_MS`                                                                                                                                              |
+
+An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset.
+
+Where the code connects:
+
+| Concern                           | File                                                                  |
+| --------------------------------- | --------------------------------------------------------------------- |
+| Provider contracts                | `src/providers/types.ts`                                              |
+| HTTP payload parsing and requests | `src/providers/http.ts`, `src/providers/http-util.ts`                 |
+| Environment factory               | `src/providers/from-env.ts`                                           |
+| Injection into the engine         | `src/namiso.ts`, `Namiso.open()` options                              |
+| Benchmark injection               | `bench/run.ts` `--models`, passed in `bench/chat-memory-benchmark.ts` |
+| Opt-in real-model test            | `test/models.integration.test.ts`                                     |
+| Fake-boundary tests               | `test/providers.test.ts`                                              |
+
+`.env.example` lists the full set. The package does not load `.env`; run Node with `--env-file=.env` or export the variables in the shell.
+
 ## Implementing a provider
 
 1. Implement the interface from `src/providers/types.ts`.

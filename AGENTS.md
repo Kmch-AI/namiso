@@ -18,6 +18,7 @@ Standalone long-term memory engine for AI agents. It stores raw conversations, e
 | `npm run verify`                    | Typecheck, lint, format check, and test |
 | `npm test`                          | Run the test suite                      |
 | `npm run test:watch`                | Run tests in watch mode                 |
+| `npm run test:integration`          | Run opt-in real-model tests             |
 | `npm run build`                     | Emit the ESM package into `dist/`       |
 | `npm run bench -- --dataset <path>` | Run the retrieval benchmark             |
 

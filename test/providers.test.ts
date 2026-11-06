@@ -7,6 +7,8 @@ import {
   HashEmbeddingProvider,
   LexicalReranker,
   RuleExtractionProvider,
+  ValidationError,
+  providersFromEnv,
 } from "../src/index.ts";
 import { asMemorySpaceId, asMessageId } from "../src/ids.ts";
 import { cosineSimilarity } from "../src/text.ts";
@@ -193,4 +195,34 @@ test("HTTP providers parse boundary payloads", async () => {
     { index: 0, score: 0.1 },
     { index: 1, score: 0.9 },
   ]);
+});
+
+test("provider environment parsing is all-or-nothing", () => {
+  assert.deepEqual(providersFromEnv({}), {});
+  assert.throws(
+    () => providersFromEnv({ NAMISO_EMBEDDING_URL: "https://example.test/embeddings" }),
+    (error: unknown) => error instanceof ValidationError,
+  );
+  assert.throws(
+    () =>
+      providersFromEnv({
+        NAMISO_EMBEDDING_URL: "https://example.test/embeddings",
+        NAMISO_EMBEDDING_MODEL: "test-embedding",
+      }),
+    (error: unknown) => error instanceof ValidationError,
+  );
+
+  const providers = providersFromEnv({
+    NAMISO_EMBEDDING_URL: "https://example.test/embeddings",
+    NAMISO_EMBEDDING_MODEL: "test-embedding",
+    NAMISO_EMBEDDING_DIMENSIONS: "8",
+    NAMISO_EXTRACTION_URL: "https://example.test/chat",
+    NAMISO_EXTRACTION_MODEL: "test-chat",
+    NAMISO_RERANK_URL: "https://example.test/rerank",
+    NAMISO_RERANK_MODEL: "test-rerank",
+  });
+  assert.ok(providers.embedding instanceof HttpEmbeddingProvider);
+  assert.equal(providers.embedding.dimensions, 8);
+  assert.ok(providers.extraction instanceof HttpExtractionProvider);
+  assert.ok(providers.reranker instanceof HttpRerankerProvider);
 });

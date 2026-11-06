@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Namiso } from "../src/index.ts";
+import type { ProviderSet } from "../src/providers/from-env.ts";
 
 export interface HistoryTurn {
   轮次: number;
@@ -61,6 +62,7 @@ export interface BenchmarkReport {
   datasetRoot: string;
   generatedAt: string;
   mode: BenchmarkMode;
+  providers: { embedding: string; extraction: string; reranker: string };
   items: number;
   scoredItems: number;
   personas: number;
@@ -85,6 +87,7 @@ export interface RunOptions {
   maxTokens?: number;
   topK?: number;
   mode?: BenchmarkMode;
+  providers?: ProviderSet;
 }
 
 export interface RunOutput {
@@ -124,6 +127,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
   const results: ItemResult[] = [];
   let turnsIngested = 0;
   let ingestMs = 0;
+  let providerIdentity: BenchmarkReport["providers"] | null = null;
   const startedAt = new Date().toISOString();
 
   for (const [persona, items] of byPersona) {
@@ -139,7 +143,14 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
       databasePath: ":memory:",
       memorySpace: { name: `bench-${persona}` },
       vectorIndex: "auto",
+      ...options.providers,
     });
+    const health = namiso.health();
+    providerIdentity ??= {
+      embedding: health.embedding.model,
+      extraction: health.extraction.version,
+      reranker: health.reranker.model,
+    };
     const conversation = namiso.createConversation({ externalId: persona });
     let ingestedTurns = 0;
     for (const item of items) {
@@ -223,6 +234,11 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
     datasetRoot: dataset.root,
     generatedAt: startedAt,
     mode: options.mode ?? "hybrid",
+    providers: providerIdentity ?? {
+      embedding: "unknown",
+      extraction: "unknown",
+      reranker: "unknown",
+    },
     results,
     personas: byPersona.size,
     turnsIngested,
@@ -268,6 +284,7 @@ function summarize(input: {
   datasetRoot: string;
   generatedAt: string;
   mode: BenchmarkMode;
+  providers: BenchmarkReport["providers"];
   results: ItemResult[];
   personas: number;
   turnsIngested: number;
@@ -326,6 +343,7 @@ function summarize(input: {
     datasetRoot: input.datasetRoot,
     generatedAt: input.generatedAt,
     mode: input.mode,
+    providers: input.providers,
     items: input.results.length,
     scoredItems: scored.length,
     personas: input.personas,

@@ -44,7 +44,9 @@ node bench/run.ts --dataset <path> --mode raw --out bench/out/formal-raw
 npm run bench
 ```
 
-Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`.
+Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`, `--models`.
+
+`--models` builds providers from `NAMISO_*` variables. Without it, the run uses the offline defaults and the report records them.
 
 `bench/out/` is ignored by git. Each run writes `contexts.jsonl` and `report.json`.
 
@@ -98,7 +100,7 @@ All runs reported zero item errors. Ranges cover repeated hybrid runs; the raw d
 
 Evidence recall is not answer accuracy. A context can contain the anchor message and still produce a wrong answer, and an answer can be correct from a paraphrase without the exact anchor. The official repository requires a separate answer model and its own grader. This harness exports `contexts.jsonl` for that step and does not call a model.
 
-The default stack is offline and deterministic. `HashEmbeddingProvider` hashes word features; it does not place paraphrases near each other. `RuleExtractionProvider` covers a small pattern set. A production embedding model and an LLM extractor should change both recall and the structured-memory share of the result.
+The result table above uses the offline defaults. `--models` replaces them with configured HTTP providers and records their identities in the report. The default stack is offline and deterministic. `HashEmbeddingProvider` hashes word features; it does not place paraphrases near each other. `RuleExtractionProvider` covers a small pattern set. A production embedding model and an LLM extractor should change both recall and the structured-memory share of the result.
 
 The raw baseline uses only chunks (`memoryTypes: ["conversation"]`). The hybrid gain on the formal set is one point of evidence recall. The structured layer's advantage is current-state tracking, supersession, uncertainty, and evidence-linked claims. This metric barely measures those, because most formal questions ask for episodic facts that appear in raw text.
 

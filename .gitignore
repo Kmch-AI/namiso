@@ -6,3 +6,6 @@ dist/
 bench/out/
 temp/
 .DS_Store
+.env
+.env.*
+!.env.example

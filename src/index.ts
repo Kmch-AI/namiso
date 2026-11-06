@@ -19,6 +19,8 @@ export { HashEmbeddingProvider } from "./providers/hash-embedding.ts";
 export type { HashEmbeddingOptions } from "./providers/hash-embedding.ts";
 export { LexicalReranker } from "./providers/lexical-reranker.ts";
 export { RuleExtractionProvider } from "./providers/rule-extraction.ts";
+export { providersFromEnv } from "./providers/from-env.ts";
+export type { ProviderEnvironment, ProviderSet } from "./providers/from-env.ts";
 export {
   HttpEmbeddingProvider,
   HttpExtractionProvider,

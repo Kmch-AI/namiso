@@ -8,6 +8,7 @@ Tests run on Vitest. Vitest handles TypeScript, watch mode, and coverage. Assert
 npm test
 npm run test:watch
 npm run test:coverage
+npm run test:integration
 npm run typecheck
 npm run lint
 npm run fmt:check
@@ -33,7 +34,7 @@ Integration tests assert through the public API and never inspect tables. Provid
 | `providers.test.ts`       | Hash embedding invariants, rule extraction, lexical rerank, HTTP payload parsing                                  |
 | `api.test.ts`             | Boundary validation, alias resolution, manual links, reindex, closed instance                                     |
 
-The current suite has 25 tests. It runs in under a second on the development machine.
+The default suite has 26 tests plus one skipped real-model test. It runs in under a second on the development machine.
 
 ## Writing a test
 
@@ -44,6 +45,16 @@ The current suite has 25 tests. It runs in under a second on the development mac
 5. Close the engine.
 
 Avoid asserting private helper calls, generated IDs, or exact scores. Scores change when ranking weights change.
+
+## Real model tests
+
+`test/models.integration.test.ts` calls the providers configured through `NAMISO_*` variables. It is skipped unless `NAMISO_RUN_MODEL_TESTS=1`. Without that flag, the suite never makes a network call.
+
+```bash
+NAMISO_RUN_MODEL_TESTS=1 npm run test:integration
+```
+
+Set the endpoint and model variables first. See `.env.example` and `spec/providers.md`.
 
 ## What is not covered
 

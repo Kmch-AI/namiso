@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { runBenchmark } from "./chat-memory-benchmark.ts";
+import { providersFromEnv } from "../src/index.ts";
 import type { BenchmarkReport } from "./chat-memory-benchmark.ts";
 
 const { values } = parseArgs({
@@ -11,6 +12,7 @@ const { values } = parseArgs({
     "max-tokens": { type: "string" },
     "top-k": { type: "string" },
     mode: { type: "string", default: "hybrid" },
+    models: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
   allowPositionals: false,
@@ -26,11 +28,16 @@ if (values.help) {
   --max-tokens <n>   context token budget (default 1600)
   --top-k <n>        retrieval depth (default 12)
   --mode <mode>      hybrid (default) or raw chunk baseline
+  --models           read NAMISO_* provider variables and call real models
 `);
   process.exit(0);
 }
 
 try {
+  const providers = values.models ? providersFromEnv(process.env) : undefined;
+  if (values.models && Object.keys(providers ?? {}).length === 0) {
+    process.stdout.write("No NAMISO_* provider variables found; using default providers.\n");
+  }
   const { report, results } = await runBenchmark({
     datasetPath: values.dataset,
     outputDir: values.out,
@@ -39,6 +46,7 @@ try {
     ...(values["max-tokens"] === undefined ? {} : { maxTokens: Number(values["max-tokens"]) }),
     ...(values["top-k"] === undefined ? {} : { topK: Number(values["top-k"]) }),
     ...(values.mode === "raw" ? { mode: "raw" as const } : {}),
+    ...(providers === undefined ? {} : { providers }),
   });
   process.stdout.write(`${formatReport(report)}\n`);
   const failures = results.filter((result) => result.error !== undefined);
@@ -59,6 +67,7 @@ function formatReport(report: BenchmarkReport): string {
     "Namiso benchmark",
     `dataset: ${report.datasetRoot}`,
     `mode: ${report.mode}`,
+    `providers: embedding=${report.providers.embedding} extraction=${report.providers.extraction} reranker=${report.providers.reranker}`,
     `items: ${report.items} | scored: ${report.scoredItems} | personas: ${report.personas} | turns: ${report.turnsIngested}`,
     `ingest: ${report.ingestMs} ms`,
     `evidence recall: ${formatRate(report.evidenceRecall)}`,

@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run test/models.integration.test.ts",
     "bench": "node bench/run.ts",
     "verify": "npm run typecheck && npm run lint && npm run fmt:check && npm test"
   },
