@@ -13,15 +13,15 @@ Standalone long-term memory engine for AI agents. It stores raw conversations, e
 
 ## Commands
 
-| Command                          | Does                                |
-| -------------------------------- | ----------------------------------- |
-| `pnpm install`                   | Install dependencies                |
-| `pnpm verify`                    | Lint, format check, test, and build |
-| `pnpm test`                      | Run the test suite                  |
-| `pnpm test:watch`                | Run tests in watch mode             |
-| `pnpm test:integration`          | Run opt-in real-model tests         |
-| `pnpm build`                     | Emit the ESM package into `dist/`   |
-| `pnpm bench -- --dataset <path>` | Run the retrieval benchmark         |
+| Command                       | Does                                |
+| ----------------------------- | ----------------------------------- |
+| `pnpm install`                | Install dependencies                |
+| `pnpm verify`                 | Lint, format check, test, and build |
+| `pnpm test`                   | Run the test suite                  |
+| `pnpm test:watch`             | Run tests in watch mode             |
+| `pnpm test:integration`       | Run opt-in real-model tests         |
+| `pnpm build`                  | Emit the ESM package into `dist/`   |
+| `pnpm bench --dataset <path>` | Run the retrieval benchmark         |
 
 ## Layout
 
