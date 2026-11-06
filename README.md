@@ -14,7 +14,7 @@ The engine does not run an agent, call tools, or schedule messages. It owns conv
 
 ## Requirements
 
-Node.js 24 or newer. The package is ESM and uses the built-in `node:sqlite` module.
+Node.js 24 or newer and pnpm 12. The package is ESM and uses the built-in `node:sqlite` module.
 
 ## Quick start
 
@@ -83,7 +83,7 @@ node bench/run.ts --dataset <path> --models --out bench/out/models
 The report prints the actual embedding, extraction, and reranker identities. The integration test is opt-in and skipped by default:
 
 ```bash
-NAMISO_RUN_MODEL_TESTS=1 npm run test:integration
+NAMISO_RUN_MODEL_TESTS=1 pnpm test:integration
 ```
 
 The integration points are in `src/providers/types.ts` (interfaces), `src/providers/http.ts` (HTTP adapters), `src/providers/from-env.ts` (environment factory), and `src/namiso.ts` (`Namiso.open`). The benchmark passes its provider set in `bench/chat-memory-benchmark.ts`. The opt-in test is `test/models.integration.test.ts`.

@@ -41,7 +41,7 @@ node bench/run.ts \
 node bench/run.ts --dataset <path> --mode raw --out bench/out/formal-raw
 
 # Local fixture used by CI and quick checks
-npm run bench
+pnpm bench
 ```
 
 Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`, `--models`.
@@ -96,6 +96,18 @@ Public demo, 108 questions (104 scored), 299 turns:
 | raw chunks | 100%            | 100%        | 371 / 406        | 5.08 / 9.32 ms              | 1.3 s        |
 
 All runs reported zero item errors. Ranges cover repeated hybrid runs; the raw demo was measured once.
+
+## Offline provider stack
+
+The scores above used no external model service. Namiso filled the three provider slots with the deterministic defaults:
+
+| Slot       | Default                  | What it does                                                                        |
+| ---------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| Extraction | `RuleExtractionProvider` | Regex patterns for names, preferences, usage, locations, recommendations, and loans |
+| Embedding  | `HashEmbeddingProvider`  | Hashes word and adjacent-word features into 256 normalized dimensions               |
+| Reranker   | `LexicalReranker`        | Counts query-token overlap and gives a small ordered-match bonus                    |
+
+These are real providers behind the same interfaces as the HTTP implementations. They produce deterministic vectors and scores, so the pipeline runs end to end and the benchmark is reproducible. They are not semantic models. The report prints their identities as `embedding=namiso-hash extraction=rule-v1 reranker=namiso-lexical`. `--models` replaces any of them with the configured HTTP provider.
 
 ## Reading the numbers
 

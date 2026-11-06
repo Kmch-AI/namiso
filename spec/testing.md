@@ -5,17 +5,17 @@ Tests run on Vitest. Vitest handles TypeScript, watch mode, and coverage. Assert
 ## Commands
 
 ```bash
-npm test
-npm run test:watch
-npm run test:coverage
-npm run test:integration
-npm run typecheck
-npm run lint
-npm run fmt:check
-npm run verify
+pnpm test
+pnpm test:watch
+pnpm test:coverage
+pnpm test:integration
+pnpm typecheck
+pnpm lint
+pnpm fmt:check
+pnpm verify
 ```
 
-`npm run verify` runs typecheck, lint, format check, and tests in that order.
+`pnpm verify` runs typecheck, type-aware lint, format check, and tests in that order. `pnpm lint` runs oxlint with tsgolint, so it checks types as well as syntax.
 
 ## Test setup
 
@@ -46,12 +46,18 @@ The default suite has 26 tests plus one skipped real-model test. It runs in unde
 
 Avoid asserting private helper calls, generated IDs, or exact scores. Scores change when ranking weights change.
 
+## Commit hook
+
+`pnpm install` runs `simple-git-hooks` through the `prepare` script. The installed pre-commit hook runs `pnpm lint-staged`. Staged TypeScript files go through `oxlint --fix` and `oxfmt`; staged JSON, Markdown, and YAML files go through `oxfmt`.
+
+The hook is a fast local check. `pnpm verify` remains the full gate.
+
 ## Real model tests
 
 `test/models.integration.test.ts` calls the providers configured through `NAMISO_*` variables. It is skipped unless `NAMISO_RUN_MODEL_TESTS=1`. Without that flag, the suite never makes a network call.
 
 ```bash
-NAMISO_RUN_MODEL_TESTS=1 npm run test:integration
+NAMISO_RUN_MODEL_TESTS=1 pnpm test:integration
 ```
 
 Set the endpoint and model variables first. See `.env.example` and `spec/providers.md`.

@@ -4,23 +4,24 @@ Standalone long-term memory engine for AI agents. It stores raw conversations, e
 
 ## Stack
 
-- Node.js 24 or newer. Storage uses the built-in `node:sqlite` module.
-- TypeScript 7, ESM only. Node runs the `.ts` sources directly; `npm run build` emits `dist/` with `.js` specifiers.
+- Node.js 24 or newer and pnpm 12. Storage uses the built-in `node:sqlite` module.
+- TypeScript 7, ESM only. Node runs the `.ts` sources directly; `pnpm build` emits `dist/` with `.js` specifiers.
 - SQLite with FTS5 and `sqlite-vec`. The exact vector scan is the fallback.
-- oxlint for lint, oxfmt for formatting, Vitest for tests.
+- oxlint with type-aware tsgolint, oxfmt for formatting, Vitest for tests.
+- lint-staged and simple-git-hooks run checks before each commit.
 - One runtime dependency: `sqlite-vec`. Model providers are interfaces.
 
 ## Commands
 
-| Command                             | Does                                    |
-| ----------------------------------- | --------------------------------------- |
-| `npm install`                       | Install dependencies                    |
-| `npm run verify`                    | Typecheck, lint, format check, and test |
-| `npm test`                          | Run the test suite                      |
-| `npm run test:watch`                | Run tests in watch mode                 |
-| `npm run test:integration`          | Run opt-in real-model tests             |
-| `npm run build`                     | Emit the ESM package into `dist/`       |
-| `npm run bench -- --dataset <path>` | Run the retrieval benchmark             |
+| Command                          | Does                                    |
+| -------------------------------- | --------------------------------------- |
+| `pnpm install`                   | Install dependencies                    |
+| `pnpm verify`                    | Typecheck, lint, format check, and test |
+| `pnpm test`                      | Run the test suite                      |
+| `pnpm test:watch`                | Run tests in watch mode                 |
+| `pnpm test:integration`          | Run opt-in real-model tests             |
+| `pnpm build`                     | Emit the ESM package into `dist/`       |
+| `pnpm bench -- --dataset <path>` | Run the retrieval benchmark             |
 
 ## Layout
 

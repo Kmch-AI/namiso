@@ -76,7 +76,7 @@ The harness therefore scores whether the answer key's anchor messages appear in 
 
 Vitest provides TypeScript execution, watch mode, coverage, and readable failures. Tests still call `node:assert/strict` because `assert.ok` narrows nullable values in TypeScript. Replacing it with `expect` would add dozens of non-null guards for no behavior gain.
 
-The suite runs with `vitest run`; `npm run test:watch` and `npm run test:coverage` use the same config.
+The suite runs with `vitest run`; `pnpm test:watch` and `pnpm test:coverage` use the same config.
 
 ## D14. Lint and format configuration in TypeScript
 
@@ -94,23 +94,37 @@ The repositories are already parameterized and map rows into branded domain type
 
 Why: a stray environment variable must not start paid model calls during a normal test run. The offline defaults keep CI deterministic. The report records the actual provider identities, so a result cannot silently mix model and offline runs.
 
+## D17. pnpm with a committed lockfile
+
+The project uses pnpm 12 and commits `pnpm-lock.yaml`. `packageManager` pins the expected pnpm version. pnpm 12 moved build-script approval to `pnpm-workspace.yaml`; `allowBuilds` permits only `esbuild` and `simple-git-hooks`.
+
+`oxlint-tsgolint` is pinned to `7.0.2005`. The newer `7.0.2006` was inside pnpm's minimum release age window at install time. Remove the pin after the window passes if the update is wanted.
+
+## D18. Type-aware lint and a commit hook
+
+`oxlint.config.ts` enables `typeAware` and `typeCheck`, backed by `oxlint-tsgolint`. This runs TypeScript 7 semantic rules and compiler diagnostics inside the lint step. The lint script is part of `pnpm verify`, so a type error fails both `tsc` and oxlint.
+
+`typescript/no-unsafe-type-assertion` is off because branded IDs and parsed provider payloads deliberately assert at validated boundaries. The central constructors and parsers are the narrow places where casts are allowed.
+
+`simple-git-hooks` installs `pnpm lint-staged` as the pre-commit hook. Staged files are fixed and formatted before commit. The full type-aware check still runs in `pnpm verify`; the hook trades completeness for speed on a single commit.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
 
-| Check                         | Result                                                                      |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| `npm run typecheck`           | Pass                                                                        |
-| `npm run lint`                | Pass, no findings                                                           |
-| `npm run fmt:check`           | Pass                                                                        |
-| `npm test`                    | Vitest, 26 tests pass, 1 real-model test skipped                            |
-| `npm run build`               | Pass                                                                        |
-| Built `dist/` smoke test      | Message ingested, 2 jobs completed, context contained the `IndexTTS2` claim |
-| `npm run bench` local fixture | 3 questions, 100% evidence recall, 0 errors                                 |
-| Demo, hybrid                  | 108 questions, 104 scored, 100% evidence recall, 100% context hit           |
-| Demo, raw baseline            | 104 scored, 100% evidence recall, 100% context hit                          |
-| Formal, hybrid, 6 runs        | 714 scored, 74% evidence recall, 78% context hit, 0 errors                  |
-| Formal, raw baseline          | 714 scored, 73% evidence recall, 77% context hit                            |
+| Check                      | Result                                                                      |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `pnpm typecheck`           | Pass                                                                        |
+| `pnpm lint`                | Pass, no findings                                                           |
+| `pnpm fmt:check`           | Pass                                                                        |
+| `pnpm test`                | Vitest, 26 tests pass, 1 real-model test skipped                            |
+| `pnpm build`               | Pass                                                                        |
+| Built `dist/` smoke test   | Message ingested, 2 jobs completed, context contained the `IndexTTS2` claim |
+| `pnpm bench` local fixture | 3 questions, 100% evidence recall, 0 errors                                 |
+| Demo, hybrid               | 108 questions, 104 scored, 100% evidence recall, 100% context hit           |
+| Demo, raw baseline         | 104 scored, 100% evidence recall, 100% context hit                          |
+| Formal, hybrid, 6 runs     | 714 scored, 74% evidence recall, 78% context hit, 0 errors                  |
+| Formal, raw baseline       | 714 scored, 73% evidence recall, 77% context hit                            |
 
 The first full benchmark attempt reported 23% evidence recall. The cause was a harness bug: `getMessages()` defaults to 100 rows, so anchor messages after turn 50 were missing from the index map. Fixing the harness to request all messages raised the result to 87%. The retrieval engine had not been the limiter. This is why the benchmark notes must state whether the observation method was checked before the system.
 
