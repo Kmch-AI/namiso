@@ -217,7 +217,7 @@ function collectEvidence(
   const queryTokens = new Set(segment(query));
   const prepared = candidates.map((candidate) => {
     const perCandidateLimit = candidate.kind === "chunk" ? 3 : 2;
-    const messages = candidate.evidenceMessageIds
+    const candidateMessages = candidate.evidenceMessageIds
       .flatMap((id) => {
         const message = byId.get(asMessageId(id));
         return message === undefined || message.memorySpaceId !== spaceId ? [] : [message];
@@ -227,7 +227,7 @@ function collectEvidence(
         if (left.score !== right.score) return right.score - left.score;
         return right.message.occurredAt - left.message.occurredAt;
       });
-    return { messages, perCandidateLimit };
+    return { messages: candidateMessages, perCandidateLimit };
   });
   const chosen: Message[] = [];
   const seen = new Set<string>();

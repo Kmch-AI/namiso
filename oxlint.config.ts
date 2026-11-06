@@ -1,12 +1,13 @@
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "unicorn", "oxc", "promise"],
-  "categories": {
-    "correctness": "error",
-    "suspicious": "warn",
-    "perf": "warn"
+import { defineConfig } from "oxlint";
+
+export default defineConfig({
+  plugins: ["typescript", "import", "unicorn", "oxc", "promise", "vitest"],
+  categories: {
+    correctness: "error",
+    suspicious: "warn",
+    perf: "warn",
   },
-  "rules": {
+  rules: {
     "no-console": "error",
     "no-debugger": "error",
     "no-explicit-any": "error",
@@ -16,7 +17,7 @@
     "unicorn/prefer-node-protocol": "error",
     "no-await-in-loop": "off",
     "oxc/no-map-spread": "off",
-    "eqeqeq": "error"
+    eqeqeq: "error",
   },
-  "ignorePatterns": ["dist/**", "node_modules/**", "bench/out/**"]
-}
+  ignorePatterns: ["dist/**", "node_modules/**", "bench/out/**"],
+});

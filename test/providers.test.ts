@@ -11,6 +11,61 @@ import {
 import { asMemorySpaceId, asMessageId } from "../src/ids.ts";
 import { cosineSimilarity } from "../src/text.ts";
 
+const embeddingFetch: typeof fetch = async (_input, init) => {
+  const body = JSON.parse(String(init?.body)) as { input: string[] };
+  return new Response(
+    JSON.stringify({
+      data: body.input.map(() => ({ embedding: [1, 0] })),
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+};
+
+const extractionFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              entities: [{ name: "IndexTTS2", type: "product" }],
+              claims: [
+                {
+                  subject: { name: "用户A", type: "person" },
+                  predicate: "uses",
+                  object: { kind: "entity", name: "IndexTTS2", type: "product" },
+                  modality: "asserted",
+                  confidence: 0.9,
+                },
+              ],
+              events: [
+                {
+                  type: "usage_change",
+                  summary: "用户开始使用 IndexTTS2",
+                  participants: [{ name: "用户A", type: "person", role: "actor" }],
+                  modality: "asserted",
+                  confidence: 0.9,
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+
+const rerankFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      results: [
+        { index: 0, relevance_score: 0.1 },
+        { index: 1, relevance_score: 0.9 },
+      ],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+
 test("hash embeddings are deterministic, normalized, and fixed width", async () => {
   const provider = new HashEmbeddingProvider({ dimensions: 64 });
   const [left, right] = await provider.embed(["我在使用 TTS-A。", "我在使用 TTS-A。"]);
@@ -101,15 +156,6 @@ test("lexical reranker ranks lexically overlapping documents higher", async () =
 });
 
 test("HTTP providers parse boundary payloads", async () => {
-  const embeddingFetch: typeof fetch = async (_input, init) => {
-    const body = JSON.parse(String(init?.body)) as { input: string[] };
-    return new Response(
-      JSON.stringify({
-        data: body.input.map(() => ({ embedding: [1, 0] })),
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  };
   const embedding = new HttpEmbeddingProvider({
     endpoint: "https://example.test/embeddings",
     model: "test-embedding",
@@ -122,39 +168,6 @@ test("HTTP providers parse boundary payloads", async () => {
     [1, 0],
   ]);
 
-  const extractionFetch: typeof fetch = async () =>
-    new Response(
-      JSON.stringify({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                entities: [{ name: "IndexTTS2", type: "product" }],
-                claims: [
-                  {
-                    subject: { name: "用户A", type: "person" },
-                    predicate: "uses",
-                    object: { kind: "entity", name: "IndexTTS2", type: "product" },
-                    modality: "asserted",
-                    confidence: 0.9,
-                  },
-                ],
-                events: [
-                  {
-                    type: "usage_change",
-                    summary: "用户开始使用 IndexTTS2",
-                    participants: [{ name: "用户A", type: "person", role: "actor" }],
-                    modality: "asserted",
-                    confidence: 0.9,
-                  },
-                ],
-              }),
-            },
-          },
-        ],
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
   const extraction = new HttpExtractionProvider({
     endpoint: "https://example.test/chat",
     model: "test-chat",
@@ -170,16 +183,6 @@ test("HTTP providers parse boundary payloads", async () => {
   assert.deepEqual(result.claims[0]?.evidenceMessageIds, ["message-9"]);
   assert.equal(result.events[0]?.type, "usage_change");
 
-  const rerankFetch: typeof fetch = async () =>
-    new Response(
-      JSON.stringify({
-        results: [
-          { index: 0, relevance_score: 0.1 },
-          { index: 1, relevance_score: 0.9 },
-        ],
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
   const reranker = new HttpRerankerProvider({
     endpoint: "https://example.test/rerank",
     model: "test-rerank",
