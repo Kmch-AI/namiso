@@ -309,7 +309,7 @@ export class Namiso {
       throw new ValidationError("content cannot be empty");
     }
     if (!["user", "assistant", "system", "tool"].includes(input.role)) {
-      throw new ValidationError(`unsupported role: ${String(input.role)}`);
+      throw new ValidationError(`unsupported role: ${input.role}`);
     }
     if (input.speakerId.trim().length === 0) {
       throw new ValidationError("speakerId cannot be empty");

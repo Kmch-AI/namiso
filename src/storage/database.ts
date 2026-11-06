@@ -46,11 +46,11 @@ export class Database {
   }
 
   get(sql: string, ...params: SqlParam[]): Row | undefined {
-    return this.raw.prepare(sql).get(...params) as Row | undefined;
+    return this.raw.prepare(sql).get(...params);
   }
 
   all(sql: string, ...params: SqlParam[]): Row[] {
-    return this.raw.prepare(sql).all(...params) as Row[];
+    return this.raw.prepare(sql).all(...params);
   }
 
   transaction<T>(work: () => T): T {

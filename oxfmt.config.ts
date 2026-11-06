@@ -1,5 +1,17 @@
 import { defineConfig } from "oxfmt";
 
 export default defineConfig({
-  ignorePatterns: ["dist/**", "node_modules/**", "bench/out/**"],
+  printWidth: 100,
+  semi: true,
+  singleQuote: false,
+  trailingComma: "all",
+  endOfLine: "lf",
+  ignorePatterns: [
+    "dist/**",
+    "node_modules/**",
+    "bench/out/**",
+    "coverage/**",
+    "pnpm-lock.yaml",
+    ".git/**",
+  ],
 });

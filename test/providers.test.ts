@@ -14,7 +14,8 @@ import { asMemorySpaceId, asMessageId } from "../src/ids.ts";
 import { cosineSimilarity } from "../src/text.ts";
 
 const embeddingFetch: typeof fetch = async (_input, init) => {
-  const body = JSON.parse(String(init?.body)) as { input: string[] };
+  if (typeof init?.body !== "string") throw new Error("expected a JSON string body");
+  const body = JSON.parse(init.body) as { input: string[] };
   return new Response(
     JSON.stringify({
       data: body.input.map(() => ({ embedding: [1, 0] })),

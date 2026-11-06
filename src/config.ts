@@ -48,7 +48,7 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
   assertProvider("reranker", reranker, ["rerank"]);
   const vectorIndex = options.vectorIndex ?? "auto";
   if (!["auto", "sqlite-vec", "exact"].includes(vectorIndex)) {
-    throw new ValidationError(`unsupported vectorIndex: ${String(vectorIndex)}`);
+    throw new ValidationError(`unsupported vectorIndex: ${vectorIndex}`);
   }
   const size = options.chunking?.size ?? DEFAULT_CHUNK_POLICY.size;
   const overlap = options.chunking?.overlap ?? DEFAULT_CHUNK_POLICY.overlap;
@@ -78,7 +78,7 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
 
 function assertProvider(label: string, provider: object, methods: readonly string[]): void {
   for (const method of methods) {
-    const value = (provider as Record<string, unknown>)[method];
+    const value: unknown = Reflect.get(provider, method);
     if (typeof value !== "function") {
       throw new ValidationError(`${label} provider must implement ${method}()`);
     }

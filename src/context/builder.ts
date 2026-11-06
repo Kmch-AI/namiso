@@ -259,19 +259,16 @@ function overlapScore(message: Message, queryTokens: ReadonlySet<string>): numbe
   return score;
 }
 
+const CLAIM_STATUS_LABELS: Record<Claim["status"], string> = {
+  active: "当前有效",
+  superseded: "已被取代",
+  disputed: "存在冲突",
+  retracted: "已撤回",
+  invalid: "无效",
+};
+
 function statusLabel(status: Claim["status"]): string {
-  switch (status) {
-    case "active":
-      return "当前有效";
-    case "superseded":
-      return "已被取代";
-    case "disputed":
-      return "存在冲突";
-    case "retracted":
-      return "已撤回";
-    case "invalid":
-      return "无效";
-  }
+  return CLAIM_STATUS_LABELS[status];
 }
 
 function formatDate(seconds: number): string {

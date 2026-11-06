@@ -164,7 +164,7 @@ export class Retriever {
     mentioned: readonly Entity[],
   ): MemoryCandidate[] {
     const spaceId = options.memorySpaceId;
-    const includeInactive = parsed.wantsHistory || parsed.wantsCurrent === false;
+    const includeInactive = parsed.wantsHistory || !parsed.wantsCurrent;
     const entityIds = mentioned.map((entity) => entity.id);
     const entities = mentioned.flatMap((entity) => {
       const candidate = candidateFromSource(this.db, spaceId, "entity", entity.id);
