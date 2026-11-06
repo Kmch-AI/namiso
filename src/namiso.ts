@@ -32,6 +32,7 @@ import {
   getMessage,
   listConversations,
   listMessages,
+  messageCount,
 } from "./storage/conversation-repo.ts";
 import { Database } from "./storage/database.ts";
 import {
@@ -54,7 +55,6 @@ import {
   listLinksTo,
 } from "./storage/memory-repo.ts";
 import { chunkCount } from "./storage/chunk-repo.ts";
-import { messageCount } from "./storage/conversation-repo.ts";
 import { documentCount, missingVectorCount } from "./storage/search-repo.ts";
 import {
   enqueueAnnotate,
@@ -456,7 +456,7 @@ export class Namiso {
 
   getEntityDetails(idOrName: string): EntityDetails | null {
     this.assertOpen();
-    const entity = this.lookupEntity(idOrName, undefined);
+    const entity = this.lookupEntity(idOrName);
     if (entity === null) return null;
     return {
       entity,
@@ -627,7 +627,7 @@ export class Namiso {
     this.closed = true;
   }
 
-  private lookupEntity(idOrName: string | undefined, name: string | undefined): Entity | null {
+  private lookupEntity(idOrName: string | undefined, name?: string): Entity | null {
     if (idOrName !== undefined) {
       const byId = getEntity(this.db, asEntityId(idOrName));
       if (byId !== null && byId.memorySpaceId === this.memorySpace.id) return byId;

@@ -102,11 +102,17 @@ The project uses pnpm 12 and commits `pnpm-lock.yaml`. `packageManager` pins the
 
 ## D18. Type-aware lint and a commit hook
 
-`oxlint.config.ts` enables `typeAware` and `typeCheck`, backed by `oxlint-tsgolint`. This runs TypeScript 7 semantic rules and compiler diagnostics inside the lint step. The lint script is part of `pnpm verify`, so a type error fails both `tsc` and oxlint.
+`oxlint.config.ts` enables `typeAware` and `typeCheck`, backed by `oxlint-tsgolint`. This runs TypeScript 7 semantic rules and compiler diagnostics inside the lint step. The lint script is part of `pnpm verify`, so a type error fails the gate before the build. `tsc` remains only in `pnpm build`, where it emits `dist/` and declarations.
 
 `typescript/no-unsafe-type-assertion` is off because branded IDs and parsed provider payloads deliberately assert at validated boundaries. The central constructors and parsers are the narrow places where casts are allowed.
 
 `simple-git-hooks` installs `pnpm lint-staged` as the pre-commit hook. Staged files are fixed and formatted before commit. The full type-aware check still runs in `pnpm verify`; the hook trades completeness for speed on a single commit.
+
+## D19. ESNext target and lib, Node 24 runtime
+
+`target` and `lib` are `ESNext`. TypeScript emits modern syntax, and the type checker exposes the latest ECMAScript library types. Node 24 is the runtime floor, and it implements the ECMAScript features the project uses.
+
+`module` and `moduleResolution` stay `nodenext`. A Bun application with a bundler can use `Preserve` and `bundler`; this package runs directly on Node and emits with `tsc`, so Node ESM resolution checks stay in place. The build config is the only place that compiles.
 
 ## Verification record
 
@@ -114,11 +120,11 @@ Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
 
 | Check                      | Result                                                                      |
 | -------------------------- | --------------------------------------------------------------------------- |
-| `pnpm typecheck`           | Pass                                                                        |
-| `pnpm lint`                | Pass, no findings                                                           |
+| `pnpm lint`                | Pass, no findings; TypeScript diagnostics included                          |
 | `pnpm fmt:check`           | Pass                                                                        |
 | `pnpm test`                | Vitest, 26 tests pass, 1 real-model test skipped                            |
 | `pnpm build`               | Pass                                                                        |
+| `pnpm verify`              | Pass, lint + format + test + build                                          |
 | Built `dist/` smoke test   | Message ingested, 2 jobs completed, context contained the `IndexTTS2` claim |
 | `pnpm bench` local fixture | 3 questions, 100% evidence recall, 0 errors                                 |
 | Demo, hybrid               | 108 questions, 104 scored, 100% evidence recall, 100% context hit           |

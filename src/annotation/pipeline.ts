@@ -1,6 +1,5 @@
 import { asEventId } from "../ids.ts";
-import type { IndexItem } from "../indexing/indexer.ts";
-import type { Indexer } from "../indexing/indexer.ts";
+import type { Indexer, IndexItem } from "../indexing/indexer.ts";
 import { claimDocumentText, entityDocumentText, eventDocumentText } from "../indexing/documents.ts";
 import type {
   ExtractionMessage,

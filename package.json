@@ -20,7 +20,6 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json",
     "lint": "oxlint -c oxlint.config.ts",
     "lint:fix": "oxlint -c oxlint.config.ts --fix",
     "fmt": "oxfmt -c oxfmt.config.ts .",
@@ -30,7 +29,7 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run test/models.integration.test.ts",
     "bench": "node bench/run.ts",
-    "verify": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test",
+    "verify": "pnpm lint && pnpm fmt:check && pnpm test && pnpm build",
     "prepare": "simple-git-hooks"
   },
   "dependencies": {

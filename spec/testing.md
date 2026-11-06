@@ -9,13 +9,12 @@ pnpm test
 pnpm test:watch
 pnpm test:coverage
 pnpm test:integration
-pnpm typecheck
 pnpm lint
 pnpm fmt:check
 pnpm verify
 ```
 
-`pnpm verify` runs typecheck, type-aware lint, format check, and tests in that order. `pnpm lint` runs oxlint with tsgolint, so it checks types as well as syntax.
+`pnpm verify` runs type-aware lint, format check, tests, and the build in that order. `pnpm lint` runs oxlint with tsgolint, so it reports TypeScript diagnostics as well as lint findings. There is no separate `tsc` typecheck step. `tsc` runs only in `pnpm build`, where it emits `dist/` and declarations.
 
 ## Test setup
 

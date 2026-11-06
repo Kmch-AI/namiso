@@ -141,7 +141,7 @@ export class Retriever {
       const resolved: Entity[] = [];
       for (const id of entityIds) {
         const entity = candidateFromSource(this.db, spaceId, "entity", id);
-        if (entity !== null && entity.record.kind === "entity") {
+        if (entity?.record.kind === "entity") {
           resolved.push(entity.record.entity);
         }
       }

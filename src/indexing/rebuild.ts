@@ -1,6 +1,5 @@
 import { claimDocumentText, entityDocumentText, eventDocumentText } from "./documents.ts";
-import type { Indexer } from "./indexer.ts";
-import type { IndexItem } from "./indexer.ts";
+import type { Indexer, IndexItem } from "./indexer.ts";
 import type { EntityResolver } from "../annotation/entity-resolver.ts";
 import type { Database } from "../storage/database.ts";
 import type { VectorStore } from "../storage/vector-store.ts";
