@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
+import type { ExtractionUsage } from '../src/index.ts'
+
 import { asMemorySpaceId, asMessageId } from '../src/ids.ts'
 import {
   HttpEmbeddingProvider,
@@ -8,6 +10,7 @@ import {
   HttpRerankerProvider,
   HashEmbeddingProvider,
   LexicalReranker,
+  Namiso,
   RuleExtractionProvider,
   ValidationError,
   providersFromEnv,
@@ -32,12 +35,15 @@ const extractionFetch: typeof fetch = async () =>
         {
           message: {
             content: JSON.stringify({
-              entities: [{ name: 'IndexTTS2', type: 'product' }],
+              entities: [
+                { name: 'IndexTTS2', type: 'artifact' },
+                { name: '四时小路', type: 'self' },
+              ],
               claims: [
                 {
                   subject: { name: '用户A', type: 'person' },
                   predicate: 'uses',
-                  object: { kind: 'entity', name: 'IndexTTS2', type: 'product' },
+                  object: { kind: 'entity', name: 'IndexTTS2', type: 'artifact' },
                   modality: 'asserted',
                   confidence: 0.9,
                 },
@@ -55,6 +61,12 @@ const extractionFetch: typeof fetch = async () =>
           },
         },
       ],
+      usage: {
+        prompt_tokens: 12,
+        completion_tokens: 34,
+        total_tokens: 46,
+        completion_tokens_details: { reasoning_tokens: 5 },
+      },
     }),
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
@@ -149,6 +161,50 @@ test('rule extraction keeps full product names and detects state changes', async
   assert.equal(uncertain.events[0]?.modality, 'uncertain')
 })
 
+test('entity types reserve self for the assistant itself', async () => {
+  const provider = new RuleExtractionProvider()
+  const base = {
+    memorySpaceId: asMemorySpaceId('space-1'),
+    knownEntities: [],
+  }
+  const user = await provider.extract({
+    ...base,
+    focusMessageId: asMessageId('message-1'),
+    messages: [
+      {
+        id: asMessageId('message-1'),
+        role: 'user',
+        speakerId: '用户A',
+        speakerName: '用户A',
+        content: '我在 OpenAI 工作。我在使用 IndexTTS2。',
+        occurredAt: 1,
+        messageIndex: 0,
+      },
+    ],
+  })
+  const types = new Map(user.entities.map((entity) => [entity.name, entity.type]))
+  assert.equal(types.get('用户A'), 'person')
+  assert.equal(types.get('OpenAI'), 'group')
+  assert.equal(types.get('IndexTTS2'), 'artifact')
+
+  const assistant = await provider.extract({
+    ...base,
+    focusMessageId: asMessageId('message-2'),
+    messages: [
+      {
+        id: asMessageId('message-2'),
+        role: 'assistant',
+        speakerId: '四时小路',
+        speakerName: '四时小路',
+        content: '我是四时小路。',
+        occurredAt: 2,
+        messageIndex: 1,
+      },
+    ],
+  })
+  assert.equal(assistant.entities[0]?.type, 'self')
+})
+
 test('lexical reranker ranks lexically overlapping documents higher', async () => {
   const reranker = new LexicalReranker()
   const scores = await reranker.rerank({
@@ -172,10 +228,20 @@ test('HTTP providers parse boundary payloads', async () => {
     [1, 0],
   ])
 
+  const requests: Array<Record<string, unknown>> = []
+  const usageEvents: ExtractionUsage[] = []
+  const recordingFetch: typeof fetch = async (input, init) => {
+    if (typeof init?.body === 'string') {
+      requests.push(JSON.parse(init.body) as Record<string, unknown>)
+    }
+    return extractionFetch(input, init)
+  }
   const extraction = new HttpExtractionProvider({
     endpoint: 'https://example.test/chat',
     model: 'test-chat',
-    fetch: extractionFetch,
+    reasoningEffort: 'low',
+    onUsage: (usage) => usageEvents.push(usage),
+    fetch: recordingFetch,
   })
   const result = await extraction.extract({
     memorySpaceId: asMemorySpaceId('space-1'),
@@ -186,6 +252,22 @@ test('HTTP providers parse boundary payloads', async () => {
   assert.equal(result.claims[0]?.predicate, 'uses')
   assert.deepEqual(result.claims[0]?.evidenceMessageIds, ['message-9'])
   assert.equal(result.events[0]?.type, 'usage_change')
+  assert.equal(result.entities[0]?.type, 'artifact')
+  assert.equal(result.entities[1]?.type, 'self')
+  assert.equal(requests[0]?.['reasoning_effort'], 'low')
+  assert.deepEqual(extraction.lastUsage, {
+    promptTokens: 12,
+    completionTokens: 34,
+    totalTokens: 46,
+    reasoningTokens: 5,
+  })
+  assert.deepEqual(extraction.usage, {
+    promptTokens: 12,
+    completionTokens: 34,
+    totalTokens: 46,
+    reasoningTokens: 5,
+  })
+  assert.equal(usageEvents.length, 1)
 
   const reranker = new HttpRerankerProvider({
     endpoint: 'https://example.test/rerank',
@@ -197,6 +279,36 @@ test('HTTP providers parse boundary payloads', async () => {
     { index: 0, score: 0.1 },
     { index: 1, score: 0.9 },
   ])
+})
+
+test('health reports extraction usage from the HTTP provider', async () => {
+  const extraction = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: extractionFetch,
+  })
+  const namiso = await Namiso.open({
+    databasePath: ':memory:',
+    vectorIndex: 'exact',
+    extraction,
+  })
+  const conversation = namiso.createConversation()
+  await namiso.ingest({
+    conversationId: conversation.id,
+    speakerId: '用户A',
+    role: 'user',
+    content: '我在使用 TTS-A。',
+  })
+  const drain = await namiso.drain()
+
+  assert.equal(drain.failed, 0)
+  assert.deepEqual(namiso.health().extraction.usage, {
+    promptTokens: 12,
+    completionTokens: 34,
+    totalTokens: 46,
+    reasoningTokens: 5,
+  })
+  namiso.close()
 })
 
 test('provider environment parsing is all-or-nothing', () => {
@@ -213,6 +325,15 @@ test('provider environment parsing is all-or-nothing', () => {
       }),
     (error: unknown) => error instanceof ValidationError,
   )
+  assert.throws(
+    () =>
+      providersFromEnv({
+        NAMISO_EXTRACTION_URL: 'https://example.test/chat',
+        NAMISO_EXTRACTION_MODEL: 'test-chat',
+        NAMISO_EXTRACTION_REASONING_EFFORT: 'extreme',
+      }),
+    (error: unknown) => error instanceof ValidationError,
+  )
 
   const providers = providersFromEnv({
     NAMISO_EMBEDDING_URL: 'https://example.test/embeddings',
@@ -220,6 +341,7 @@ test('provider environment parsing is all-or-nothing', () => {
     NAMISO_EMBEDDING_DIMENSIONS: '8',
     NAMISO_EXTRACTION_URL: 'https://example.test/chat',
     NAMISO_EXTRACTION_MODEL: 'test-chat',
+    NAMISO_EXTRACTION_REASONING_EFFORT: 'low',
     NAMISO_RERANK_URL: 'https://example.test/rerank',
     NAMISO_RERANK_MODEL: 'test-rerank',
   })

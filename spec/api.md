@@ -19,6 +19,11 @@ const memory = await Namiso.open({
   extraction: new RuleExtractionProvider(),
   reranker: new LexicalReranker(),
   extractRoles: ['user', 'assistant'],
+  self: {
+    name: '四时小路',
+    aliases: ['小路'],
+    description: '常驻 AI 角色',
+  },
   vectorIndex: 'auto',
   chunking: { size: 8, overlap: 2 },
 })
@@ -32,11 +37,14 @@ const memory = await Namiso.open({
 | `embedding`                          | `HashEmbeddingProvider`   | Dimensions must stay stable for a database         |
 | `extraction`                         | `RuleExtractionProvider`  | Use an LLM provider for production                 |
 | `extractRoles`                       | `['user', 'assistant']`   | Roles sent to extraction; system and tool stay raw |
+| `self`                               | unset                     | Assistant identity: name, aliases, description     |
 | `reranker`                           | `LexicalReranker`         | Set `rerank: false` per query to skip              |
 | `vectorIndex`                        | `auto`                    | `auto`, `sqlite-vec`, or `exact`                   |
 | `chunking`                           | `{ size: 8, overlap: 2 }` | Size 1 to 64; overlap must be smaller              |
 
 The returned object exposes `workspace` and `memorySpace`.
+
+`self` is optional. Without it, the first assistant speaker creates the self entity. `ensureSelf()` can set or update the identity later.
 
 ## Conversations
 
@@ -118,12 +126,13 @@ await memory.retrieve({
   timeRange?: { from?: number; to?: number },
   topK?: number,
   rerank?: boolean,
+  rerankPool?: number,         // default 50, capped at 50
   includeEvidence?: boolean,
   includeRelations?: boolean,
 }): Promise<RetrieveResult>
 ```
 
-`RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations.
+`RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score.
 
 ## Context
 
@@ -176,9 +185,15 @@ Details include aliases, claims, events, participants, evidence IDs, and links.
 ## Entities and links
 
 ```ts
-await memory.ensureEntity({
+await memory.ensureSelf({
   name: "四时小路",
-  type: "ai",
+  aliases?: string[],
+  description?: string,
+}): Promise<Entity>
+
+await memory.ensureEntity({
+  name: "IndexTTS2",
+  type: "artifact",
   aliases?: string[],
   description?: string,
 }): Promise<Entity>
@@ -194,7 +209,7 @@ memory.link({
 }): void
 ```
 
-`ensureEntity` resolves by name or alias before creating. It also indexes the entity document. `link` validates both endpoints in the current space.
+`ensureSelf` creates or updates the single self entity for the space, marks it with `metadata.self`, and sets its type to `self`. `ensureEntity` resolves by name or alias before creating, indexes the entity document, and rejects the special `self` type; use `artifact` for models, tools, and AI products. `link` validates both endpoints in the current space.
 
 ## Maintenance
 
@@ -215,7 +230,7 @@ memory.close(): void
 
 `forget` removes the target, drops dependent rows and documents, invalidates memories with no evidence, and rebuilds indexes. `reindex` rebuilds all documents, FTS rows, and vectors for the space. Call it after changing the embedding model or dimensions.
 
-`health` reports counts, job states, the vector backend, provider identities, and warnings for missing vectors, failed jobs, and exact-scan fallback.
+`health` reports counts, job states, the vector backend, provider identities, extraction token usage when the provider exposes it, and warnings for missing vectors, failed jobs, and exact-scan fallback.
 
 ## Errors
 

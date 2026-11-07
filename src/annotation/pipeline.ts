@@ -27,6 +27,7 @@ import {
 import { MemoryLinker } from './linker.ts'
 
 const CONTEXT_WINDOW = 8
+const KNOWN_ENTITY_LIMIT = 50
 
 export class AnnotationPipeline {
   private readonly db: Database
@@ -99,7 +100,11 @@ export class AnnotationPipeline {
       memorySpaceId: spaceId,
       focusMessageId: message.id,
       messages,
-      knownEntities: this.resolver.knownEntities(spaceId),
+      knownEntities: this.resolver.knownEntities(
+        spaceId,
+        [message.content, ...context.map((item) => item.content)],
+        KNOWN_ENTITY_LIMIT,
+      ),
     })
 
     const validEvidence = this.validEvidenceMap(spaceId, extraction, message)

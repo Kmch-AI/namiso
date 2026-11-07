@@ -9,6 +9,8 @@ import type {
   ExtractionModality,
   ExtractionProvider,
   ExtractionResult,
+  ExtractionUsage,
+  ReasoningEffort,
   RerankerProvider,
   RerankInput,
   RerankScore,
@@ -101,10 +103,20 @@ function parseEmbedding(item: unknown, index: number, dimensions: number): numbe
 export interface HttpExtractionOptions extends HttpBaseOptions {
   model: string
   version?: string
+  reasoningEffort?: ReasoningEffort
+  onUsage?: (usage: ExtractionUsage, total: ExtractionUsage) => void
 }
 
 export class HttpExtractionProvider implements ExtractionProvider {
   readonly version: string
+  lastUsage: ExtractionUsage | null = null
+  private totals = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    reasoningTokens: 0,
+  }
+
   private readonly options: HttpExtractionOptions
 
   constructor(options: HttpExtractionOptions) {
@@ -112,28 +124,33 @@ export class HttpExtractionProvider implements ExtractionProvider {
     this.version = options.version ?? options.model
   }
 
+  get usage(): ExtractionUsage {
+    return this.totals
+  }
+
   async extract(input: ExtractionInput): Promise<ExtractionResult> {
-    const payload = await postJson(
-      this.options.endpoint,
-      {
-        model: this.options.model,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              focusMessageId: input.focusMessageId,
-              messages: input.messages,
-              knownEntities: input.knownEntities,
-            }),
-          },
-        ],
-      },
-      this.options,
-    )
+    const body: Record<string, unknown> = {
+      model: this.options.model,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            focusMessageId: input.focusMessageId,
+            messages: input.messages,
+            knownEntities: input.knownEntities,
+          }),
+        },
+      ],
+    }
+    if (this.options.reasoningEffort !== undefined) {
+      body['reasoning_effort'] = this.options.reasoningEffort
+    }
+    const payload = await postJson(this.options.endpoint, body, this.options)
     const root = asRecord(payload, 'extraction response')
+    this.recordUsage(parseExtractionUsage(root['usage']))
     const choices = asArray(root['choices'], 'choices')
     const first = asRecord(choices[0], 'first choice')
     const message = asRecord(first['message'], 'choice message')
@@ -149,13 +166,55 @@ export class HttpExtractionProvider implements ExtractionProvider {
     }
     return parseExtractionResult(parsed, input.focusMessageId)
   }
+
+  private recordUsage(usage: ExtractionUsage | null): void {
+    this.lastUsage = usage
+    if (usage === null) return
+    this.totals = {
+      promptTokens: this.totals.promptTokens + usage.promptTokens,
+      completionTokens: this.totals.completionTokens + usage.completionTokens,
+      totalTokens: this.totals.totalTokens + usage.totalTokens,
+      reasoningTokens: this.totals.reasoningTokens + usage.reasoningTokens,
+    }
+    this.options.onUsage?.(usage, { ...this.totals })
+  }
+}
+
+function parseExtractionUsage(value: unknown): ExtractionUsage | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const promptTokens = tokenCount(record['prompt_tokens'])
+  const completionTokens = tokenCount(record['completion_tokens'])
+  const totalTokens = tokenCount(record['total_tokens'])
+  const details = record['completion_tokens_details']
+  const detailsRecord =
+    details !== null && typeof details === 'object' && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : undefined
+  const reasoningTokens =
+    tokenCount(detailsRecord?.['reasoning_tokens']) ?? tokenCount(record['reasoning_tokens']) ?? 0
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return null
+  }
+  return {
+    promptTokens: promptTokens ?? 0,
+    completionTokens: completionTokens ?? 0,
+    totalTokens: totalTokens ?? (promptTokens ?? 0) + (completionTokens ?? 0),
+    reasoningTokens,
+  }
+}
+
+function tokenCount(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
+  return Math.floor(value)
 }
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from one focus message.
 Extract only from the message whose id is focusMessageId. The other messages are context for resolving references; do not extract facts from them.
 knownEntities are for resolving names and aliases only. Do not output an entity unless the focus message mentions it.
 Return one JSON object with keys entities, claims, events.
-entities: [{name, type, aliases?, description?}]. type is person, ai, organization, place, project, product, or other.
+entities: [{name, type, aliases?, description?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
+The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
 claims: [{subject: {name, type}, predicate, object: {kind: "literal", value} | {kind: "entity", name, type}, modality, confidence, evidenceMessageIds}].
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
 modality is asserted, uncertain, negated, hypothetical, or quoted.

@@ -1,4 +1,33 @@
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 3
+
+export const ENTITY_TYPE_MIGRATION_SQL = `
+UPDATE entities
+SET type = CASE type
+  WHEN 'organization' THEN 'group'
+  WHEN 'project' THEN 'artifact'
+  WHEN 'product' THEN 'artifact'
+  ELSE type
+END
+WHERE type IN ('organization', 'project', 'product');
+`
+
+export const SELF_TYPE_MIGRATION_SQL = `
+UPDATE entities
+SET type = 'self'
+WHERE type = 'ai' AND json_extract(metadata, '$.self') = 1;
+
+UPDATE entities
+SET type = 'artifact'
+WHERE type = 'ai';
+
+UPDATE entities
+SET type = 'self'
+WHERE json_extract(metadata, '$.self') = 1;
+
+UPDATE entities
+SET type = 'artifact'
+WHERE type = 'self' AND json_extract(metadata, '$.self') IS NOT 1;
+`
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (

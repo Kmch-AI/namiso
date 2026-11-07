@@ -1,6 +1,6 @@
 import type { ChunkPolicy } from './ingestion/chunker.ts'
 import type { EmbeddingProvider, ExtractionProvider, RerankerProvider } from './providers/types.ts'
-import type { MessageRole } from './types.ts'
+import type { MessageRole, SelfIdentity } from './types.ts'
 
 import { ValidationError } from './errors.ts'
 import { DEFAULT_CHUNK_POLICY } from './ingestion/chunker.ts'
@@ -18,6 +18,7 @@ export interface NamisoOptions {
   extraction?: ExtractionProvider
   reranker?: RerankerProvider
   extractRoles?: readonly MessageRole[]
+  self?: SelfIdentity
   vectorIndex?: VectorIndexMode
   chunking?: Partial<ChunkPolicy>
 }
@@ -30,6 +31,7 @@ export interface ResolvedNamisoOptions {
   extraction: ExtractionProvider
   reranker: RerankerProvider
   extractRoles: readonly MessageRole[]
+  self?: SelfIdentity
   vectorIndex: VectorIndexMode
   chunkPolicy: ChunkPolicy
 }
@@ -61,6 +63,7 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     }
   }
   const uniqueExtractRoles = [...new Set(extractRoles)]
+  const self = options.self === undefined ? undefined : normalizeSelfIdentity(options.self)
   const vectorIndex = options.vectorIndex ?? 'auto'
   if (!['auto', 'sqlite-vec', 'exact'].includes(vectorIndex)) {
     throw new ValidationError(`unsupported vectorIndex: ${vectorIndex}`)
@@ -87,8 +90,38 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     extraction,
     reranker,
     extractRoles: uniqueExtractRoles,
+    ...(self === undefined ? {} : { self }),
     vectorIndex,
     chunkPolicy: { size, overlap },
+  }
+}
+
+export function normalizeSelfIdentity(input: SelfIdentity): SelfIdentity {
+  if (input === null || typeof input !== 'object') {
+    throw new ValidationError('self must be an object')
+  }
+  if (typeof input.name !== 'string' || input.name.trim().length === 0) {
+    throw new ValidationError('self.name must be a non-empty string')
+  }
+  if (input.aliases !== undefined && !Array.isArray(input.aliases)) {
+    throw new ValidationError('self.aliases must be an array of strings')
+  }
+  const aliases: string[] = []
+  for (const alias of input.aliases ?? []) {
+    if (typeof alias !== 'string') {
+      throw new ValidationError('self.aliases must be an array of strings')
+    }
+    const cleaned = alias.trim()
+    if (cleaned.length > 0) aliases.push(cleaned)
+  }
+  if (input.description !== undefined && typeof input.description !== 'string') {
+    throw new ValidationError('self.description must be a string')
+  }
+  const description = input.description?.trim()
+  return {
+    name: input.name.trim(),
+    ...(aliases.length === 0 ? {} : { aliases: [...new Set(aliases)] }),
+    ...(description === undefined || description.length === 0 ? {} : { description }),
   }
 }
 

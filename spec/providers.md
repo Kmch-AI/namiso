@@ -13,11 +13,22 @@ interface ExtractionProvider {
 
 Input contains the focus message, recent messages, and known entities. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
 
-The extraction prompt must extract only from the focus message. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless the focus message mentions them.
+The extraction prompt must extract only from the focus message. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless the focus message mentions them. The engine sends only entities mentioned in the focus message or the recent context, capped at 50; it does not send the whole space.
+
+The prompt uses the entity set in `spec/data-model.md`. `self` is the special kind for the assistant itself, and the self entity is sent first in `knownEntities`. The prompt instructs the model to attach the assistant's persona, background, and preferences to that entity, and to classify models, tools, other agents, and AI products as `artifact`, and companies and institutions as `group`. The HTTP parser accepts the general types plus `self`; any other value falls back to `other`.
 
 The default `RuleExtractionProvider` uses deterministic regular expressions. It is suitable for tests and small offline demos, not production extraction. Coverage and limits are in `spec/annotation.md`.
 
 `HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. Malformed items are dropped; malformed top-level output fails the job. Evidence IDs that the model cannot know fall back to the focus message.
+
+Options:
+
+| Option            | Sends              | Notes                                                                  |
+| ----------------- | ------------------ | ---------------------------------------------------------------------- |
+| `reasoningEffort` | `reasoning_effort` | `none`, `minimal`, `low`, `medium`, or `high`; endpoint support varies |
+| `onUsage`         | not sent           | Called as `(usage, total)` after each response that includes usage     |
+
+The provider parses `usage` from the response. `lastUsage` holds the latest call, `usage` holds cumulative totals, and `reasoningTokens` reads `completion_tokens_details.reasoning_tokens`. `health()` reports the cumulative totals when the provider exposes them. A response without `usage` leaves the totals unchanged and sets `lastUsage` to `null`.
 
 ## Embedding
 
@@ -62,12 +73,12 @@ The engine expects scores on a comparable scale. The final ranking uses 0.7 × r
 
 | Prefix     | Variables                                                                                                                                                              |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`                                                           |
+| Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`, `NAMISO_EXTRACTION_REASONING_EFFORT`                     |
 | Embedding  | `NAMISO_EMBEDDING_URL`, `NAMISO_EMBEDDING_MODEL`, `NAMISO_EMBEDDING_DIMENSIONS`, `NAMISO_EMBEDDING_API_KEY`, `NAMISO_EMBEDDING_VERSION`, `NAMISO_EMBEDDING_BATCH_SIZE` |
 | Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`                                                                                                    |
 | Shared     | `NAMISO_MODEL_TIMEOUT_MS`                                                                                                                                              |
 
-An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset.
+An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset. `NAMISO_EXTRACTION_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, or `high`.
 
 Where the code connects:
 

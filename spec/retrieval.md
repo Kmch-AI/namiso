@@ -16,7 +16,7 @@ Retrieval combines structured lookup, full-text search, and vector search. The p
 
 A query with both current and history markers is general. A current query filters out non-active claims after fusion. A history query keeps superseded claims.
 
-Entity resolution checks explicit `entityIds` first. Otherwise it matches every entity name and alias against the query text. A query containing a first-person marker also adds the latest user speaker. This is how `我现在使用什么模型` reaches the user's active claims without naming the user.
+Entity resolution checks explicit `entityIds` first. Otherwise it matches every entity name and alias against the query text. A query containing a second-person marker (`你`, `您`, `you`, `your`) adds the self entity, so questions such as `你的性格是什么` reach the assistant's persona claims. A query containing a first-person marker also adds the latest user speaker. This is how `我现在使用什么模型` reaches the user's active claims without naming the user.
 
 ## Channels
 
@@ -40,7 +40,7 @@ The fused candidate keeps the union of its channels. A candidate found by severa
 
 ## Reranking
 
-The first 50 fused candidates go to the reranker. The default is a lexical overlap scorer. The final score is:
+The top 50 fused candidates form the ranking pool. The first `rerankPool` of them go to the reranker. `rerankPool` defaults to 50 and is capped at 50. The default reranker is a lexical overlap scorer. Candidates past the rerank pool keep their normalized RRF score, so a small pool does not reduce the number of results returned by `topK`. The final score is:
 
 ```text
 0.7 × relevance + 0.3 × normalized RRF
@@ -104,7 +104,7 @@ Every result includes a trace with:
 - query and parsed intent;
 - resolved entity IDs;
 - per-channel counts and top five keys;
-- fused, reranked, and expanded counts;
+- fused, reranked, and expanded counts; `rerankedCount` is the number sent to the reranker and is 0 when reranking is off;
 - elapsed milliseconds;
 - notes for degraded reranking, conflicts, and uncertain events.
 

@@ -6,7 +6,7 @@ import type {
   Entity,
   EntityAlias,
   EntityId,
-  EntityType,
+  EntityKind,
   Event,
   EventId,
   EventParticipant,
@@ -36,7 +36,7 @@ import { mapClaim, mapEntity, mapEvent, mapMemoryLink } from './mappers.ts'
 export interface InsertEntityInput {
   spaceId: MemorySpaceId
   name: string
-  type: EntityType
+  type: EntityKind
   description?: string
   metadata?: Record<string, unknown>
   createdAt?: number
@@ -125,6 +125,16 @@ export function findEntityBySpeakerId(
   return row === undefined ? null : mapEntity(row)
 }
 
+export function findSelfEntity(db: Database, spaceId: MemorySpaceId): Entity | null {
+  const row = db.get(
+    `SELECT * FROM entities
+     WHERE memory_space_id = ? AND json_extract(metadata, '$.self') = 1
+     LIMIT 1`,
+    spaceId,
+  )
+  return row === undefined ? null : mapEntity(row)
+}
+
 export function getEntitiesByIds(db: Database, ids: readonly EntityId[]): Map<EntityId, Entity> {
   const result = new Map<EntityId, Entity>()
   if (ids.length === 0) return result
@@ -141,15 +151,24 @@ export function getEntitiesByIds(db: Database, ids: readonly EntityId[]): Map<En
 export function updateEntity(
   db: Database,
   entityId: EntityId,
-  patch: { description?: string; name?: string; type?: EntityType },
+  patch: {
+    description?: string
+    name?: string
+    type?: EntityKind
+    metadata?: Record<string, unknown> | null
+  },
 ): void {
   const current = getEntity(db, entityId)
   if (current === null) return
+  const metadata = patch.metadata === undefined ? current.metadata : patch.metadata
   db.run(
-    'UPDATE entities SET name = ?, type = ?, description = ?, updated_at = ? WHERE id = ?',
+    `UPDATE entities
+     SET name = ?, type = ?, description = ?, metadata = ?, updated_at = ?
+     WHERE id = ?`,
     patch.name ?? current.name,
     patch.type ?? current.type,
     patch.description ?? current.description,
+    metadata === null ? null : JSON.stringify(metadata),
     nowSeconds(),
     entityId,
   )

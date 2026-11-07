@@ -1,4 +1,9 @@
-import type { EmbeddingProvider, ExtractionProvider, RerankerProvider } from './types.ts'
+import type {
+  EmbeddingProvider,
+  ExtractionProvider,
+  ReasoningEffort,
+  RerankerProvider,
+} from './types.ts'
 
 import { ValidationError } from '../errors.ts'
 import { HttpEmbeddingProvider, HttpExtractionProvider, HttpRerankerProvider } from './http.ts'
@@ -25,12 +30,14 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
 
   const extraction = readEndpoint(env, 'NAMISO_EXTRACTION', timeoutMs)
   if (extraction !== undefined) {
+    const reasoningEffort = optionalReasoningEffort(env, 'NAMISO_EXTRACTION_REASONING_EFFORT')
     result.extraction = new HttpExtractionProvider({
       endpoint: extraction.endpoint,
       model: extraction.model,
       ...(extraction.apiKey === undefined ? {} : { apiKey: extraction.apiKey }),
       ...(extraction.version === undefined ? {} : { version: extraction.version }),
       ...(extraction.timeoutMs === undefined ? {} : { timeoutMs: extraction.timeoutMs }),
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     })
   }
 
@@ -105,4 +112,18 @@ function requiredPositiveInteger(env: ProviderEnvironment, key: string): number 
     throw new ValidationError(`${key} is required when an embedding endpoint is set`)
   }
   return value
+}
+
+const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high']
+
+function optionalReasoningEffort(
+  env: ProviderEnvironment,
+  key: string,
+): ReasoningEffort | undefined {
+  const raw = clean(env[key])
+  if (raw === undefined) return undefined
+  if (!(REASONING_EFFORTS as readonly string[]).includes(raw)) {
+    throw new ValidationError(`${key} must be one of ${REASONING_EFFORTS.join(', ')}`)
+  }
+  return raw as ReasoningEffort
 }

@@ -1,6 +1,7 @@
 import type { ForgetInput, ForgetReport } from './admin/forget.ts'
 import type { NamisoOptions, ResolvedNamisoOptions } from './config.ts'
 import type { DrainReport } from './ingestion/job-worker.ts'
+import type { ExtractionUsage } from './providers/types.ts'
 import type {
   Claim,
   Conversation,
@@ -14,13 +15,14 @@ import type {
   MessageRole,
   RetrievalTimeRange,
   RetrieveResult,
+  SelfIdentity,
   Workspace,
 } from './types.ts'
 
 import { forget as forgetMemories } from './admin/forget.ts'
 import { EntityResolver } from './annotation/entity-resolver.ts'
 import { AnnotationPipeline } from './annotation/pipeline.ts'
-import { resolveOptions } from './config.ts'
+import { normalizeSelfIdentity, resolveOptions } from './config.ts'
 import { buildContext } from './context/builder.ts'
 import { NotFoundError, ValidationError } from './errors.ts'
 import {
@@ -114,6 +116,7 @@ export interface RetrieveInput {
   timeRange?: RetrievalTimeRange
   topK?: number
   rerank?: boolean
+  rerankPool?: number
   includeEvidence?: boolean
   includeRelations?: boolean
 }
@@ -181,7 +184,7 @@ export interface HealthReport {
   database: 'ok'
   vectorBackend: 'sqlite-vec' | 'exact'
   embedding: { model: string; version: string; dimensions: number }
-  extraction: { version: string }
+  extraction: { version: string; usage?: ExtractionUsage }
   reranker: { model: string }
   counts: {
     messages: number
@@ -256,7 +259,11 @@ export class Namiso {
       if (memorySpace.workspaceId !== workspace.id) {
         throw new ValidationError(`memory space ${memorySpace.id} belongs to a different workspace`)
       }
-      return new Namiso(db, config, workspace, memorySpace)
+      const namiso = new Namiso(db, config, workspace, memorySpace)
+      if (config.self !== undefined) {
+        await namiso.ensureSelf(config.self)
+      }
+      return namiso
     } catch (error) {
       db.close()
       throw error
@@ -409,6 +416,7 @@ export class Namiso {
       ...(input.timeRange === undefined ? {} : { timeRange: input.timeRange }),
       ...(input.topK === undefined ? {} : { topK: input.topK }),
       ...(input.rerank === undefined ? {} : { rerank: input.rerank }),
+      ...(input.rerankPool === undefined ? {} : { rerankPool: input.rerankPool }),
       ...(input.includeEvidence === undefined ? {} : { includeEvidence: input.includeEvidence }),
       ...(input.includeRelations === undefined ? {} : { includeRelations: input.includeRelations }),
     })
@@ -518,6 +526,9 @@ export class Namiso {
     description?: string
   }): Promise<Entity> {
     this.assertOpen()
+    if ((input.type as string) === 'self' || (input.type as string) === 'ai') {
+      throw new ValidationError('use ensureSelf() for the assistant entity')
+    }
     const entity = this.db.transaction(() =>
       this.resolver.resolve({
         spaceId: this.memorySpace.id,
@@ -527,6 +538,21 @@ export class Namiso {
         ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
       }),
     )
+    await this.indexEntity(entity)
+    return entity
+  }
+
+  async ensureSelf(input: SelfIdentity): Promise<Entity> {
+    this.assertOpen()
+    const identity = normalizeSelfIdentity(input)
+    const entity = this.db.transaction(() =>
+      this.resolver.ensureSelf(this.memorySpace.id, identity),
+    )
+    await this.indexEntity(entity)
+    return entity
+  }
+
+  private async indexEntity(entity: Entity): Promise<void> {
     await this.indexer.sync(this.memorySpace.id, [
       {
         sourceType: 'entity',
@@ -537,7 +563,6 @@ export class Namiso {
         ),
       },
     ])
-    return entity
   }
 
   link(input: LinkInput): void {
@@ -616,7 +641,12 @@ export class Namiso {
         version: this.config.embedding.version,
         dimensions: this.config.embedding.dimensions,
       },
-      extraction: { version: this.config.extraction.version },
+      extraction: {
+        version: this.config.extraction.version,
+        ...(this.config.extraction.usage === undefined
+          ? {}
+          : { usage: { ...this.config.extraction.usage } }),
+      },
       reranker: { model: this.config.reranker.model },
       counts,
       jobs,

@@ -24,6 +24,11 @@ import { Namiso } from 'namiso'
 const memory = await Namiso.open({
   databasePath: './memory.db',
   memorySpace: { name: 'assistant' },
+  self: {
+    name: '四时小路',
+    aliases: ['小路'],
+    description: '常驻 AI 角色，性格温和。',
+  },
 })
 
 const conversation = memory.createConversation({ title: 'first' })
@@ -46,6 +51,8 @@ memory.close()
 ```
 
 `drain()` runs extraction, link updates, and index writes. For lower ingest latency, batch several messages and call `drain()` once.
+
+`self` creates the single self entity for the assistant. Assistant speakers resolve to it, its description holds persona and background, and other AI systems are stored as `artifact`.
 
 ## Default providers
 

@@ -126,6 +126,28 @@ Assistant claims can become active and carry `assistant_statement` evidence. A p
 
 An A/B on a nine-message context: output tokens fell from 1,878 to 848, claims from 7 to 2, and latency from 13.0s to 5.8s. Input rose from 698 to 779 tokens because the prompt is stricter.
 
+## D21. Bound extraction and rerank inputs
+
+Extraction now receives only known entities whose name or alias appears in the focus message or its eight context messages, capped at 50. Previously it received every entity in the space, so prompt size grew with memory. The match uses the same normalized name comparison as retrieval.
+
+`HttpExtractionProvider` accepts `reasoningEffort` and parses `usage` into `lastUsage` and cumulative `usage`. `health()` reports the cumulative totals. Reasoning tokens are often the largest part of completion usage, so a caller can see them and lower the effort. There is no output token cap: truncating the structured JSON fails parsing and retries the job. Input bounds and reasoning effort are the useful controls.
+
+`rerankPool` bounds the number of fused candidates sent to the reranker. It defaults to 50 and is capped at 50. Within the top 50, candidates past the rerank pool keep their normalized RRF score, so lowering the pool does not reduce the number of results returned by `topK`.
+
+## D22. Eight semantic entity types, `other`, and special `self`
+
+The general `EntityType` is `person`, `group`, `place`, `animal`, `object`, `artifact`, `activity`, `topic`, and `other`. The first eight are the semantic classes; `other` remains the fallback. `project` and `product` merge into `artifact`; `organization` merges into `group`.
+
+`self` is not a general category. It is a special `EntityKind` reserved for the assistant entity and marked with `metadata.self = true`. Models, tools, other agents, and AI products are `artifact`; companies and institutions are `group`.
+
+There is no runtime compatibility layer for retired type names. The HTTP parser accepts the general types plus `self`, and falls back to `other` for anything else. Schema version 2 migrates `organization`, `project`, and `product`; schema version 3 converts `ai` rows to `self` when they are marked as self, otherwise to `artifact`. Entity document text includes the type, so an upgraded database needs one `reindex()`.
+
+## D23. One self entity and a hard `self` guard
+
+Each memory space has at most one self entity, marked with `metadata.self = true` and type `self`. The `self` option or `ensureSelf()` creates it, and every assistant speaker resolves to it. The self entity is sent first in `knownEntities`, so the extractor has a stable identity for claims and event roles about the assistant.
+
+Provider output is not trusted for this kind. An entity requested as `self` resolves to the self entity only when its name or alias matches; otherwise it is stored as `artifact`. `ensureEntity()` rejects `self`, so the public API cannot create a second one. Claims and event participants that refer to the assistant share the self entity ID. Persona, background, and preferences are stored as the self entity's description and as claims about it. Second-person queries add the self entity to retrieval mentions.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

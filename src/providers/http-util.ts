@@ -1,6 +1,5 @@
-import type { EntityType } from '../types.ts'
-
 import { ProviderError } from '../errors.ts'
+import { ENTITY_KINDS, type EntityKind } from '../types.ts'
 
 export async function postJson(
   endpoint: string,
@@ -93,24 +92,16 @@ export function numberField(
   return fallback
 }
 
-const ENTITY_TYPES: readonly EntityType[] = [
-  'person',
-  'ai',
-  'organization',
-  'place',
-  'project',
-  'product',
-  'other',
-]
-
 export function entityTypeField(
   record: Record<string, unknown>,
   key: string,
-  fallback: EntityType = 'other',
-): EntityType {
+  fallback: EntityKind = 'other',
+): EntityKind {
   const value = record[key]
-  if (typeof value === 'string' && (ENTITY_TYPES as readonly string[]).includes(value)) {
-    return value as EntityType
+  if (typeof value !== 'string') return fallback
+  const normalized = value.trim().toLowerCase()
+  if ((ENTITY_KINDS as readonly string[]).includes(normalized)) {
+    return normalized as EntityKind
   }
   return fallback
 }

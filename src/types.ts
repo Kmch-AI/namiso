@@ -17,14 +17,27 @@ export type DocumentId = Brand<string, 'DocumentId'>
 export type JobId = Brand<string, 'JobId'>
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
-export type EntityType =
-  | 'person'
-  | 'ai'
-  | 'organization'
-  | 'place'
-  | 'project'
-  | 'product'
-  | 'other'
+export const ENTITY_TYPES = [
+  'person',
+  'group',
+  'place',
+  'animal',
+  'object',
+  'artifact',
+  'activity',
+  'topic',
+  'other',
+] as const
+export type EntityType = (typeof ENTITY_TYPES)[number]
+
+export const ENTITY_KINDS = [...ENTITY_TYPES, 'self'] as const
+export type EntityKind = (typeof ENTITY_KINDS)[number]
+
+export interface SelfIdentity {
+  name: string
+  aliases?: readonly string[]
+  description?: string
+}
 export type ClaimStatus = 'active' | 'superseded' | 'disputed' | 'retracted' | 'invalid'
 export type EventStatus = 'active' | 'retracted' | 'invalid'
 export type TimePrecision = 'exact' | 'day' | 'month' | 'approximate' | 'unknown'
@@ -83,7 +96,7 @@ export interface Message {
 export interface Entity {
   id: EntityId
   memorySpaceId: MemorySpaceId
-  type: EntityType
+  type: EntityKind
   name: string
   description: string | null
   createdAt: number

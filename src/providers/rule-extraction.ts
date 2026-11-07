@@ -1,4 +1,4 @@
-import type { EntityType } from '../types.ts'
+import type { EntityKind, EntityType } from '../types.ts'
 import type {
   ExtractedClaim,
   ExtractedEntity,
@@ -13,7 +13,7 @@ const UNCERTAIN =
   /可能|也许|大概|应该|说不定|打算|准备|考虑|想|maybe|might|probably|perhaps|plan to|thinking about/i
 
 export class RuleExtractionProvider implements ExtractionProvider {
-  readonly version = 'rule-v1'
+  readonly version = 'rule-v2'
 
   async extract(input: ExtractionInput): Promise<ExtractionResult> {
     const focus = input.messages.find((message) => message.id === input.focusMessageId)
@@ -21,13 +21,13 @@ export class RuleExtractionProvider implements ExtractionProvider {
       return { entities: [], claims: [], events: [] }
     }
     const speakerName = focus.speakerName.length > 0 ? focus.speakerName : focus.speakerId
-    const speakerType: EntityType =
-      focus.role === 'assistant' ? 'ai' : focus.role === 'user' ? 'person' : 'other'
+    const speakerType: EntityKind =
+      focus.role === 'assistant' ? 'self' : focus.role === 'user' ? 'person' : 'other'
     const entities = new Map<string, ExtractedEntity>()
     const claims: ExtractedClaim[] = []
     const events: ExtractedEvent[] = []
 
-    const addEntity = (name: string, type: EntityType, aliases?: readonly string[]): void => {
+    const addEntity = (name: string, type: EntityKind, aliases?: readonly string[]): void => {
       const cleaned = cleanValue(name)
       if (cleaned.length === 0) return
       const key = cleaned.toLowerCase()
@@ -140,11 +140,7 @@ export class RuleExtractionProvider implements ExtractionProvider {
     const workMatch = content.match(/我在\s*([^，。！？,!?\s]{1,30})\s*(?:工作|上班)/)
     const workplace = workMatch?.[1]
     if (workplace !== undefined) {
-      addClaim(
-        'works_at',
-        { kind: 'entity', name: cleanValue(workplace), type: 'organization' },
-        0.85,
-      )
+      addClaim('works_at', { kind: 'entity', name: cleanValue(workplace), type: 'group' }, 0.85)
     }
 
     const time = eventTime(content, focus.occurredAt)
@@ -240,10 +236,10 @@ function truncate(value: string, max: number): string {
 }
 
 function guessType(name: string): EntityType {
-  if (/公司|集团|工作室|团队|组织|机构|部门/.test(name)) return 'organization'
-  if (/项目|计划|工程/.test(name)) return 'project'
+  if (/公司|集团|工作室|团队|组织|机构|部门/.test(name)) return 'group'
+  if (/项目|计划|工程/.test(name)) return 'artifact'
   if (/市|省|区|县|国|城市|街|路|镇/.test(name)) return 'place'
-  if (/[A-Za-z].*\d|\d.*[A-Za-z]|TTS|GPT|LLM|SDK|API|模型/.test(name)) return 'product'
+  if (/[A-Za-z].*\d|\d.*[A-Za-z]|TTS|GPT|LLM|SDK|API|模型/.test(name)) return 'artifact'
   return 'other'
 }
 

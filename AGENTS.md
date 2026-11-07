@@ -46,6 +46,7 @@ bench/                 chat-memory-benchmark adapter and local fixture
 
 - Raw messages are append-only. Structured memory is derived and rebuildable.
 - Every read and write is scoped to one memory space.
+- The assistant has one self entity per memory space. Type `self` belongs only to it.
 - Replacing a fact keeps history through claim status and `supersedes` links.
 - Every claim and event links to at least one evidence message.
 - FTS and vector indexes are derived. `reindex()` rebuilds them.

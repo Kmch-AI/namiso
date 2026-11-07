@@ -1,16 +1,3 @@
-import type {
-  Chunk,
-  Claim,
-  ClaimObject,
-  Conversation,
-  Entity,
-  Event,
-  Job,
-  MemoryLink,
-  MemorySpace,
-  Message,
-  Workspace,
-} from '../types.ts'
 import type { Row } from './database.ts'
 
 import {
@@ -26,6 +13,20 @@ import {
   asWorkspaceId,
 } from '../ids.ts'
 import {
+  ENTITY_KINDS,
+  type Chunk,
+  type Claim,
+  type ClaimObject,
+  type Conversation,
+  type Entity,
+  type Event,
+  type Job,
+  type MemoryLink,
+  type MemorySpace,
+  type Message,
+  type Workspace,
+} from '../types.ts'
+import {
   jsonArrayOrNull,
   jsonOrNull,
   numberOrNull,
@@ -36,15 +37,6 @@ import {
 } from './database.ts'
 
 const ROLES = ['user', 'assistant', 'system', 'tool'] as const
-const ENTITY_TYPES = [
-  'person',
-  'ai',
-  'organization',
-  'place',
-  'project',
-  'product',
-  'other',
-] as const
 const CLAIM_STATUSES = ['active', 'superseded', 'disputed', 'retracted', 'invalid'] as const
 const EVENT_STATUSES = ['active', 'retracted', 'invalid'] as const
 const TIME_PRECISIONS = ['exact', 'day', 'month', 'approximate', 'unknown'] as const
@@ -112,7 +104,7 @@ export function mapEntity(row: Row): Entity {
   return {
     id: asEntityId(text(row, 'id')),
     memorySpaceId: asMemorySpaceId(text(row, 'memory_space_id')),
-    type: oneOf(row, 'type', ENTITY_TYPES),
+    type: oneOf(row, 'type', ENTITY_KINDS),
     name: text(row, 'name'),
     description: textOrNull(row, 'description'),
     createdAt: readNumber(row, 'created_at'),

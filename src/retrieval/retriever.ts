@@ -38,6 +38,7 @@ export interface RetrieveOptions {
   timeRange?: RetrievalTimeRange
   topK?: number
   rerank?: boolean
+  rerankPool?: number
   includeEvidence?: boolean
   includeRelations?: boolean
 }
@@ -49,6 +50,7 @@ interface ChannelResult {
 
 const RRF_K = 60
 const CANDIDATES_PER_CHANNEL = 80
+const RERANK_POOL_LIMIT = 50
 
 export class Retriever {
   private readonly db: Database
@@ -105,7 +107,12 @@ export class Retriever {
     const validated = this.validate(fused, parsed, options.timeRange)
     notes.push(...validated.notes)
     const topK = Math.max(1, Math.min(options.topK ?? 10, 50))
-    const ranked = await this.rank(query, validated.candidates, options.rerank !== false, notes)
+    const rerank = options.rerank !== false
+    const rerankPool = Math.max(
+      1,
+      Math.min(options.rerankPool ?? RERANK_POOL_LIMIT, RERANK_POOL_LIMIT),
+    )
+    const ranked = await this.rank(query, validated.candidates, rerank, rerankPool, notes)
     const selected = ranked.slice(0, topK)
     const expansion =
       options.includeRelations === false
@@ -125,7 +132,7 @@ export class Retriever {
         topKeys: result.items.slice(0, 5).map((candidate) => candidate.key),
       })),
       fusedCount: fused.length,
-      rerankedCount: Math.min(ranked.length, 50),
+      rerankedCount: rerank ? Math.min(validated.candidates.length, rerankPool) : 0,
       expandedCount: expansion.count,
       elapsedMs: Math.round((performance.now() - started) * 100) / 100,
       notes,
@@ -149,6 +156,12 @@ export class Retriever {
       return resolved
     }
     const mentioned = this.resolver.findMentioned(spaceId, query, 5)
+    if (/你|您|you\b|your\b/i.test(query)) {
+      const self = this.resolver.self(spaceId)
+      if (self !== null && !mentioned.some((entity) => entity.id === self.id)) {
+        mentioned.unshift(self)
+      }
+    }
     if (!/我|I\b|my\b/i.test(query)) return mentioned
     const speakerId = latestUserSpeakerId(this.db, spaceId)
     if (speakerId === null) return mentioned
@@ -326,16 +339,20 @@ export class Retriever {
     query: string,
     candidates: readonly MemoryCandidate[],
     rerank: boolean,
+    rerankPool: number,
     notes: string[],
   ): Promise<MemoryCandidate[]> {
     const maxRrf = candidates[0]?.score ?? 1
-    const pool = candidates.slice(0, 50)
+    const pool = candidates.slice(0, RERANK_POOL_LIMIT)
+    const rerankCount = Math.min(rerankPool, pool.length)
     let scores: Map<number, number> | null = null
-    if (rerank && pool.length > 0) {
+    if (rerank && rerankCount > 0) {
       try {
         const reranked = await this.reranker.rerank({
           query,
-          documents: pool.map((candidate) => `${candidate.title}\n${candidate.text}`),
+          documents: pool
+            .slice(0, rerankCount)
+            .map((candidate) => `${candidate.title}\n${candidate.text}`),
         })
         scores = new Map(reranked.map((item) => [item.index, item.score]))
       } catch (error) {
@@ -345,7 +362,7 @@ export class Retriever {
       }
     }
     for (const [index, candidate] of pool.entries()) {
-      const relevance = scores?.get(index)
+      const relevance = index < rerankCount ? scores?.get(index) : undefined
       const normalizedRrf = maxRrf === 0 ? 0 : candidate.score / maxRrf
       candidate.score =
         relevance === undefined

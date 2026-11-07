@@ -46,7 +46,7 @@ pnpm bench
 
 Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`, `--models`.
 
-`--models` builds providers from `NAMISO_*` variables. Without it, the run uses the offline defaults and the report records them.
+`--models` builds providers from `NAMISO_*` variables. Without it, the run uses the offline defaults and the report records them. When the extraction provider exposes usage, the CLI prints cumulative prompt, completion, reasoning, and total tokens after the report.
 
 `bench/out/` is ignored by git. Each run writes `contexts.jsonl` and `report.json`.
 
@@ -107,7 +107,7 @@ The scores above used no external model service. Namiso filled the three provide
 | Embedding  | `HashEmbeddingProvider`  | Hashes word and adjacent-word features into 256 normalized dimensions               |
 | Reranker   | `LexicalReranker`        | Counts query-token overlap and gives a small ordered-match bonus                    |
 
-These are real providers behind the same interfaces as the HTTP implementations. They produce deterministic vectors and scores, so the pipeline runs end to end and the benchmark is reproducible. They are not semantic models. The report prints their identities as `embedding=namiso-hash extraction=rule-v1 reranker=namiso-lexical`. `--models` replaces any of them with the configured HTTP provider.
+These are real providers behind the same interfaces as the HTTP implementations. They produce deterministic vectors and scores, so the pipeline runs end to end and the benchmark is reproducible. They are not semantic models. Current runs print their identities as `embedding=namiso-hash extraction=rule-v2 reranker=namiso-lexical`. The results above were recorded with `rule-v1` before the entity type migration. `--models` replaces any of them with the configured HTTP provider.
 
 ## Reading the numbers
 

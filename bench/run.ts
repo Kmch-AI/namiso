@@ -51,6 +51,12 @@ try {
     ...(providers === undefined ? {} : { providers }),
   })
   process.stdout.write(`${formatReport(report)}\n`)
+  const usage = providers?.extraction?.usage
+  if (usage !== undefined) {
+    process.stdout.write(
+      `extraction usage: prompt=${usage.promptTokens} completion=${usage.completionTokens} reasoning=${usage.reasoningTokens} total=${usage.totalTokens}\n`,
+    )
+  }
   const failures = results.filter((result) => result.error !== undefined)
   if (failures.length > 0) {
     process.stdout.write(`\nFailures:\n`)

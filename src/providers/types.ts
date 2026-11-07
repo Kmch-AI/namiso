@@ -1,6 +1,6 @@
 import type {
   EntityId,
-  EntityType,
+  EntityKind,
   MemorySpaceId,
   MessageId,
   MessageRole,
@@ -44,7 +44,7 @@ export interface ExtractionMessage {
 export interface KnownEntity {
   id: EntityId
   name: string
-  type: EntityType
+  type: EntityKind
   aliases: string[]
 }
 
@@ -57,7 +57,7 @@ export interface ExtractionInput {
 
 export interface ExtractedEntity {
   name: string
-  type: EntityType
+  type: EntityKind
   aliases?: readonly string[]
   description?: string
   evidenceMessageIds: readonly MessageId[]
@@ -65,10 +65,10 @@ export interface ExtractedEntity {
 
 export type ExtractedObject =
   | { kind: 'literal'; value: string }
-  | { kind: 'entity'; name: string; type: EntityType }
+  | { kind: 'entity'; name: string; type: EntityKind }
 
 export interface ExtractedClaim {
-  subject: { name: string; type: EntityType }
+  subject: { name: string; type: EntityKind }
   predicate: string
   object: ExtractedObject
   modality: ExtractionModality
@@ -79,7 +79,7 @@ export interface ExtractedClaim {
 
 export interface ExtractedParticipant {
   name: string
-  type: EntityType
+  type: EntityKind
   role: string
 }
 
@@ -101,7 +101,17 @@ export interface ExtractionResult {
   events: readonly ExtractedEvent[]
 }
 
+export interface ExtractionUsage {
+  readonly promptTokens: number
+  readonly completionTokens: number
+  readonly totalTokens: number
+  readonly reasoningTokens: number
+}
+
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high'
+
 export interface ExtractionProvider {
   readonly version: string
+  readonly usage?: ExtractionUsage
   extract(input: ExtractionInput): Promise<ExtractionResult>
 }

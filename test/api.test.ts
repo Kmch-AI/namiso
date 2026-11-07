@@ -23,6 +23,26 @@ test('invalid options fail at the boundary', async () => {
     }),
     (error: unknown) => error instanceof ValidationError,
   )
+  await assert.rejects(
+    Namiso.open({
+      databasePath: ':memory:',
+      self: { name: '   ' },
+    }),
+    (error: unknown) => error instanceof ValidationError,
+  )
+})
+
+test('ensureEntity rejects the self type', async () => {
+  const { namiso } = await setup()
+  const input = {
+    name: '另一个AI',
+    type: 'self',
+  } as unknown as Parameters<typeof namiso.ensureEntity>[0]
+  await assert.rejects(
+    namiso.ensureEntity(input),
+    (error: unknown) => error instanceof ValidationError,
+  )
+  namiso.close()
 })
 
 test('ingesting into an unknown conversation throws NotFoundError', async () => {
@@ -41,17 +61,17 @@ test('ingesting into an unknown conversation throws NotFoundError', async () => 
 
 test('aliases resolve to one entity and manual links survive', async () => {
   const { namiso } = await setup()
-  const entity = await namiso.ensureEntity({
+  const entity = await namiso.ensureSelf({
     name: '四时小路',
-    type: 'ai',
     aliases: ['小路', 'Komichi'],
     description: '常驻 AI 角色',
   })
-  const byAlias = await namiso.ensureEntity({ name: 'Komichi', type: 'ai' })
+  const byAlias = await namiso.ensureEntity({ name: 'Komichi', type: 'artifact' })
   assert.equal(byAlias.id, entity.id)
   const details = namiso.getEntityDetails('小路')
   assert.ok(details !== null)
   assert.equal(details.entity.id, entity.id)
+  assert.equal(details.entity.type, 'self')
   assert.ok(details.aliases.includes('Komichi'))
 
   const other = await namiso.ensureEntity({ name: '用户A', type: 'person' })

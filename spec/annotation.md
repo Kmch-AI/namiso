@@ -7,7 +7,7 @@ Annotation turns a raw message into entities, claims, events, evidence, and stat
 1. Resolve the speaker entity.
 2. If the message role is not in `extractRoles`, write the speaker annotation, sync the speaker document, and stop.
 3. Load up to eight previous messages as context.
-4. Build the extraction input with the focus message, context, and known entities.
+4. Build the extraction input with the focus message, context, and known entities mentioned in those messages.
 5. Call the extraction provider.
 6. Validate evidence IDs against the same memory space. Unknown IDs fall back to the focus message.
 7. In one transaction, resolve entities, apply claims and events, add annotations, and link evidence.
@@ -24,6 +24,8 @@ Set `extractRoles: ['user']` to skip assistant extraction. Assistant messages st
 ## Extraction contract
 
 The provider receives the focus message, up to eight context messages, and known entities. It must extract only from the focus message. Context and known entities are for resolving references.
+
+Known entities are filtered before the call. The self entity is always included first when it exists. The remaining entities are those whose name or alias appears in the focus message or one of the context messages, capped at 50 total. This keeps the extraction prompt bounded as the space grows and gives the model a stable identity for the assistant.
 
 The provider returns:
 
@@ -50,16 +52,25 @@ The default `RuleExtractionProvider` handles deterministic patterns:
 
 The rule extractor has limits. It does not resolve pronouns, quoted speech, third-party claims, or arbitrary facts. It extracts from user messages only; assistant messages still receive speaker annotations and remain in raw chunks. Use an LLM provider for production extraction. The HTTP provider prompt and parser are in `src/providers/http.ts`.
 
+Entity types are defined in `spec/data-model.md`. The rule extractor types the assistant speaker as the special `self` kind; companies and teams become `group`; projects, products, models, and tools become `artifact`. The HTTP prompt tells the model to reserve `self` for the assistant itself.
+
+## Self identity
+
+Each memory space has at most one self entity, marked with `metadata.self = true` and type `self`. The `self` option or `ensureSelf()` creates it; every assistant speaker resolves to it, and its aliases include assistant speaker names.
+
+Provider output typed `self` resolves to the self entity only when the name or alias matches. Any other entity requested as `self` is stored as `artifact`; the resolver never creates a second `self` entity. Claims and event participants that refer to the assistant therefore use the same self entity ID. Persona, background, and preferences are stored as the self entity's description and as claims whose subject is the self entity.
+
 ## Entity resolution
 
 Resolution order in `EntityResolver`:
 
-1. Exact name in the space, case-insensitive.
-2. Alias in the space.
-3. Speaker ID stored in entity metadata.
-4. Create a new entity.
+1. Assistant speaker: the self entity, creating or promoting it if needed.
+2. Exact name in the space, case-insensitive.
+3. Alias in the space.
+4. Speaker ID stored in entity metadata.
+5. Create a new entity. If the requested type is `self`, create it as `artifact` instead.
 
-Aliases are unique per space. Two similar names are never merged by string similarity alone. A caller can add aliases with `ensureEntity()`.
+Aliases are unique per space. Two similar names are never merged by string similarity alone. A caller can add aliases with `ensureSelf()` or `ensureEntity()`.
 
 ## Claim linking
 

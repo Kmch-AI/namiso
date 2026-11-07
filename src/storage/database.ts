@@ -2,7 +2,12 @@ import { createRequire } from 'node:module'
 import { DatabaseSync } from 'node:sqlite'
 
 import { NamisoError } from '../errors.ts'
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.ts'
+import {
+  ENTITY_TYPE_MIGRATION_SQL,
+  SCHEMA_SQL,
+  SCHEMA_VERSION,
+  SELF_TYPE_MIGRATION_SQL,
+} from './schema.ts'
 
 export type Row = Record<string, unknown>
 export type SqlParam = string | number | bigint | null | Uint8Array
@@ -32,6 +37,12 @@ export class Database {
       )
     }
     this.raw.exec(SCHEMA_SQL)
+    if (version < 2) {
+      this.raw.exec(ENTITY_TYPE_MIGRATION_SQL)
+    }
+    if (version < 3) {
+      this.raw.exec(SELF_TYPE_MIGRATION_SQL)
+    }
     if (version < SCHEMA_VERSION) {
       this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     }

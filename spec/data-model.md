@@ -8,27 +8,35 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 
 ## Tables
 
-| Table                 | Purpose                                               | Key constraints                                                         |
-| --------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| `workspaces`          | Top-level grouping                                    | Primary key                                                             |
-| `memory_spaces`       | Isolation boundary and configuration                  | Foreign key to workspace                                                |
-| `conversations`       | Conversation metadata                                 | Space, external ID, time range                                          |
-| `messages`            | Raw conversation, append-only                         | Unique `(conversation_id, message_index)`; unique external ID per space |
-| `entities`            | People, AI, organizations, places, projects, products | Space and name index                                                    |
-| `entity_aliases`      | Alternate names                                       | Unique alias per space                                                  |
-| `claims`              | Subject, predicate, object facts                      | Subject and predicate index; status                                     |
-| `events`              | Time-bound occurrences                                | Time, type, and status indexes                                          |
-| `event_participants`  | Entity roles in an event                              | Composite primary key                                                   |
-| `annotations`         | Message-to-memory links                               | Unique `(message_id, target_type, target_id, role)`                     |
-| `evidence`            | Source records for memories                           | Unique `(space, source_type, source_id, evidence_type)`                 |
-| `memory_evidence`     | Claim or event to evidence                            | Composite primary key                                                   |
-| `memory_links`        | Memory-to-memory relations                            | Unique endpoints and relation                                           |
-| `chunks`              | Conversation windows used for retrieval               | Unique `(conversation_id, ordinal)`                                     |
-| `chunk_messages`      | Chunk membership and order                            | Composite primary key                                                   |
-| `embedding_documents` | Retrieval document text and stored vector             | Unique `(source_type, source_id, model_name)`                           |
-| `jobs`                | Outbox for extraction and chunk work                  | Unique `dedupe_key`; status and `run_after` index                       |
-| `fts_documents`       | FTS5 index over pre-segmented document text           | Virtual table, rebuilt from documents                                   |
-| `vec_documents`       | sqlite-vec table keyed by document ID                 | Virtual table, dimensions from the embedding provider                   |
+| Table                 | Purpose                                                                              | Key constraints                                                         |
+| --------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `workspaces`          | Top-level grouping                                                                   | Primary key                                                             |
+| `memory_spaces`       | Isolation boundary and configuration                                                 | Foreign key to workspace                                                |
+| `conversations`       | Conversation metadata                                                                | Space, external ID, time range                                          |
+| `messages`            | Raw conversation, append-only                                                        | Unique `(conversation_id, message_index)`; unique external ID per space |
+| `entities`            | People, groups, places, animals, objects, artifacts, activities, topics, other, self | Space and name index                                                    |
+| `entity_aliases`      | Alternate names                                                                      | Unique alias per space                                                  |
+| `claims`              | Subject, predicate, object facts                                                     | Subject and predicate index; status                                     |
+| `events`              | Time-bound occurrences                                                               | Time, type, and status indexes                                          |
+| `event_participants`  | Entity roles in an event                                                             | Composite primary key                                                   |
+| `annotations`         | Message-to-memory links                                                              | Unique `(message_id, target_type, target_id, role)`                     |
+| `evidence`            | Source records for memories                                                          | Unique `(space, source_type, source_id, evidence_type)`                 |
+| `memory_evidence`     | Claim or event to evidence                                                           | Composite primary key                                                   |
+| `memory_links`        | Memory-to-memory relations                                                           | Unique endpoints and relation                                           |
+| `chunks`              | Conversation windows used for retrieval                                              | Unique `(conversation_id, ordinal)`                                     |
+| `chunk_messages`      | Chunk membership and order                                                           | Composite primary key                                                   |
+| `embedding_documents` | Retrieval document text and stored vector                                            | Unique `(source_type, source_id, model_name)`                           |
+| `jobs`                | Outbox for extraction and chunk work                                                 | Unique `dedupe_key`; status and `run_after` index                       |
+| `fts_documents`       | FTS5 index over pre-segmented document text                                          | Virtual table, rebuilt from documents                                   |
+| `vec_documents`       | sqlite-vec table keyed by document ID                                                | Virtual table, dimensions from the embedding provider                   |
+
+## Entity types
+
+The general entity types are `person`, `group`, `place`, `animal`, `object`, `artifact`, `activity`, `topic`, and `other`. The first eight are semantic types; `other` is the fallback.
+
+`self` is a special kind outside that taxonomy. Each memory space has at most one self entity, marked with `metadata.self = true` and type `self`. The `self` option or `ensureSelf()` creates it; every assistant speaker resolves to it. The extraction prompt tells the model to use `artifact` for models, tools, other agents, and AI products, and `group` for companies and institutions. Persona, background, and preferences live on the self entity as its description and as claims whose subject is the self entity.
+
+Schema version 2 migrates existing rows: `organization` becomes `group`, and `project` or `product` becomes `artifact`. Schema version 3 converts `ai` rows: a row with `metadata.self = true` becomes `self`, and any other `ai` row becomes `artifact`. Entity document text includes the type, so call `reindex()` once after upgrading an existing database.
 
 ## Identifiers
 

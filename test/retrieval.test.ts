@@ -99,6 +99,38 @@ test('query-matching evidence survives crowded contexts', async () => {
   namiso.close()
 })
 
+test('rerankPool limits reranker documents without shrinking topK', async () => {
+  let rerankedDocuments = 0
+  const { namiso, say, drain } = await setup({
+    reranker: {
+      model: 'test-rerank',
+      async rerank(input) {
+        rerankedDocuments = input.documents.length
+        return input.documents.map((_, index) => ({
+          index,
+          score: 1 - index / input.documents.length,
+        }))
+      },
+    },
+  })
+  for (let index = 0; index < 8; index += 1) {
+    await say(USER, 'user', `我在使用 TTS-${index}。`)
+  }
+  await drain()
+
+  const result = await namiso.retrieve({
+    query: '我现在使用什么模型？',
+    topK: 5,
+    rerankPool: 2,
+    includeRelations: false,
+  })
+
+  assert.equal(rerankedDocuments, 2)
+  assert.equal(result.trace.rerankedCount, 2)
+  assert.equal(result.candidates.length, 5)
+  namiso.close()
+})
+
 test('sqlite-vec and exact backends both return candidates', async () => {
   const auto = await Namiso.open({
     databasePath: ':memory:',
