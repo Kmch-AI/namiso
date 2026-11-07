@@ -13,6 +13,8 @@ interface ExtractionProvider {
 
 Input contains the focus message, recent messages, and known entities. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
 
+The extraction prompt must extract only from the focus message. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless the focus message mentions them.
+
 The default `RuleExtractionProvider` uses deterministic regular expressions. It is suitable for tests and small offline demos, not production extraction. Coverage and limits are in `spec/annotation.md`.
 
 `HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. Malformed items are dropped; malformed top-level output fails the job. Evidence IDs that the model cannot know fall back to the focus message.

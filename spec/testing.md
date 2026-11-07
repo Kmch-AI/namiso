@@ -24,16 +24,17 @@ Integration tests assert through the public API and never inspect tables. Provid
 
 ## Coverage
 
-| File                      | Behavior                                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `ingestion.test.ts`       | Message order, external-ID deduplication, job idempotency, space isolation                                        |
-| `state-evolution.test.ts` | Supersession, uncertain intent, timeline order, evidence retention                                                |
-| `retrieval.test.ts`       | Three-channel retrieval, current claims, time ranges, budget truncation, evidence selection, both vector backends |
-| `forget.test.ts`          | Message, entity, and conversation deletion with index cleanup                                                     |
-| `providers.test.ts`       | Hash embedding invariants, rule extraction, lexical rerank, HTTP payload parsing                                  |
-| `api.test.ts`             | Boundary validation, alias resolution, manual links, reindex, closed instance                                     |
+| File                        | Behavior                                                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `ingestion.test.ts`         | Message order, external-ID deduplication, job idempotency, space isolation                                        |
+| `state-evolution.test.ts`   | Supersession, uncertain intent, timeline order, evidence retention                                                |
+| `retrieval.test.ts`         | Three-channel retrieval, current claims, time ranges, budget truncation, evidence selection, both vector backends |
+| `forget.test.ts`            | Message, entity, and conversation deletion with index cleanup                                                     |
+| `providers.test.ts`         | Hash embedding invariants, rule extraction, lexical rerank, HTTP payload parsing                                  |
+| `extraction-policy.test.ts` | Default user-only extraction and assistant opt-in                                                                 |
+| `api.test.ts`               | Boundary validation, alias resolution, manual links, reindex, closed instance                                     |
 
-The default suite has 26 tests plus one skipped real-model test. It runs in under a second on the development machine.
+The default suite has 28 tests plus one skipped real-model test. It runs in under a second on the development machine.
 
 ## Writing a test
 

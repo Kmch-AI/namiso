@@ -223,7 +223,13 @@ export class Namiso {
     this.vectors = new VectorStore(db, config.embedding.dimensions, config.vectorIndex)
     this.resolver = new EntityResolver(db)
     this.indexer = new Indexer(db, this.vectors, config.embedding)
-    const pipeline = new AnnotationPipeline(db, config.extraction, this.indexer, this.resolver)
+    const pipeline = new AnnotationPipeline(
+      db,
+      config.extraction,
+      this.indexer,
+      this.resolver,
+      config.extractRoles,
+    )
     this.chunks = new ChunkService(db, this.indexer, config.chunkPolicy)
     this.worker = new JobWorker(db, pipeline, this.chunks, memorySpace.id)
     this.retriever = new Retriever(

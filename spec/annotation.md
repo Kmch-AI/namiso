@@ -5,16 +5,25 @@ Annotation turns a raw message into entities, claims, events, evidence, and stat
 ## Pipeline
 
 1. Resolve the speaker entity.
-2. Load up to eight previous messages as context.
-3. Build the extraction input with the focus message, context, and known entities.
-4. Call the extraction provider.
-5. Validate evidence IDs against the same memory space. Unknown IDs fall back to the focus message.
-6. In one transaction, resolve entities, apply claims and events, add annotations, and link evidence.
-7. Sync retrieval documents for every touched entity, claim, and event.
+2. If the message role is not in `extractRoles`, write the speaker annotation, sync the speaker document, and stop.
+3. Load up to eight previous messages as context.
+4. Build the extraction input with the focus message, context, and known entities.
+5. Call the extraction provider.
+6. Validate evidence IDs against the same memory space. Unknown IDs fall back to the focus message.
+7. In one transaction, resolve entities, apply claims and events, add annotations, and link evidence.
+8. Sync retrieval documents for every touched entity, claim, and event.
 
 Evidence IDs from a provider are untrusted. The pipeline drops IDs that do not exist in the space.
 
+## Role policy
+
+`extractRoles` defaults to `['user']`. Assistant messages keep a speaker annotation and remain in raw chunks. Their content is not sent to the extraction provider.
+
+Add `'assistant'` to `extractRoles` when assistant-stated facts must become structured memory. The default avoids duplicate facts and repeated token cost.
+
 ## Extraction contract
+
+The provider receives the focus message, up to eight context messages, and known entities. It must extract only from the focus message. Context and known entities are for resolving references.
 
 The provider returns:
 
@@ -92,6 +101,7 @@ The retriever checks active claims with the same subject and predicate. Differen
 
 - No coreference resolution beyond the speaker and known aliases.
 - No automatic entity merge after creation.
-- Rule extraction ignores assistant-stated facts.
+- Extraction is user-only by default. Assistant facts remain raw chunks unless `extractRoles` includes `assistant`.
+- The rule extractor also ignores assistant-stated facts.
 - No contradiction detector that marks a claim `disputed` during writes. Conflicts surface as retrieval notes.
 - No LLM validation pass over extracted facts.

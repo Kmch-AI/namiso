@@ -151,13 +151,16 @@ export class HttpExtractionProvider implements ExtractionProvider {
   }
 }
 
-const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from conversation.
+const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from one focus message.
+Extract only from the message whose id is focusMessageId. The other messages are context for resolving references; do not extract facts from them.
+knownEntities are for resolving names and aliases only. Do not output an entity unless the focus message mentions it.
 Return one JSON object with keys entities, claims, events.
 entities: [{name, type, aliases?, description?}]. type is person, ai, organization, place, project, product, or other.
 claims: [{subject: {name, type}, predicate, object: {kind: "literal", value} | {kind: "entity", name, type}, modality, confidence, evidenceMessageIds}].
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
 modality is asserted, uncertain, negated, hypothetical, or quoted.
-Use evidenceMessageIds from the input messages. Do not invent facts. Use uncertain when the speaker is not asserting the fact.`
+Every claim and event must cite focusMessageId in evidenceMessageIds. Do not invent facts. Use uncertain when the speaker is not asserting the fact.
+If the focus message contains no long-term memory, return {entities: [], claims: [], events: []}.`
 
 function parseExtractionResult(value: unknown, focusMessageId: string): ExtractionResult {
   const root = asRecord(value, 'extraction result')

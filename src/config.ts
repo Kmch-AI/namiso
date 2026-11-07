@@ -1,5 +1,6 @@
 import type { ChunkPolicy } from './ingestion/chunker.ts'
 import type { EmbeddingProvider, ExtractionProvider, RerankerProvider } from './providers/types.ts'
+import type { MessageRole } from './types.ts'
 
 import { ValidationError } from './errors.ts'
 import { DEFAULT_CHUNK_POLICY } from './ingestion/chunker.ts'
@@ -16,6 +17,7 @@ export interface NamisoOptions {
   embedding?: EmbeddingProvider
   extraction?: ExtractionProvider
   reranker?: RerankerProvider
+  extractRoles?: readonly MessageRole[]
   vectorIndex?: VectorIndexMode
   chunking?: Partial<ChunkPolicy>
 }
@@ -27,6 +29,7 @@ export interface ResolvedNamisoOptions {
   embedding: EmbeddingProvider
   extraction: ExtractionProvider
   reranker: RerankerProvider
+  extractRoles: readonly MessageRole[]
   vectorIndex: VectorIndexMode
   chunkPolicy: ChunkPolicy
 }
@@ -47,6 +50,17 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
   assertProvider('extraction', extraction, ['extract'])
   const reranker = options.reranker ?? new LexicalReranker()
   assertProvider('reranker', reranker, ['rerank'])
+  const extractRoles = options.extractRoles ?? ['user']
+  if (extractRoles.length === 0) {
+    throw new ValidationError('extractRoles must contain at least one role')
+  }
+  const validRoles = new Set<MessageRole>(['user', 'assistant', 'system', 'tool'])
+  for (const role of extractRoles) {
+    if (!validRoles.has(role)) {
+      throw new ValidationError(`unsupported extractRole: ${role}`)
+    }
+  }
+  const uniqueExtractRoles = [...new Set(extractRoles)]
   const vectorIndex = options.vectorIndex ?? 'auto'
   if (!['auto', 'sqlite-vec', 'exact'].includes(vectorIndex)) {
     throw new ValidationError(`unsupported vectorIndex: ${vectorIndex}`)
@@ -72,6 +86,7 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     embedding,
     extraction,
     reranker,
+    extractRoles: uniqueExtractRoles,
     vectorIndex,
     chunkPolicy: { size, overlap },
   }

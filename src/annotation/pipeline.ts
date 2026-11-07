@@ -1,7 +1,15 @@
 import type { Indexer, IndexItem } from '../indexing/indexer.ts'
 import type { ExtractionMessage, ExtractionProvider, ExtractionResult } from '../providers/types.ts'
 import type { Database } from '../storage/database.ts'
-import type { Claim, EntityId, Event, MemorySpaceId, Message, MessageId } from '../types.ts'
+import type {
+  Claim,
+  EntityId,
+  Event,
+  MemorySpaceId,
+  Message,
+  MessageId,
+  MessageRole,
+} from '../types.ts'
 import type { EntityResolver } from './entity-resolver.ts'
 
 import { asEventId } from '../ids.ts'
@@ -26,17 +34,20 @@ export class AnnotationPipeline {
   private readonly linker: MemoryLinker
   private readonly extractor: ExtractionProvider
   private readonly indexer: Indexer
+  private readonly extractRoles: ReadonlySet<MessageRole>
 
   constructor(
     db: Database,
     extractor: ExtractionProvider,
     indexer: Indexer,
     resolver: EntityResolver,
+    extractRoles: readonly MessageRole[],
   ) {
     this.db = db
     this.extractor = extractor
     this.indexer = indexer
     this.resolver = resolver
+    this.extractRoles = new Set(extractRoles)
     this.linker = new MemoryLinker(db, resolver)
   }
 
@@ -49,6 +60,24 @@ export class AnnotationPipeline {
       speakerName,
       role: message.role,
     })
+
+    if (!this.extractRoles.has(message.role)) {
+      this.db.transaction(() => {
+        addAnnotation(this.db, {
+          spaceId,
+          messageId: message.id,
+          targetType: 'entity',
+          targetId: speaker.id,
+          role: 'speaker',
+          extractorVersion: this.extractor.version,
+        })
+      })
+      await this.indexer.sync(
+        spaceId,
+        this.indexItems(spaceId, new Set([speaker.id]), new Set(), new Set()),
+      )
+      return
+    }
 
     const context = recentMessages(
       this.db,

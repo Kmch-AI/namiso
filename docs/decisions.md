@@ -116,6 +116,14 @@ The project uses pnpm 12 and commits `pnpm-lock.yaml`. `packageManager` pins the
 
 `module` and `moduleResolution` stay `nodenext`. A Bun application with a bundler can use `Preserve` and `bundler`; this package runs directly on Node and emits with `tsc`, so Node ESM resolution checks stay in place. The build config is the only place that compiles.
 
+## D20. Extraction is focus-only and user-only by default
+
+The extraction prompt extracts only the focus message. Context messages and known entities resolve references. `extractRoles` defaults to `['user']`, so assistant messages keep a speaker annotation and remain in raw chunks but skip extraction.
+
+Why: the previous prompt let the model extract from all nine messages, and assistant messages could produce large claim and event sets. The change cuts calls and output tokens, and reduces duplicate facts. Assistant facts remain retrievable through chunks. Set `extractRoles` to include `assistant` when a deployment needs them.
+
+An A/B on a nine-message context: output tokens fell from 1,878 to 848, claims from 7 to 2, and latency from 13.0s to 5.8s. Input rose from 698 to 779 tokens because the prompt is stricter.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

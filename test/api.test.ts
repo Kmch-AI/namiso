@@ -16,6 +16,13 @@ test('invalid options fail at the boundary', async () => {
     }),
     (error: unknown) => error instanceof ValidationError,
   )
+  await assert.rejects(
+    Namiso.open({
+      databasePath: ':memory:',
+      extractRoles: [],
+    }),
+    (error: unknown) => error instanceof ValidationError,
+  )
 })
 
 test('ingesting into an unknown conversation throws NotFoundError', async () => {
