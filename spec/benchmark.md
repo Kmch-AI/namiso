@@ -125,6 +125,18 @@ The demo set is saturated at 100% for both modes. It is useful as an integration
 
 The context budget is a target, not a cap. The builder shortens excerpts until the estimate fits and keeps every selected record. A set of records larger than the target reports `overBudget` rather than losing entries.
 
+## Answer model and grader
+
+The numbers above measure evidence recall. A whole-question pass count needs an answer model and the benchmark's grader.
+
+1. `pnpm bench --dataset <dataset>` writes `bench/out/contexts.jsonl`.
+2. `node bench/answer.ts --dataset <dataset> --contexts bench/out/contexts.jsonl --out bench/out/answers.jsonl` answers every question with one chat model. Each prompt contains the retrieved context, the last six history turns, the exam time, and the question.
+3. `python <benchmark>/grading/grade.py prepare --answers bench/out/answers.jsonl --out bench/out/packets.jsonl` builds the judge packets.
+4. `node bench/judge.ts --packets bench/out/packets.jsonl --prompt <benchmark>/grading/judge-prompt.md --out bench/out/reviews.jsonl` produces one review per question and validates every field before writing it.
+5. `python <benchmark>/grading/grade.py score --packets ... --reviews ... --out ... --summary ...` applies the pass rules.
+
+`answer.ts` and `judge.ts` read `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_API_KEY`, and `NAMISO_EXTRACTION_MODEL` from `.env`. Both keep partial output and skip finished IDs, so a rerun resumes. Both accept `--concurrency`, `--reasoning`, and `--max-tokens`. A pass count is comparable to another run only when the answer model, judge model, prompts, and dataset commit match.
+
 ## Provenance
 
 - Benchmark repository commit: `1916d40e04a5062b4957e643da251126f1f55708`

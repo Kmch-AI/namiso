@@ -22,6 +22,8 @@ Standalone long-term memory engine for AI agents. It stores raw conversations, e
 | `pnpm test:integration`       | Run opt-in real-model tests         |
 | `pnpm build`                  | Emit the ESM package into `dist/`   |
 | `pnpm bench --dataset <path>` | Run the retrieval benchmark         |
+| `node bench/answer.ts ...`    | Answer exported contexts            |
+| `node bench/judge.ts ...`     | Judge answers into review records   |
 
 ## Layout
 
