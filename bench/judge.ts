@@ -121,7 +121,7 @@ async function judgeOne(packet: Packet): Promise<Record<string, unknown>> {
       { role: 'assistant', content },
       {
         role: 'user',
-        content: `That output was invalid: ${lastError}. Return only one JSON object with the exact fields and hash values from the packet.`,
+        content: `That output was invalid: ${lastError}. Return only one JSON object. required must contain exactly ${packet.rubric.required.length} boolean value(s), one per rubric.required entry in order. Copy answer_sha256 and rubric_sha256 from the packet and keep reason non-empty.`,
       },
     )
   }

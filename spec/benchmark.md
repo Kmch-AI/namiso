@@ -137,6 +137,23 @@ The numbers above measure evidence recall. A whole-question pass count needs an 
 
 `answer.ts` and `judge.ts` read `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_API_KEY`, and `NAMISO_EXTRACTION_MODEL` from `.env`. Both keep partial output and skip finished IDs, so a rerun resumes. Both accept `--concurrency`, `--reasoning`, and `--max-tokens`. A pass count is comparable to another run only when the answer model, judge model, prompts, and dataset commit match.
 
+### End-to-end pass count
+
+Run on 2026-11-07 against the formal dataset with the offline Namiso stack.
+
+| Item         | Value                                                   |
+| ------------ | ------------------------------------------------------- |
+| Answer model | `group/deepseek-v4.1-flash` through the local gateway   |
+| Judge        | the same model, `grading/judge-prompt.md`               |
+| Questions    | 714                                                     |
+| Passed       | 539 (75.5%)                                             |
+| Failures     | 0 answer failures, 0 unscored questions                 |
+| Runtime      | answers 659 s, judge 2850 s plus retries, concurrency 6 |
+
+By interval: d0 163/189, d3 140/184, d15 125/174, d45 111/167. Pass rate falls as the interval grows, which matches the retrieval result.
+
+This number is not directly comparable to the benchmark repository's published results. Those runs answered through a different channel and judged with Codex. This run used one local model for both roles, so the judge may favor its own phrasing. Retrieval evidence recall is 74%, while the judged pass rate is 75.5%; a correct answer can be paraphrased from evidence that the anchor check does not credit, and the judge accepts paraphrase. Raw answers, packets, reviews, and judgments stay in `bench/out/`, which is ignored.
+
 ## Provenance
 
 - Benchmark repository commit: `1916d40e04a5062b4957e643da251126f1f55708`
