@@ -80,6 +80,51 @@ test('consolidating one conversation leaves another pending', async () => {
   namiso.close()
 })
 
+test('a second consolidation covers only messages added since the first', async () => {
+  const seen: Array<{ focus: number; total: number }> = []
+  const extraction: ExtractionProvider = {
+    version: 'test-consolidate',
+    async extract(input): Promise<ExtractionResult> {
+      seen.push({ focus: input.focusMessageIds.length, total: input.messages.length })
+      return { entities: [], claims: [], events: [] }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+
+  await say(USER, 'user', '前半段第一句。')
+  await say(USER, 'user', '前半段第二句。')
+  const first = await drain()
+  assert.deepEqual(first, { messages: 2, batches: 1 })
+
+  await say(USER, 'user', '后半段第一句。')
+  await say(USER, 'user', '后半段第二句。')
+  await say(USER, 'user', '后半段第三句。')
+  const second = await namiso.consolidate()
+  assert.deepEqual(second, { messages: 3, batches: 1 })
+
+  assert.deepEqual(seen, [
+    { focus: 2, total: 2 },
+    { focus: 3, total: 5 },
+  ])
+  assert.equal(namiso.health().counts.pendingMessages, 0)
+  namiso.close()
+})
+
+test('overlapping consolidation calls run one after the other', async () => {
+  const counter = { calls: 0, focusCounts: [] as number[] }
+  const { namiso, say } = await setup({ extraction: countingProvider(counter) })
+  await say(USER, 'user', '第一句话。')
+  await say(USER, 'user', '第二句话。')
+  await say(USER, 'user', '第三句话。')
+  await namiso.drain()
+
+  const [first, second] = await Promise.all([namiso.consolidate(), namiso.consolidate()])
+  assert.deepEqual(first, { messages: 3, batches: 1 })
+  assert.deepEqual(second, { messages: 0, batches: 0 })
+  assert.deepEqual(counter.focusCounts, [3])
+  namiso.close()
+})
+
 test('rejected consolidation inputs leave messages pending', async () => {
   const { namiso, say } = await setup()
   await say(USER, 'user', '需要整理的消息。')

@@ -121,6 +121,8 @@ await memory.retryJobs(): Promise<DrainReport>
 
 Ingestion never calls the extraction model. Messages stay pending until `consolidate()` runs. Each batch is one provider call, so consolidating a whole session costs one call per 32 messages by default. Call it before context compaction or a session switch. A failed call leaves every message in the batch pending; call it again to retry.
 
+Calls are serialized per instance. A second call processes only messages that remain pending, so calling before compaction and again at session end does not re-extract the first half. Messages before the pending range are sent as context, not as extraction targets.
+
 ## Retrieve
 
 ```ts

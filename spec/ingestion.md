@@ -40,6 +40,8 @@ A failed job backs off by `10 × 2^attempts` seconds, capped at 300. After three
 
 `batchSize` defaults to 32 and is capped at 128. A session of 100 messages costs four extraction calls, not 100. `consolidate()` without a conversation processes every conversation in the space. Call it before context compaction or a session switch, when the agent is about to lose the raw conversation.
 
+Repeated calls are incremental. A second call selects only messages with `consolidated_at` null, so an earlier half of the session is not extracted again. Up to eight messages before the first pending message are sent as context and are not part of `focusMessageIds`. Concurrent calls on one instance are serialized; the later call runs after the earlier one and finds only what is still pending.
+
 Extraction failures throw. Messages in the failed batch stay pending, so calling `consolidate()` again retries them.
 
 ## Idempotency

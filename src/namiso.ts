@@ -1,5 +1,5 @@
 import type { ForgetInput, ForgetReport } from './admin/forget.ts'
-import type { ConsolidateReport } from './annotation/consolidator.ts'
+import type { ConsolidateInput, ConsolidateReport } from './annotation/consolidator.ts'
 import type { NamisoOptions, ResolvedNamisoOptions } from './config.ts'
 import type { DrainReport } from './ingestion/job-worker.ts'
 import type { ExtractionUsage } from './providers/types.ts'
@@ -205,6 +205,7 @@ export class Namiso {
   private readonly consolidator: Consolidator
   private readonly retriever: Retriever
   private readonly chunks: ChunkService
+  private consolidationQueue: Promise<unknown> = Promise.resolve()
   private closed = false
 
   private constructor(
@@ -385,13 +386,19 @@ export class Namiso {
       )
     }
     if (input.conversationId === undefined) {
-      return this.consolidator.run({ batchSize })
+      return this.enqueueConsolidation({ batchSize })
     }
     const conversation = findConversation(this.db, asConversationId(input.conversationId))
     if (conversation === null || conversation.memorySpaceId !== this.memorySpace.id) {
       throw new NotFoundError('conversation', input.conversationId)
     }
-    return this.consolidator.run({ conversationId: conversation.id, batchSize })
+    return this.enqueueConsolidation({ conversationId: conversation.id, batchSize })
+  }
+
+  private enqueueConsolidation(input: ConsolidateInput): Promise<ConsolidateReport> {
+    const run = this.consolidationQueue.then(() => this.consolidator.run(input))
+    this.consolidationQueue = run.catch(() => null)
+    return run
   }
 
   async retrieve(input: RetrieveInput): Promise<RetrieveResult> {

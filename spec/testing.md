@@ -27,7 +27,7 @@ Integration tests assert through the public API and never inspect tables. Provid
 | File                        | Behavior                                                                                                                                                 |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ingestion.test.ts`         | Message order, external-ID deduplication, chunk job idempotency, space isolation                                                                         |
-| `consolidation.test.ts`     | Deferred extraction, one call per batch, batch sizing, conversation scoping, rejected input                                                              |
+| `consolidation.test.ts`     | Deferred extraction, one call per batch, batch sizing, incremental second runs, serialized overlap, conversation scoping, rejected input                 |
 | `state-evolution.test.ts`   | Supersession, uncertain intent, timeline order, evidence retention                                                                                       |
 | `retrieval.test.ts`         | Three-channel retrieval, current claims, time ranges, budget compression, query-centered excerpts, evidence selection, rerank pool, both vector backends |
 | `forget.test.ts`            | Message, entity, and conversation deletion with index cleanup                                                                                            |
@@ -37,7 +37,7 @@ Integration tests assert through the public API and never inspect tables. Provid
 | `migration.test.ts`         | Entity type migrations at versions 2 and 3, consolidation backfill at version 4                                                                          |
 | `api.test.ts`               | Boundary validation, alias resolution, manual links, reindex, closed instance                                                                            |
 
-The default suite has 44 tests plus one skipped real-model test. It runs in under a second on the development machine.
+The default suite has 46 tests plus one skipped real-model test. It runs in under a second on the development machine.
 
 ## Writing a test
 
