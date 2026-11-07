@@ -18,23 +18,23 @@ const memory = await Namiso.open({
   embedding: new HashEmbeddingProvider(),
   extraction: new RuleExtractionProvider(),
   reranker: new LexicalReranker(),
-  extractRoles: ['user'],
+  extractRoles: ['user', 'assistant'],
   vectorIndex: 'auto',
   chunking: { size: 8, overlap: 2 },
 })
 ```
 
-| Option                               | Default                   | Notes                                                        |
-| ------------------------------------ | ------------------------- | ------------------------------------------------------------ |
-| `databasePath`                       | required                  | Use `:memory:` for tests                                     |
-| `workspace.id`, `workspace.name`     | generated, `default`      | Existing workspace is reused by ID                           |
-| `memorySpace.id`, `memorySpace.name` | generated, `default`      | Existing space is reused by ID                               |
-| `embedding`                          | `HashEmbeddingProvider`   | Dimensions must stay stable for a database                   |
-| `extraction`                         | `RuleExtractionProvider`  | Use an LLM provider for production                           |
-| `extractRoles`                       | `['user']`                | Roles sent to extraction; assistant keeps speaker annotation |
-| `reranker`                           | `LexicalReranker`         | Set `rerank: false` per query to skip                        |
-| `vectorIndex`                        | `auto`                    | `auto`, `sqlite-vec`, or `exact`                             |
-| `chunking`                           | `{ size: 8, overlap: 2 }` | Size 1 to 64; overlap must be smaller                        |
+| Option                               | Default                   | Notes                                              |
+| ------------------------------------ | ------------------------- | -------------------------------------------------- |
+| `databasePath`                       | required                  | Use `:memory:` for tests                           |
+| `workspace.id`, `workspace.name`     | generated, `default`      | Existing workspace is reused by ID                 |
+| `memorySpace.id`, `memorySpace.name` | generated, `default`      | Existing space is reused by ID                     |
+| `embedding`                          | `HashEmbeddingProvider`   | Dimensions must stay stable for a database         |
+| `extraction`                         | `RuleExtractionProvider`  | Use an LLM provider for production                 |
+| `extractRoles`                       | `['user', 'assistant']`   | Roles sent to extraction; system and tool stay raw |
+| `reranker`                           | `LexicalReranker`         | Set `rerank: false` per query to skip              |
+| `vectorIndex`                        | `auto`                    | `auto`, `sqlite-vec`, or `exact`                   |
+| `chunking`                           | `{ size: 8, overlap: 2 }` | Size 1 to 64; overlap must be smaller              |
 
 The returned object exposes `workspace` and `memorySpace`.
 

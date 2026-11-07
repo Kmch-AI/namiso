@@ -31,7 +31,7 @@ Integration tests assert through the public API and never inspect tables. Provid
 | `retrieval.test.ts`         | Three-channel retrieval, current claims, time ranges, budget truncation, evidence selection, both vector backends |
 | `forget.test.ts`            | Message, entity, and conversation deletion with index cleanup                                                     |
 | `providers.test.ts`         | Hash embedding invariants, rule extraction, lexical rerank, HTTP payload parsing                                  |
-| `extraction-policy.test.ts` | Default user-only extraction and assistant opt-in                                                                 |
+| `extraction-policy.test.ts` | Default user and assistant extraction, and user-only opt-out                                                      |
 | `api.test.ts`               | Boundary validation, alias resolution, manual links, reindex, closed instance                                     |
 
 The default suite has 28 tests plus one skipped real-model test. It runs in under a second on the development machine.

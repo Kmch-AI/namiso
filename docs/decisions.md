@@ -116,11 +116,13 @@ The project uses pnpm 12 and commits `pnpm-lock.yaml`. `packageManager` pins the
 
 `module` and `moduleResolution` stay `nodenext`. A Bun application with a bundler can use `Preserve` and `bundler`; this package runs directly on Node and emits with `tsc`, so Node ESM resolution checks stay in place. The build config is the only place that compiles.
 
-## D20. Extraction is focus-only and user-only by default
+## D20. Extraction is focus-only, user and assistant by default
 
-The extraction prompt extracts only the focus message. Context messages and known entities resolve references. `extractRoles` defaults to `['user']`, so assistant messages keep a speaker annotation and remain in raw chunks but skip extraction.
+The extraction prompt extracts only the focus message. Context messages and known entities resolve references. `extractRoles` defaults to `['user', 'assistant']`; system and tool messages keep a speaker annotation and remain raw chunks.
 
-Why: the previous prompt let the model extract from all nine messages, and assistant messages could produce large claim and event sets. The change cuts calls and output tokens, and reduces duplicate facts. Assistant facts remain retrievable through chunks. Set `extractRoles` to include `assistant` when a deployment needs them.
+Why: the previous prompt let the model extract from all nine messages, which duplicated context facts. Focus-only removes that duplication. Assistant messages stay in the default because they often contain summaries, recommendations, and tool results. Excluding them saved tokens but lost structured assistant facts. Set `extractRoles: ['user']` to skip them.
+
+Assistant claims can become active and carry `assistant_statement` evidence. A provider must mark speculation as `uncertain`; otherwise assistant guesses enter current memory.
 
 An A/B on a nine-message context: output tokens fell from 1,878 to 848, claims from 7 to 2, and latency from 13.0s to 5.8s. Input rose from 698 to 779 tokens because the prompt is stricter.
 

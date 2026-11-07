@@ -17,9 +17,9 @@ Evidence IDs from a provider are untrusted. The pipeline drops IDs that do not e
 
 ## Role policy
 
-`extractRoles` defaults to `['user']`. Assistant messages keep a speaker annotation and remain in raw chunks. Their content is not sent to the extraction provider.
+`extractRoles` defaults to `['user', 'assistant']`. User and assistant messages are sent to extraction. System and tool messages keep a speaker annotation and remain in raw chunks.
 
-Add `'assistant'` to `extractRoles` when assistant-stated facts must become structured memory. The default avoids duplicate facts and repeated token cost.
+Set `extractRoles: ['user']` to skip assistant extraction. Assistant messages still keep a speaker annotation and remain in raw chunks. The rule extractor still ignores assistant-stated facts; use an LLM provider for them.
 
 ## Extraction contract
 
@@ -101,7 +101,7 @@ The retriever checks active claims with the same subject and predicate. Differen
 
 - No coreference resolution beyond the speaker and known aliases.
 - No automatic entity merge after creation.
-- Extraction is user-only by default. Assistant facts remain raw chunks unless `extractRoles` includes `assistant`.
-- The rule extractor also ignores assistant-stated facts.
+- Extraction defaults to user and assistant messages. System and tool facts remain raw chunks unless `extractRoles` includes them.
+- The rule extractor ignores assistant-stated facts.
 - No contradiction detector that marks a claim `disputed` during writes. Conflicts surface as retrieval notes.
 - No LLM validation pass over extracted facts.

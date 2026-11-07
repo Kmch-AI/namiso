@@ -25,7 +25,7 @@ function countingProvider(counter: { calls: number }): ExtractionProvider {
   }
 }
 
-test('extraction skips assistant messages by default', async () => {
+test('extraction includes user and assistant messages by default', async () => {
   const counter = { calls: 0 }
   const { namiso, say, drain } = await setup({ extraction: countingProvider(counter) })
 
@@ -33,22 +33,23 @@ test('extraction skips assistant messages by default', async () => {
   await say(AI, 'assistant', '助手消息。')
   await drain()
 
-  assert.equal(counter.calls, 1)
+  assert.equal(counter.calls, 2)
   assert.ok(namiso.getEntityDetails(AI) !== null)
   namiso.close()
 })
 
-test('extractRoles can include assistant messages', async () => {
+test('extractRoles can restrict extraction to user messages', async () => {
   const counter = { calls: 0 }
   const { namiso, say, drain } = await setup({
     extraction: countingProvider(counter),
-    extractRoles: ['user', 'assistant'],
+    extractRoles: ['user'],
   })
 
   await say(USER, 'user', '用户消息。')
   await say(AI, 'assistant', '助手消息。')
   await drain()
 
-  assert.equal(counter.calls, 2)
+  assert.equal(counter.calls, 1)
+  assert.ok(namiso.getEntityDetails(AI) !== null)
   namiso.close()
 })

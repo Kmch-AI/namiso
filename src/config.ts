@@ -50,7 +50,7 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
   assertProvider('extraction', extraction, ['extract'])
   const reranker = options.reranker ?? new LexicalReranker()
   assertProvider('reranker', reranker, ['rerank'])
-  const extractRoles = options.extractRoles ?? ['user']
+  const extractRoles = options.extractRoles ?? ['user', 'assistant']
   if (extractRoles.length === 0) {
     throw new ValidationError('extractRoles must contain at least one role')
   }
