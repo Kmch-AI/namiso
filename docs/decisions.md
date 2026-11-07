@@ -156,7 +156,7 @@ Extraction now belongs to an explicit consolidation step. `ingest()` appends the
 
 The caller decides when memory is formed. The intended point is before context compaction or a session switch, when the agent is about to lose the raw conversation. Retrieval is unchanged and still runs on every `getContext()` call; only extraction moves off the turn path. The provider contract changed from `focusMessageId` to `focusMessageIds`, so one request can cover a whole batch. Repeated calls are incremental because they select only messages with `consolidated_at` null, and calls on one instance are serialized so an overlapping second call runs after the first.
 
-The effect is proportional to batch size. A 100-message session now costs four extraction calls instead of 100. The mini fixture reports `consolidation batches`; no formal 714-question run was repeated for this change.
+The effect is proportional to batch size. A 100-message session now costs four extraction calls instead of 100. The formal 714-question offline run completed with 74% evidence recall and 78% context hit, unchanged from earlier runs. It used 482 consolidation calls for 4480 messages; one call per message would have been 4480. The harness consolidates at every exam cutoff, so this call pattern is closer to per-item than to per-session.
 
 ## Verification record
 

@@ -67,18 +67,21 @@ Environment: Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX, 32 logical cores, sin
 
 Formal set, 714 scored questions, 6 personas, 2240 turns:
 
-| Run | Mode       | Evidence recall | Context hit | Tokens p50 / p95 / max | Retrieval p50 / p95 | Ingest |
-| --- | ---------- | --------------- | ----------- | ---------------------- | ------------------- | ------ |
-| 1   | hybrid     | 74%             | 78%         | 725 / 1541 / 1609      | 13.29 / 30.05 ms    | 19.3 s |
-| 2   | hybrid     | 74%             | 78%         | 725 / 1539 / 1609      | 12.94 / 30.71 ms    | 19.2 s |
-| 3   | hybrid     | 74%             | 78%         | 725 / 1538 / 1609      | 12.56 / 29.73 ms    | 18.6 s |
-| 4   | hybrid     | 74%             | 78%         | 725 / 1541 / 1609      | 11.01 / 26.86 ms    | 17.1 s |
-| 5   | hybrid     | 74%             | 78%         | 725 / 1539 / 1609      | 10.87 / 26.68 ms    | 17.1 s |
-| 6   | hybrid     | 74%             | 78%         | 725 / 1541 / 1609      | 11.32 / 26.43 ms    | 17.0 s |
-| 1   | raw chunks | 73%             | 77%         | 699 / 1515 / 1584      | 12.56 / 31.04 ms    | 19.1 s |
-| 2   | raw chunks | 73%             | 77%         | 699 / 1515 / 1584      | 12.01 / 30.19 ms    | 18.8 s |
+| Run | Mode            | Evidence recall | Context hit | Tokens p50 / p95 / max | Retrieval p50 / p95 | Ingest |
+| --- | --------------- | --------------- | ----------- | ---------------------- | ------------------- | ------ |
+| 1   | hybrid          | 74%             | 78%         | 725 / 1541 / 1609      | 13.29 / 30.05 ms    | 19.3 s |
+| 2   | hybrid          | 74%             | 78%         | 725 / 1539 / 1609      | 12.94 / 30.71 ms    | 19.2 s |
+| 3   | hybrid          | 74%             | 78%         | 725 / 1538 / 1609      | 12.56 / 29.73 ms    | 18.6 s |
+| 4   | hybrid          | 74%             | 78%         | 725 / 1541 / 1609      | 11.01 / 26.86 ms    | 17.1 s |
+| 5   | hybrid          | 74%             | 78%         | 725 / 1539 / 1609      | 10.87 / 26.68 ms    | 17.1 s |
+| 6   | hybrid          | 74%             | 78%         | 725 / 1541 / 1609      | 11.32 / 26.43 ms    | 17.0 s |
+| 7   | hybrid, batched | 74%             | 78%         | 725 / 1599 / 1600      | 11.58 / 27.50 ms    | 16.5 s |
+| 1   | raw chunks      | 73%             | 77%         | 699 / 1515 / 1584      | 12.56 / 31.04 ms    | 19.1 s |
+| 2   | raw chunks      | 73%             | 77%         | 699 / 1515 / 1584      | 12.01 / 30.19 ms    | 18.8 s |
 
 Recall and hit rate are identical across the six hybrid runs because extraction, embedding, and ranking are deterministic. Latency varies with machine load.
+
+Run 7 is the only run with explicit consolidation. It made 482 extraction calls for 4480 messages; the earlier runs made one call per message. The harness consolidates at every exam cutoff, so 482 reflects that call pattern, not the fewer calls a session-boundary integration would make. Scores are unchanged.
 
 By interval, hybrid run 1:
 
