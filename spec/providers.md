@@ -11,15 +11,15 @@ interface ExtractionProvider {
 }
 ```
 
-Input contains the focus message, recent messages, and known entities. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
+Input contains the focus message IDs, the message batch, and known entities. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
 
-The extraction prompt must extract only from the focus message. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless the focus message mentions them. The engine sends only entities mentioned in the focus message or the recent context, capped at 50; it does not send the whole space.
+The extraction prompt must extract only from the messages listed in `focusMessageIds`. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless a focus message mentions them. The engine sends only entities mentioned in the focus batch or the recent context, capped at 50; it does not send the whole space.
 
 The prompt uses the entity set in `spec/data-model.md`. `self` is the special kind for the assistant itself, and the self entity is sent first in `knownEntities`. The prompt instructs the model to attach the assistant's persona, background, and preferences to that entity, and to classify models, tools, other agents, and AI products as `artifact`, and companies and institutions as `group`. The HTTP parser accepts the general types plus `self`; any other value falls back to `other`.
 
 The default `RuleExtractionProvider` uses deterministic regular expressions. It is suitable for tests and small offline demos, not production extraction. Coverage and limits are in `spec/annotation.md`.
 
-`HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. Malformed items are dropped; malformed top-level output fails the job. Evidence IDs that the model cannot know fall back to the focus message.
+`HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. Malformed items are dropped; malformed top-level output throws. Evidence IDs that the model cannot know fall back to the first focus message. Each HTTP call covers one consolidation batch.
 
 Options:
 
@@ -102,7 +102,7 @@ Where the code connects:
 4. Do not write to the database from a provider.
 5. Pass the provider to `Namiso.open()`.
 
-Provider failures fail the job. The message and any structured rows already written stay in place; the next retry repeats the job from the current state.
+Provider failures throw. Messages in the failed batch stay pending; calling `consolidate()` again repeats extraction from the current state.
 
 ## Defaults and evaluation
 

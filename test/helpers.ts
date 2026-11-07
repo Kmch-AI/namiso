@@ -1,4 +1,4 @@
-import type { Conversation, IngestResult, NamisoOptions } from '../src/index.ts'
+import type { ConsolidateReport, Conversation, IngestResult, NamisoOptions } from '../src/index.ts'
 
 import { Namiso } from '../src/index.ts'
 
@@ -8,7 +8,7 @@ export interface Harness {
   namiso: Namiso
   conversation: Conversation
   say: (speakerId: string, role: 'user' | 'assistant', content: string) => Promise<IngestResult>
-  drain: () => Promise<unknown>
+  drain: () => Promise<ConsolidateReport>
 }
 
 export async function setup(options: Partial<NamisoOptions> = {}): Promise<Harness> {
@@ -38,7 +38,10 @@ export async function setup(options: Partial<NamisoOptions> = {}): Promise<Harne
     namiso,
     conversation,
     say,
-    drain: () => namiso.drain(),
+    drain: async () => {
+      await namiso.drain()
+      return namiso.consolidate()
+    },
   }
 }
 

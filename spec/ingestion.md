@@ -1,22 +1,21 @@
 # Ingestion
 
-Ingestion writes the raw message first, then derives memory through jobs. A provider failure must not lose the message.
+Ingestion writes the raw message and builds local indexes. Model extraction runs only when the caller asks for it. A provider failure must not lose the message.
 
 ## Ingest a message
 
 `Namiso.ingest()` performs these steps in one SQLite transaction:
 
 1. Validate role, speaker, content, and conversation.
-2. If `externalMessageId` already exists in the space, return the stored message and its processing status.
-3. Append the message with the next `message_index` and the logical `occurredAt`.
-4. Enqueue `annotate:<messageId>`.
-5. Upsert `chunk:<conversationId>`.
+2. If `externalMessageId` already exists in the space, return the stored message and its consolidation state.
+3. Append the message with the next `message_index`, the logical `occurredAt`, and `consolidated_at` null.
+4. Upsert `chunk:<conversationId>`.
 
-The call returns without running extraction. Call `drain()` to process the queue. Batch ingestion is cheaper because the chunk job deduplicates per conversation.
+The call returns without running extraction and without an extraction job. `health().counts.pendingMessages` reports how many messages wait for consolidation. Batch ingestion is cheap because the chunk job deduplicates per conversation.
 
 ## Job rules
 
-Jobs use a dedupe key with a unique index. Enqueueing a completed or failed job resets it to `pending` with zero attempts. Enqueueing a pending or running job leaves it queued. This gives one annotation job per message and one chunk job per conversation.
+Only chunk jobs use the queue. A job uses a dedupe key with a unique index. Enqueueing a completed or failed job resets it to `pending` with zero attempts. Enqueueing a pending or running job leaves it queued. This gives one chunk job per conversation.
 
 `drain()`:
 
@@ -28,11 +27,24 @@ Jobs use a dedupe key with a unique index. Enqueueing a completed or failed job 
 
 A failed job backs off by `10 × 2^attempts` seconds, capped at 300. After three attempts it becomes `failed`. `retryJobs()` resets failed jobs and drains.
 
-`annotate(messageId)` enqueues both jobs and drains. It is useful when one message must be searchable immediately.
+## Consolidation
+
+`consolidate()` is the only path that calls the extraction provider. For each conversation with pending messages it:
+
+1. Selects up to `batchSize` messages with `consolidated_at` null, in message order.
+2. Loads up to eight messages before the first one as context.
+3. Sends one extraction request for the whole batch.
+4. Writes entities, claims, events, evidence, and annotations in one transaction.
+5. Syncs their retrieval documents.
+6. Marks every message in the batch consolidated.
+
+`batchSize` defaults to 32 and is capped at 128. A session of 100 messages costs four extraction calls, not 100. `consolidate()` without a conversation processes every conversation in the space. Call it before context compaction or a session switch, when the agent is about to lose the raw conversation.
+
+Extraction failures throw. Messages in the failed batch stay pending, so calling `consolidate()` again retries them.
 
 ## Idempotency
 
-Re-running a job must converge to the same state:
+Re-running consolidation must converge to the same state:
 
 - Entities resolve by exact name or alias before insertion.
 - Claims check for an existing active claim with the same subject, predicate, and object.
@@ -40,8 +52,9 @@ Re-running a job must converge to the same state:
 - Annotations and evidence use unique indexes.
 - Embedding documents upsert by source type, source ID, and model name.
 - Chunks use deterministic IDs and content hashes.
+- Consolidated messages are skipped on the next run.
 
-The job may safely fail after the memory transaction and retry. The retry repeats extraction, finds the existing rows, and finishes the index work.
+A run may fail after the memory transaction and before marking messages consolidated. The retry repeats extraction, finds the existing rows, and finishes the index work and the marker.
 
 ## Chunking
 
@@ -61,14 +74,15 @@ A chunk job rebuilds all chunks for its conversation, updates changed rows, remo
 
 ## Failure behavior
 
-| Failure                      | Result                                                       |
-| ---------------------------- | ------------------------------------------------------------ |
-| Invalid input                | `ValidationError`, nothing written                           |
-| Unknown conversation         | `NotFoundError`, nothing written                             |
-| Extraction provider fails    | Message stays stored; annotation job retries                 |
-| Embedding provider fails     | Structured rows and FTS rows stay; vector is filled on retry |
-| Vector extension unavailable | Exact scan is used; health reports `exact`                   |
-| Process crash during a job   | Job is reclaimed after 300 seconds                           |
+| Failure                            | Result                                                       |
+| ---------------------------------- | ------------------------------------------------------------ |
+| Invalid input                      | `ValidationError`, nothing written                           |
+| Unknown conversation               | `NotFoundError`, nothing written                             |
+| Extraction provider fails          | Messages stay stored and pending; `consolidate()` retries    |
+| Embedding provider fails           | Structured rows and FTS rows stay; vector is filled on retry |
+| Vector extension unavailable       | Exact scan is used; health reports `exact`                   |
+| Process crash during a job         | Job is reclaimed after 300 seconds                           |
+| Process crash during consolidation | Messages stay pending; the next call repeats extraction      |
 
 ## Concurrency
 

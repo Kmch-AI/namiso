@@ -5,10 +5,6 @@ import { asJobId, nowSeconds } from '../ids.ts'
 import { count, text } from './database.ts'
 import { mapJob } from './mappers.ts'
 
-export function enqueueAnnotate(db: Database, spaceId: MemorySpaceId, messageId: string): void {
-  enqueue(db, spaceId, 'annotate', `annotate:${messageId}`, { messageId })
-}
-
 export function enqueueChunk(db: Database, spaceId: MemorySpaceId, conversationId: string): void {
   enqueue(db, spaceId, 'chunk', `chunk:${conversationId}`, { conversationId })
 }
@@ -16,7 +12,7 @@ export function enqueueChunk(db: Database, spaceId: MemorySpaceId, conversationI
 function enqueue(
   db: Database,
   spaceId: MemorySpaceId,
-  type: 'annotate' | 'chunk',
+  type: 'chunk',
   dedupeKey: string,
   payload: Record<string, unknown>,
 ): void {

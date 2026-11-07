@@ -69,6 +69,7 @@ export interface BenchmarkReport {
   scoredItems: number
   personas: number
   turnsIngested: number
+  consolidationBatches: number
   ingestMs: number
   evidenceRecall: number | null
   contextHitRate: number | null
@@ -128,6 +129,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
   }
   const results: ItemResult[] = []
   let turnsIngested = 0
+  let consolidationBatches = 0
   let ingestMs = 0
   let providerIdentity: BenchmarkReport['providers'] | null = null
   const startedAt = new Date().toISOString()
@@ -167,6 +169,8 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
           turnsIngested += 1
         }
         await namiso.drain()
+        const consolidation = await namiso.consolidate({ conversationId: conversation.id })
+        consolidationBatches += consolidation.batches
         ingestMs += performance.now() - ingestStarted
         const messages = namiso.getMessages({
           conversationId: conversation.id,
@@ -244,6 +248,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
     results,
     personas: byPersona.size,
     turnsIngested,
+    consolidationBatches,
     ingestMs,
     hasAnswerKey: dataset.answerKey.size > 0,
   })
@@ -290,6 +295,7 @@ function summarize(input: {
   results: ItemResult[]
   personas: number
   turnsIngested: number
+  consolidationBatches: number
   ingestMs: number
   hasAnswerKey: boolean
 }): BenchmarkReport {
@@ -350,6 +356,7 @@ function summarize(input: {
     scoredItems: scored.length,
     personas: input.personas,
     turnsIngested: input.turnsIngested,
+    consolidationBatches: input.consolidationBatches,
     ingestMs: round(input.ingestMs),
     evidenceRecall,
     contextHitRate,

@@ -291,7 +291,8 @@ export interface MemoryContext {
   items: MemoryCandidate[]
   evidence: Message[]
   tokenEstimate: number
-  truncated: boolean
+  compressed: boolean
+  overBudget: boolean
   uncertainties: string[]
   trace: RetrievalTrace
 }

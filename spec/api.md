@@ -98,7 +98,7 @@ Returns:
   messageId: string
   conversationId: string
   accepted: true
-  processingStatus: 'pending' | 'completed'
+  consolidated: boolean
 }
 ```
 
@@ -109,12 +109,17 @@ Returns:
 ```ts
 await memory.drain({ limit?: number }): Promise<DrainReport>
 
-await memory.annotate(messageId: string): Promise<DrainReport>
+await memory.consolidate({
+  conversationId?: string,    // default: every conversation in the space
+  batchSize?: number,         // default 32, max 128
+}): Promise<ConsolidateReport>
 
 await memory.retryJobs(): Promise<DrainReport>
 ```
 
-`DrainReport` contains `processed`, `completed`, `failed`, and `pending`.
+`DrainReport` contains `processed`, `completed`, `failed`, and `pending`. It covers chunk and index jobs only. `consolidate()` returns `{ messages, batches }`, where `batches` equals the number of extraction provider calls.
+
+Ingestion never calls the extraction model. Messages stay pending until `consolidate()` runs. Each batch is one provider call, so consolidating a whole session costs one call per 32 messages by default. Call it before context compaction or a session switch. A failed call leaves every message in the batch pending; call it again to retry.
 
 ## Retrieve
 
@@ -139,7 +144,7 @@ await memory.retrieve({
 ```ts
 await memory.getContext({
   query: "我现在使用什么模型？",
-  maxTokens?: number,          // default 1200
+  maxTokens?: number,          // target, default 1200
   includeEvidence?: boolean,   // default true
   ...retrieve options
 }): Promise<MemoryContext>
@@ -147,15 +152,18 @@ await memory.getContext({
 
 `MemoryContext` contains:
 
-| Field           | Meaning                                   |
-| --------------- | ----------------------------------------- |
-| `text`          | Sectioned context for a prompt            |
-| `items`         | Structured candidates used in the context |
-| `evidence`      | Raw evidence messages                     |
-| `tokenEstimate` | Heuristic token count                     |
-| `truncated`     | Whether the budget removed content        |
-| `uncertainties` | Conflict and uncertainty notes            |
-| `trace`         | Retrieval trace                           |
+| Field           | Meaning                                                  |
+| --------------- | -------------------------------------------------------- |
+| `text`          | Sectioned context for a prompt                           |
+| `items`         | Structured candidates used in the context                |
+| `evidence`      | Raw evidence messages, full content                      |
+| `tokenEstimate` | Heuristic token count                                    |
+| `compressed`    | Whether excerpts were shortened to approach `maxTokens`  |
+| `overBudget`    | Whether the shortest excerpts still exceeded `maxTokens` |
+| `uncertainties` | Conflict and uncertainty notes                           |
+| `trace`         | Retrieval trace                                          |
+
+`maxTokens` is a target. The builder shortens evidence and summaries until the estimate fits. It never drops an item, so a set of records larger than the target reports `overBudget` instead of losing entries.
 
 ## Timeline
 

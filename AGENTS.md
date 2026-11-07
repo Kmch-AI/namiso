@@ -45,6 +45,7 @@ bench/                 chat-memory-benchmark adapter and local fixture
 ## Invariants
 
 - Raw messages are append-only. Structured memory is derived and rebuildable.
+- Extraction is explicit. `ingest()` never calls the model; `consolidate()` batches pending messages.
 - Every read and write is scoped to one memory space.
 - The assistant has one self entity per memory space. Type `self` belongs only to it.
 - Replacing a fact keeps history through claim status and `supersedes` links.

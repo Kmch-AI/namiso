@@ -1,4 +1,5 @@
 export { Namiso } from './namiso.ts'
+export type { ConsolidateReport } from './annotation/consolidator.ts'
 export type {
   ClaimDetails,
   ContextInput,

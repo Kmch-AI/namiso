@@ -26,13 +26,14 @@ The core does not import an HTTP client, a model SDK, or an agent harness. `Http
 ## Write path
 
 1. `ingest()` validates the input and resolves the conversation in the configured memory space.
-2. It appends the message and enqueues two jobs in one transaction: `annotate:<messageId>` and `chunk:<conversationId>`.
-3. `drain()` claims jobs in creation order.
-4. An `annotate` job loads recent context, calls the extraction provider, resolves entities, applies claims and events, links evidence, and syncs entity, claim, and event documents.
-5. A `chunk` job rebuilds deterministic conversation chunks, removes stale chunks, and syncs chunk documents.
-6. Index sync writes the document row, the FTS row, and the vector. FTS is written even if embedding fails, so a provider outage does not hide structured memory.
+2. It appends the message and upserts `chunk:<conversationId>` in one transaction. No extraction job is enqueued.
+3. `drain()` claims chunk jobs in creation order.
+4. A `chunk` job rebuilds deterministic conversation chunks, removes stale chunks, and syncs chunk documents.
+5. `consolidate()` collects messages with `consolidated_at` null, batches them per conversation, and sends one extraction request per batch.
+6. The pipeline resolves entities, applies claims and events, links evidence, syncs entity, claim, and event documents, and marks the batch consolidated.
+7. Index sync writes the document row, the FTS row, and the vector. FTS is written even if embedding fails, so a provider outage does not hide structured memory.
 
-The raw message commits before extraction runs. A failed job keeps the message and retries.
+The raw message commits before any model call. A failed extraction leaves the messages pending and the next `consolidate()` retries them.
 
 ## Read path
 
@@ -43,7 +44,7 @@ The raw message commits before extraction runs. A failed job keeps the message a
 5. Apply current-state and time-range filters, and collect conflict and uncertainty notes.
 6. Expand linked claims and events, then add timeline neighbours. Expansion is bounded.
 7. Select evidence messages with query overlap first, then fill remaining slots.
-8. Assemble sections under a token budget.
+8. Assemble sections against a soft token target, shortening excerpts before it drops anything.
 
 `retrieve()` stops before context assembly and returns the trace. `getContext()` adds the context.
 

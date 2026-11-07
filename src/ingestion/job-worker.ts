@@ -1,10 +1,9 @@
-import type { AnnotationPipeline } from '../annotation/pipeline.ts'
 import type { ChunkService } from '../ingestion/chunk-service.ts'
 import type { Database } from '../storage/database.ts'
 import type { Job, MemorySpaceId } from '../types.ts'
 
-import { asConversationId, asMessageId } from '../ids.ts'
-import { getConversation, getMessage } from '../storage/conversation-repo.ts'
+import { asConversationId } from '../ids.ts'
+import { getConversation } from '../storage/conversation-repo.ts'
 import {
   claimNextJob,
   completeJob,
@@ -22,18 +21,11 @@ export interface DrainReport {
 
 export class JobWorker {
   private readonly db: Database
-  private readonly pipeline: AnnotationPipeline
   private readonly chunks: ChunkService
   private readonly spaceId: MemorySpaceId
 
-  constructor(
-    db: Database,
-    pipeline: AnnotationPipeline,
-    chunks: ChunkService,
-    spaceId: MemorySpaceId,
-  ) {
+  constructor(db: Database, chunks: ChunkService, spaceId: MemorySpaceId) {
     this.db = db
-    this.pipeline = pipeline
     this.chunks = chunks
     this.spaceId = spaceId
   }
@@ -63,15 +55,8 @@ export class JobWorker {
   }
 
   private async execute(job: Job): Promise<void> {
-    if (job.type === 'annotate') {
-      const messageId = job.payload['messageId']
-      if (typeof messageId !== 'string') {
-        throw new Error(`annotate job ${job.id} has no messageId`)
-      }
-      const message = getMessage(this.db, asMessageId(messageId))
-      if (message === null) return
-      await this.pipeline.run(message)
-      return
+    if (job.type !== 'chunk') {
+      throw new Error(`unsupported job type ${job.type}`)
     }
     const conversationId = job.payload['conversationId']
     if (typeof conversationId !== 'string') {

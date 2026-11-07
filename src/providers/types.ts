@@ -50,7 +50,7 @@ export interface KnownEntity {
 
 export interface ExtractionInput {
   memorySpaceId: MemorySpaceId
-  focusMessageId: MessageId
+  focusMessageIds: readonly [MessageId, ...MessageId[]]
   messages: readonly ExtractionMessage[]
   knownEntities: readonly KnownEntity[]
 }

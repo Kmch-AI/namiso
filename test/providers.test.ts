@@ -98,7 +98,7 @@ test('rule extraction keeps full product names and detects state changes', async
   const messageId = asMessageId('message-1')
   const base = {
     memorySpaceId: asMemorySpaceId('space-1'),
-    focusMessageId: messageId,
+    focusMessageIds: [messageId] as const,
     knownEntities: [],
   }
   const usage = await provider.extract({
@@ -125,7 +125,7 @@ test('rule extraction keeps full product names and detects state changes', async
 
   const change = await provider.extract({
     ...base,
-    focusMessageId: asMessageId('message-2'),
+    focusMessageIds: [asMessageId('message-2')],
     messages: [
       {
         id: asMessageId('message-2'),
@@ -144,7 +144,7 @@ test('rule extraction keeps full product names and detects state changes', async
 
   const uncertain = await provider.extract({
     ...base,
-    focusMessageId: asMessageId('message-3'),
+    focusMessageIds: [asMessageId('message-3')],
     messages: [
       {
         id: asMessageId('message-3'),
@@ -169,7 +169,7 @@ test('entity types reserve self for the assistant itself', async () => {
   }
   const user = await provider.extract({
     ...base,
-    focusMessageId: asMessageId('message-1'),
+    focusMessageIds: [asMessageId('message-1')],
     messages: [
       {
         id: asMessageId('message-1'),
@@ -189,7 +189,7 @@ test('entity types reserve self for the assistant itself', async () => {
 
   const assistant = await provider.extract({
     ...base,
-    focusMessageId: asMessageId('message-2'),
+    focusMessageIds: [asMessageId('message-2')],
     messages: [
       {
         id: asMessageId('message-2'),
@@ -245,7 +245,7 @@ test('HTTP providers parse boundary payloads', async () => {
   })
   const result = await extraction.extract({
     memorySpaceId: asMemorySpaceId('space-1'),
-    focusMessageId: asMessageId('message-9'),
+    focusMessageIds: [asMessageId('message-9')],
     messages: [],
     knownEntities: [],
   })
@@ -300,8 +300,10 @@ test('health reports extraction usage from the HTTP provider', async () => {
     content: '我在使用 TTS-A。',
   })
   const drain = await namiso.drain()
+  const consolidated = await namiso.consolidate()
 
   assert.equal(drain.failed, 0)
+  assert.equal(consolidated.messages, 1)
   assert.deepEqual(namiso.health().extraction.usage, {
     promptTokens: 12,
     completionTokens: 34,

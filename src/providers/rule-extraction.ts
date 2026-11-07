@@ -5,6 +5,7 @@ import type {
   ExtractedEvent,
   ExtractedObject,
   ExtractionInput,
+  ExtractionMessage,
   ExtractionProvider,
   ExtractionResult,
 } from './types.ts'
@@ -16,13 +17,7 @@ export class RuleExtractionProvider implements ExtractionProvider {
   readonly version = 'rule-v2'
 
   async extract(input: ExtractionInput): Promise<ExtractionResult> {
-    const focus = input.messages.find((message) => message.id === input.focusMessageId)
-    if (focus === undefined) {
-      return { entities: [], claims: [], events: [] }
-    }
-    const speakerName = focus.speakerName.length > 0 ? focus.speakerName : focus.speakerId
-    const speakerType: EntityKind =
-      focus.role === 'assistant' ? 'self' : focus.role === 'user' ? 'person' : 'other'
+    const focusIds = new Set(input.focusMessageIds)
     const entities = new Map<string, ExtractedEntity>()
     const claims: ExtractedClaim[] = []
     const events: ExtractedEvent[] = []
@@ -45,14 +40,31 @@ export class RuleExtractionProvider implements ExtractionProvider {
         name: cleaned,
         type,
         ...(aliases === undefined ? {} : { aliases }),
-        evidenceMessageIds: [focus.id],
+        evidenceMessageIds: [],
       })
     }
 
+    for (const focus of input.messages) {
+      if (!focusIds.has(focus.id)) continue
+      this.extractMessage(focus, addEntity, claims, events)
+    }
+
+    return { entities: [...entities.values()], claims, events }
+  }
+
+  private extractMessage(
+    focus: ExtractionMessage,
+    addEntity: (name: string, type: EntityKind, aliases?: readonly string[]) => void,
+    claims: ExtractedClaim[],
+    events: ExtractedEvent[],
+  ): void {
+    const speakerName = focus.speakerName.length > 0 ? focus.speakerName : focus.speakerId
+    const speakerType: EntityKind =
+      focus.role === 'assistant' ? 'self' : focus.role === 'user' ? 'person' : 'other'
     addEntity(speakerName, speakerType)
 
     if (focus.role !== 'user') {
-      return { entities: [...entities.values()], claims: [], events: [] }
+      return
     }
 
     const content = focus.content.trim()
@@ -146,78 +158,78 @@ export class RuleExtractionProvider implements ExtractionProvider {
     const time = eventTime(content, focus.occurredAt)
 
     const usageMatch = content.match(
-      /(重新开始使用|重新使用|开始使用|开始用|换回|换成|改用|换用|不再使用|不再用|停止使用)\s*([^，。！？,!?\s]{1,40})/,
+      /(重新开始使用|重新使用|开始使用|开始用|换回|换成|改用|换用|不再使用|不再用|停止使用)(?:了)?\s*([^，。！？,!?\s]{1,40})/,
     )
     if (usageMatch !== null) {
       const verb = usageMatch[1] ?? ''
       const objectName = cleanValue(usageMatch[2] ?? '')
       const stops = /不再|停止/.test(verb)
-      addEntity(objectName, guessType(objectName))
-      events.push({
-        type: stops ? 'usage_stop' : 'usage_change',
-        summary: truncate(content, 160),
-        occurredAt: time.occurredAt,
-        timePrecision: time.precision,
-        participants: [
-          { name: speakerName, type: speakerType, role: 'actor' },
-          { name: objectName, type: guessType(objectName), role: 'object' },
-        ],
-        modality,
-        confidence: uncertain ? 0.5 : 0.85,
-        evidenceMessageIds: [focus.id],
-      })
+      if (objectName.length > 0) {
+        addEntity(objectName, guessType(objectName))
+        events.push({
+          type: stops ? 'usage_stop' : 'usage_change',
+          summary: truncate(content, 160),
+          occurredAt: time.occurredAt,
+          timePrecision: time.precision,
+          participants: [
+            { name: speakerName, type: speakerType, role: 'actor' },
+            { name: objectName, type: guessType(objectName), role: 'object' },
+          ],
+          modality,
+          confidence: uncertain ? 0.5 : 0.85,
+          evidenceMessageIds: [focus.id],
+        })
+      }
     }
 
     const recommendationMatch = content.match(/(?:推荐|安利)(?:了)?\s*([^，。！？,!?\s]{1,40})/)
     const recommended = recommendationMatch?.[1]
     if (recommended !== undefined) {
       const objectName = cleanValue(recommended)
-      addEntity(objectName, guessType(objectName))
-      events.push({
-        type: 'recommendation',
-        summary: truncate(content, 160),
-        occurredAt: time.occurredAt,
-        timePrecision: time.precision,
-        participants: [
-          { name: speakerName, type: speakerType, role: 'actor' },
-          { name: objectName, type: guessType(objectName), role: 'object' },
-        ],
-        modality,
-        confidence: 0.8,
-        evidenceMessageIds: [focus.id],
-      })
+      if (objectName.length > 0) {
+        addEntity(objectName, guessType(objectName))
+        events.push({
+          type: 'recommendation',
+          summary: truncate(content, 160),
+          occurredAt: time.occurredAt,
+          timePrecision: time.precision,
+          participants: [
+            { name: speakerName, type: speakerType, role: 'actor' },
+            { name: objectName, type: guessType(objectName), role: 'object' },
+          ],
+          modality,
+          confidence: 0.8,
+          evidenceMessageIds: [focus.id],
+        })
+      }
     }
 
     const loanMatch = content.match(/(?:借了|借给)([^，。！？,!?\s]{1,20})/)
     const borrowed = loanMatch?.[1]
     if (borrowed !== undefined) {
       const objectName = cleanValue(borrowed)
-      addEntity(objectName, guessType(objectName))
-      events.push({
-        type: 'loan',
-        summary: truncate(content, 160),
-        occurredAt: time.occurredAt,
-        timePrecision: time.precision,
-        participants: [
-          { name: speakerName, type: speakerType, role: 'actor' },
-          { name: objectName, type: guessType(objectName), role: 'object' },
-        ],
-        modality,
-        confidence: 0.8,
-        evidenceMessageIds: [focus.id],
-      })
+      if (objectName.length > 0) {
+        addEntity(objectName, guessType(objectName))
+        events.push({
+          type: 'loan',
+          summary: truncate(content, 160),
+          occurredAt: time.occurredAt,
+          timePrecision: time.precision,
+          participants: [
+            { name: speakerName, type: speakerType, role: 'actor' },
+            { name: objectName, type: guessType(objectName), role: 'object' },
+          ],
+          modality,
+          confidence: 0.8,
+          evidenceMessageIds: [focus.id],
+        })
+      }
     }
 
     for (const claim of claims) {
       if (claim.object.kind === 'entity') {
         addEntity(claim.object.name, claim.object.type)
       }
-    }
-
-    return {
-      entities: [...entities.values()],
-      claims,
-      events,
     }
   }
 }

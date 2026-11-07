@@ -1,31 +1,31 @@
 # Annotation
 
-Annotation turns a raw message into entities, claims, events, evidence, and state links. The pipeline is `src/annotation/pipeline.ts`.
+Annotation turns raw messages into entities, claims, events, evidence, and state links. The pipeline is `src/annotation/pipeline.ts`; batching and pending state belong to `src/annotation/consolidator.ts`.
 
 ## Pipeline
 
-1. Resolve the speaker entity.
-2. If the message role is not in `extractRoles`, write the speaker annotation, sync the speaker document, and stop.
-3. Load up to eight previous messages as context.
-4. Build the extraction input with the focus message, context, and known entities mentioned in those messages.
-5. Call the extraction provider.
-6. Validate evidence IDs against the same memory space. Unknown IDs fall back to the focus message.
+1. Receive a focus batch and up to eight messages of earlier context.
+2. Resolve the speaker entity for every focus message.
+3. If no focus message has a role in `extractRoles`, sync the speaker documents and mark the batch consolidated.
+4. Build the extraction input with the focus message IDs, the focus batch, the context, and known entities mentioned in those messages.
+5. Call the extraction provider once for the batch.
+6. Validate evidence IDs against the same memory space. A claim or event with no valid evidence is skipped.
 7. In one transaction, resolve entities, apply claims and events, add annotations, and link evidence.
-8. Sync retrieval documents for every touched entity, claim, and event.
+8. Sync retrieval documents for every touched entity, claim, and event, then mark the batch consolidated.
 
 Evidence IDs from a provider are untrusted. The pipeline drops IDs that do not exist in the space.
 
 ## Role policy
 
-`extractRoles` defaults to `['user', 'assistant']`. User and assistant messages are sent to extraction. System and tool messages keep a speaker annotation and remain in raw chunks.
+`extractRoles` defaults to `['user', 'assistant']`. User and assistant messages in a batch are sent to extraction. System and tool messages keep a speaker annotation and remain in raw chunks.
 
 Set `extractRoles: ['user']` to skip assistant extraction. Assistant messages still keep a speaker annotation and remain in raw chunks. The rule extractor still ignores assistant-stated facts; use an LLM provider for them.
 
 ## Extraction contract
 
-The provider receives the focus message, up to eight context messages, and known entities. It must extract only from the focus message. Context and known entities are for resolving references.
+The provider receives the focus message IDs, the batch, up to eight context messages, and known entities. It must extract only from the focus messages. Context and known entities are for resolving references.
 
-Known entities are filtered before the call. The self entity is always included first when it exists. The remaining entities are those whose name or alias appears in the focus message or one of the context messages, capped at 50 total. This keeps the extraction prompt bounded as the space grows and gives the model a stable identity for the assistant.
+Known entities are filtered before the call. The self entity is always included first when it exists. The remaining entities are those whose name or alias appears in any focus or context message, capped at 50 total. This keeps the extraction prompt bounded as the space grows and gives the model a stable identity for the assistant. Because the batch is larger than one message, the entity list covers the whole batch rather than a single turn.
 
 The provider returns:
 

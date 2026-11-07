@@ -1,4 +1,5 @@
 import type { ForgetInput, ForgetReport } from './admin/forget.ts'
+import type { ConsolidateReport } from './annotation/consolidator.ts'
 import type { NamisoOptions, ResolvedNamisoOptions } from './config.ts'
 import type { DrainReport } from './ingestion/job-worker.ts'
 import type { ExtractionUsage } from './providers/types.ts'
@@ -20,20 +21,17 @@ import type {
 } from './types.ts'
 
 import { forget as forgetMemories } from './admin/forget.ts'
+import {
+  Consolidator,
+  DEFAULT_CONSOLIDATE_BATCH,
+  MAX_CONSOLIDATE_BATCH,
+} from './annotation/consolidator.ts'
 import { EntityResolver } from './annotation/entity-resolver.ts'
 import { AnnotationPipeline } from './annotation/pipeline.ts'
 import { normalizeSelfIdentity, resolveOptions } from './config.ts'
 import { buildContext } from './context/builder.ts'
 import { NotFoundError, ValidationError } from './errors.ts'
-import {
-  asConversationId,
-  asEntityId,
-  asEventId,
-  asJobId,
-  asMessageId,
-  nowSeconds,
-  timestampOf,
-} from './ids.ts'
+import { asConversationId, asEntityId, asEventId, nowSeconds, timestampOf } from './ids.ts'
 import { entityDocumentText } from './indexing/documents.ts'
 import { Indexer } from './indexing/indexer.ts'
 import { rebuildIndexes } from './indexing/rebuild.ts'
@@ -43,25 +41,19 @@ import { Retriever } from './retrieval/retriever.ts'
 import { chunkCount } from './storage/chunk-repo.ts'
 import {
   appendMessage,
+  countUnconsolidatedMessages,
   createConversation as insertConversation,
   ensureMemorySpace,
   ensureWorkspace,
   findMessageByExternalId,
   getConversation as findConversation,
-  getMessage,
+  isMessageConsolidated,
   listConversations,
   listMessages,
   messageCount,
 } from './storage/conversation-repo.ts'
 import { Database } from './storage/database.ts'
-import {
-  enqueueAnnotate,
-  enqueueChunk,
-  getJob,
-  jobCounts,
-  pendingJobCount,
-  retryFailedJobs,
-} from './storage/job-repo.ts'
+import { enqueueChunk, jobCounts, pendingJobCount, retryFailedJobs } from './storage/job-repo.ts'
 import {
   addMemoryLink,
   claimCount,
@@ -106,7 +98,7 @@ export interface IngestResult {
   messageId: string
   conversationId: string
   accepted: boolean
-  processingStatus: 'pending' | 'completed'
+  consolidated: boolean
 }
 
 export interface RetrieveInput {
@@ -194,6 +186,7 @@ export interface HealthReport {
     chunks: number
     documents: number
     missingVectors: number
+    pendingMessages: number
   }
   jobs: Record<string, number>
   pendingJobs: number
@@ -209,6 +202,7 @@ export class Namiso {
   private readonly resolver: EntityResolver
   private readonly indexer: Indexer
   private readonly worker: JobWorker
+  private readonly consolidator: Consolidator
   private readonly retriever: Retriever
   private readonly chunks: ChunkService
   private closed = false
@@ -234,7 +228,8 @@ export class Namiso {
       config.extractRoles,
     )
     this.chunks = new ChunkService(db, this.indexer, config.chunkPolicy)
-    this.worker = new JobWorker(db, pipeline, this.chunks, memorySpace.id)
+    this.worker = new JobWorker(db, this.chunks, memorySpace.id)
+    this.consolidator = new Consolidator(db, pipeline, memorySpace.id)
     this.retriever = new Retriever(
       db,
       this.vectors,
@@ -341,7 +336,7 @@ export class Namiso {
           messageId: existing.id,
           conversationId: existing.conversationId,
           accepted: true,
-          processingStatus: this.annotationStatus(existing.id),
+          consolidated: isMessageConsolidated(this.db, existing.id),
         }
       }
     }
@@ -363,7 +358,6 @@ export class Namiso {
           ? {}
           : { externalMessageId: input.externalMessageId }),
       })
-      enqueueAnnotate(this.db, this.memorySpace.id, stored.id)
       enqueueChunk(this.db, this.memorySpace.id, stored.conversationId)
       return stored
     })
@@ -371,13 +365,8 @@ export class Namiso {
       messageId: message.id,
       conversationId: message.conversationId,
       accepted: true,
-      processingStatus: this.annotationStatus(message.id),
+      consolidated: false,
     }
-  }
-
-  private annotationStatus(messageId: string): 'pending' | 'completed' {
-    const job = getJob(this.db, asJobId(`job:annotate:${messageId}`))
-    return job?.status === 'completed' ? 'completed' : 'pending'
   }
 
   async drain(options: { limit?: number } = {}): Promise<DrainReport> {
@@ -385,17 +374,24 @@ export class Namiso {
     return this.worker.drain(options.limit ?? 200)
   }
 
-  async annotate(messageId: string): Promise<DrainReport> {
+  async consolidate(
+    input: { conversationId?: string; batchSize?: number } = {},
+  ): Promise<ConsolidateReport> {
     this.assertOpen()
-    const message = getMessage(this.db, asMessageId(messageId))
-    if (message === null || message.memorySpaceId !== this.memorySpace.id) {
-      throw new NotFoundError('message', messageId)
+    const batchSize = input.batchSize ?? DEFAULT_CONSOLIDATE_BATCH
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MAX_CONSOLIDATE_BATCH) {
+      throw new ValidationError(
+        `batchSize must be an integer between 1 and ${MAX_CONSOLIDATE_BATCH}`,
+      )
     }
-    this.db.transaction(() => {
-      enqueueAnnotate(this.db, this.memorySpace.id, message.id)
-      enqueueChunk(this.db, this.memorySpace.id, message.conversationId)
-    })
-    return this.worker.drain()
+    if (input.conversationId === undefined) {
+      return this.consolidator.run({ batchSize })
+    }
+    const conversation = findConversation(this.db, asConversationId(input.conversationId))
+    if (conversation === null || conversation.memorySpaceId !== this.memorySpace.id) {
+      throw new NotFoundError('conversation', input.conversationId)
+    }
+    return this.consolidator.run({ conversationId: conversation.id, batchSize })
   }
 
   async retrieve(input: RetrieveInput): Promise<RetrieveResult> {
@@ -620,6 +616,7 @@ export class Namiso {
       chunks: chunkCount(this.db, this.memorySpace.id),
       documents: documentCount(this.db, this.memorySpace.id),
       missingVectors: missingVectorCount(this.db, this.memorySpace.id),
+      pendingMessages: countUnconsolidatedMessages(this.db, this.memorySpace.id),
     }
     const jobs = jobCounts(this.db, this.memorySpace.id)
     const warnings: string[] = []

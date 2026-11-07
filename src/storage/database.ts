@@ -4,6 +4,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { NamisoError } from '../errors.ts'
 import {
   ENTITY_TYPE_MIGRATION_SQL,
+  MESSAGE_CONSOLIDATION_INDEX_SQL,
+  MESSAGE_CONSOLIDATION_MIGRATION_SQL,
   SCHEMA_SQL,
   SCHEMA_VERSION,
   SELF_TYPE_MIGRATION_SQL,
@@ -43,9 +45,20 @@ export class Database {
     if (version < 3) {
       this.raw.exec(SELF_TYPE_MIGRATION_SQL)
     }
+    if (version < 4 && !this.hasColumn('messages', 'consolidated_at')) {
+      this.raw.exec(MESSAGE_CONSOLIDATION_MIGRATION_SQL)
+    }
+    this.raw.exec(MESSAGE_CONSOLIDATION_INDEX_SQL)
     if (version < SCHEMA_VERSION) {
       this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     }
+  }
+
+  private hasColumn(table: string, column: string): boolean {
+    return this.raw
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .some((row) => text(row, 'name') === column)
   }
 
   exec(sql: string): void {

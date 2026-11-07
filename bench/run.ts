@@ -78,6 +78,7 @@ function formatReport(report: BenchmarkReport): string {
     `providers: embedding=${report.providers.embedding} extraction=${report.providers.extraction} reranker=${report.providers.reranker}`,
     `items: ${report.items} | scored: ${report.scoredItems} | personas: ${report.personas} | turns: ${report.turnsIngested}`,
     `ingest: ${report.ingestMs} ms`,
+    `consolidation batches: ${report.consolidationBatches}`,
     `evidence recall: ${formatRate(report.evidenceRecall)}`,
     `context hit rate: ${formatRate(report.contextHitRate)}`,
     `context tokens p50/p95/max: ${report.contextTokens.p50}/${report.contextTokens.p95}/${report.contextTokens.max}`,

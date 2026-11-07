@@ -18,7 +18,7 @@ import {
   asWorkspaceId,
   nowSeconds,
 } from '../ids.ts'
-import { count, textOrNull } from './database.ts'
+import { count, text, textOrNull } from './database.ts'
 import { mapConversation, mapMemorySpace, mapMessage, mapWorkspace } from './mappers.ts'
 
 export interface EnsureWorkspaceInput {
@@ -290,6 +290,83 @@ export function recentMessages(
     )
     .map(mapMessage)
     .toReversed()
+}
+
+export function listUnconsolidatedMessages(
+  db: Database,
+  memorySpaceId: MemorySpaceId,
+  conversationId: ConversationId,
+  limit: number,
+): Message[] {
+  return db
+    .all(
+      `SELECT * FROM messages
+       WHERE memory_space_id = ? AND conversation_id = ? AND consolidated_at IS NULL
+       ORDER BY message_index ASC LIMIT ?`,
+      memorySpaceId,
+      conversationId,
+      limit,
+    )
+    .map(mapMessage)
+}
+
+export function listUnconsolidatedConversationIds(
+  db: Database,
+  memorySpaceId: MemorySpaceId,
+): ConversationId[] {
+  return db
+    .all(
+      `SELECT DISTINCT conversation_id FROM messages
+       WHERE memory_space_id = ? AND consolidated_at IS NULL
+       ORDER BY conversation_id`,
+      memorySpaceId,
+    )
+    .map((row) => asConversationId(text(row, 'conversation_id')))
+}
+
+export function countUnconsolidatedMessages(db: Database, memorySpaceId: MemorySpaceId): number {
+  return count(
+    db.get(
+      'SELECT COUNT(*) AS n FROM messages WHERE memory_space_id = ? AND consolidated_at IS NULL',
+      memorySpaceId,
+    ),
+    'n',
+  )
+}
+
+export function countUnconsolidatedInConversation(
+  db: Database,
+  memorySpaceId: MemorySpaceId,
+  conversationId: ConversationId,
+): number {
+  return count(
+    db.get(
+      `SELECT COUNT(*) AS n FROM messages
+       WHERE memory_space_id = ? AND conversation_id = ? AND consolidated_at IS NULL`,
+      memorySpaceId,
+      conversationId,
+    ),
+    'n',
+  )
+}
+
+export function isMessageConsolidated(db: Database, messageId: MessageId): boolean {
+  const row = db.get('SELECT consolidated_at FROM messages WHERE id = ?', messageId)
+  return row !== undefined && row['consolidated_at'] !== null
+}
+
+export function markMessagesConsolidated(
+  db: Database,
+  messageIds: readonly MessageId[],
+  at = nowSeconds(),
+): void {
+  for (const messageId of messageIds) {
+    db.run(
+      'UPDATE messages SET consolidated_at = ? WHERE id = ? AND consolidated_at IS NULL',
+      at,
+      messageId,
+    )
+  }
 }
 
 export function latestUserSpeakerId(db: Database, memorySpaceId: MemorySpaceId): string | null {

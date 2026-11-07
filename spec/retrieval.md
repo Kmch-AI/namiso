@@ -95,7 +95,9 @@ Sections appear in this order:
 
 Every item keeps its internal ID, such as `[claim:<uuid>]` or `[message:<uuid>]`, so a caller can fetch the record.
 
-The budget uses `estimateTokens()`: one per CJK character and one per four remaining characters. The heuristic is deliberately conservative. Sections shrink from the end when they exceed the budget. The uncertainty section is always appended, so it can push the estimate slightly over the limit. An empty context is never returned for a non-empty result set.
+The budget is a target, not a cap. `estimateTokens()` counts one per CJK character and one per four remaining characters; the heuristic is deliberately conservative.
+
+The builder renders every selected item at full detail first. If the estimate exceeds `maxTokens`, it scales excerpt lengths for evidence, event summaries, entity descriptions, and literal objects down to a floor, then binary-searches the scale that fits. Nothing is dropped: every claim, entity, event, relation, and evidence message keeps its ID line, and `context.evidence` still returns full message records. `compressed` reports that excerpts were shortened. `overBudget` reports that even the floor exceeded the target, which happens when the selected items alone cost more than `maxTokens`. The uncertainty section is part of every render. An empty context is never returned for a non-empty result set.
 
 ## Trace
 

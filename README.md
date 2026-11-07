@@ -41,6 +41,7 @@ await memory.ingest({
 })
 
 await memory.drain()
+await memory.consolidate()
 
 const context = await memory.getContext({
   query: '我现在使用什么模型？',
@@ -50,7 +51,7 @@ console.log(context.text)
 memory.close()
 ```
 
-`drain()` runs extraction, link updates, and index writes. For lower ingest latency, batch several messages and call `drain()` once.
+`drain()` builds conversation chunks and their indexes; it makes no extraction call. `consolidate()` runs one extraction call per pending batch. Call it at a session boundary, before context compaction or a session switch, not after every message. Retrieval embeds the query and reranks on each call, but never re-extracts history.
 
 `self` creates the single self entity for the assistant. Assistant speakers resolve to it, its description holds persona and background, and other AI systems are stored as `artifact`.
 

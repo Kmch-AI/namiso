@@ -14,7 +14,7 @@ test('self is canonical and other self entities are stored as artifacts', async 
           {
             name: 'GPT-5',
             type: 'self',
-            evidenceMessageIds: [input.focusMessageId],
+            evidenceMessageIds: [input.focusMessageIds[0]],
           },
         ],
         claims: [
@@ -24,7 +24,7 @@ test('self is canonical and other self entities are stored as artifacts', async 
             object: { kind: 'literal', value: '温和' },
             modality: 'asserted',
             confidence: 0.9,
-            evidenceMessageIds: [input.focusMessageId],
+            evidenceMessageIds: [input.focusMessageIds[0]],
           },
         ],
         events: [
@@ -37,7 +37,7 @@ test('self is canonical and other self entities are stored as artifacts', async 
             ],
             modality: 'asserted',
             confidence: 0.9,
-            evidenceMessageIds: [input.focusMessageId],
+            evidenceMessageIds: [input.focusMessageIds[0]],
           },
         ],
       }

@@ -56,7 +56,8 @@ Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`,
 - **Context hit rate**: whether any anchor for the question appears. This is higher when a question has several anchors.
 - **Context tokens**: the engine's heuristic estimate for the assembled context.
 - **Retrieval latency**: wall time for one `getContext()` call, including query embedding, retrieval, reranking, expansion, and context assembly.
-- **Ingest time**: all message writes, drains, extraction, and indexing for the run.
+- **Ingest time**: all message writes, drains, consolidation, extraction, and indexing for the run.
+- **Consolidation batches**: extraction provider calls. One call covers up to 32 pending messages.
 
 Answer-key `retrieval_required: false` entries are excluded from recall. The demo has four such entries, so 104 of 108 questions are scored.
 
@@ -119,7 +120,7 @@ The raw baseline uses only chunks (`memoryTypes: ["conversation"]`). The hybrid 
 
 The demo set is saturated at 100% for both modes. It is useful as an integration check, not as evidence of ranking quality.
 
-The 1609-token maximum is 9 over the 1600-token request. The uncertainty section is appended after the budget check so a conflict note is never dropped.
+The context budget is a target, not a cap. The builder shortens excerpts until the estimate fits and keeps every selected record. A set of records larger than the target reports `overBudget` rather than losing entries.
 
 ## Provenance
 

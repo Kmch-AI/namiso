@@ -11,7 +11,7 @@ import type {
 
 import { asMessageId } from '../ids.ts'
 import { getMessagesByIds } from '../storage/conversation-repo.ts'
-import { estimateTokens, segment, truncate } from '../text.ts'
+import { estimateTokens, excerpt, segment, truncate } from '../text.ts'
 
 export interface BuildContextInput {
   memorySpaceId: MemorySpaceId
@@ -25,6 +25,29 @@ export interface BuildContextInput {
 const MAX_EVENTS = 12
 const MAX_EVIDENCE = 12
 const MAX_RELATIONS = 12
+
+interface DetailLevel {
+  evidence: number
+  summary: number
+  description: number
+  literal: number
+}
+
+const FULL_DETAIL: DetailLevel = {
+  evidence: 320,
+  summary: 240,
+  description: 240,
+  literal: 240,
+}
+
+const MIN_DETAIL: DetailLevel = {
+  evidence: 64,
+  summary: 48,
+  description: 32,
+  literal: 40,
+}
+
+const SCALE_STEPS = 8
 
 export function buildContext(db: Database, input: BuildContextInput): MemoryContext {
   const maxTokens = input.maxTokens ?? 1200
@@ -64,6 +87,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
 
   const text = assemble({
     maxTokens,
+    query: input.query,
     activeClaims,
     entities,
     events,
@@ -78,7 +102,8 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     items: [...activeClaims, ...entities, ...events, ...historicalClaims],
     evidence,
     tokenEstimate: estimateTokens(text.text),
-    truncated: text.truncated,
+    compressed: text.compressed,
+    overBudget: text.overBudget,
     uncertainties: uncertaintyNotes,
     trace: input.trace,
   }
@@ -86,6 +111,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
 
 interface SectionsInput {
   maxTokens: number
+  query: string
   activeClaims: readonly MemoryCandidate[]
   entities: readonly MemoryCandidate[]
   events: readonly MemoryCandidate[]
@@ -95,96 +121,129 @@ interface SectionsInput {
   uncertainties: readonly string[]
 }
 
-function assemble(input: SectionsInput): { text: string; truncated: boolean } {
-  let used = 0
-  let truncated = false
-  const blocks: string[] = []
+interface Rendered {
+  text: string
+  cost: number
+}
 
+function assemble(input: SectionsInput): {
+  text: string
+  compressed: boolean
+  overBudget: boolean
+} {
+  const tokens = new Set(segment(input.query))
+  const full = renderSections(input, FULL_DETAIL, tokens)
+  if (full.cost <= input.maxTokens) {
+    return { text: full.text, compressed: false, overBudget: false }
+  }
+  let best = renderSections(input, MIN_DETAIL, tokens)
+  let low = 0
+  let high = 1
+  for (let step = 0; step < SCALE_STEPS; step += 1) {
+    const scale = (low + high) / 2
+    const candidate = renderSections(input, detailAt(scale), tokens)
+    if (candidate.cost <= input.maxTokens) {
+      best = candidate
+      low = scale
+    } else {
+      high = scale
+    }
+  }
+  return {
+    text: best.text,
+    compressed: true,
+    overBudget: best.cost > input.maxTokens,
+  }
+}
+
+function detailAt(scale: number): DetailLevel {
+  const mix = (min: number, max: number): number => Math.round(min + (max - min) * scale)
+  return {
+    evidence: mix(MIN_DETAIL.evidence, FULL_DETAIL.evidence),
+    summary: mix(MIN_DETAIL.summary, FULL_DETAIL.summary),
+    description: mix(MIN_DETAIL.description, FULL_DETAIL.description),
+    literal: mix(MIN_DETAIL.literal, FULL_DETAIL.literal),
+  }
+}
+
+function renderSections(
+  input: SectionsInput,
+  detail: DetailLevel,
+  tokens: ReadonlySet<string>,
+): Rendered {
+  const blocks: string[] = []
   const addSection = (header: string, lines: readonly string[]): void => {
     if (lines.length === 0) return
-    const headerCost = estimateTokens(header) + 1
-    if (used + headerCost > input.maxTokens) {
-      truncated = true
-      return
-    }
-    const accepted: string[] = []
-    let sectionCost = headerCost
-    for (const line of lines) {
-      const cost = estimateTokens(line) + 1
-      if (used + sectionCost + cost > input.maxTokens) {
-        truncated = true
-        break
-      }
-      accepted.push(line)
-      sectionCost += cost
-    }
-    if (accepted.length === 0) return
-    blocks.push(`${header}\n${accepted.join('\n')}`)
-    used += sectionCost
+    blocks.push(`${header}\n${lines.join('\n')}`)
   }
 
   addSection(
     '[Current Claims]',
-    input.activeClaims.map((candidate) => claimLine(candidate)),
+    input.activeClaims.map((candidate) => claimLine(candidate, detail)),
   )
   addSection(
     '[Relevant Entities]',
-    input.entities.map((candidate) => entityLine(candidate)),
+    input.entities.map((candidate) => entityLine(candidate, detail)),
   )
   addSection(
     '[Historical Events]',
-    input.events.map((candidate) => eventLine(candidate)),
+    input.events.map((candidate) => eventLine(candidate, detail, tokens)),
   )
   addSection(
     '[Historical Claims]',
-    input.historicalClaims.map((candidate) => claimLine(candidate)),
+    input.historicalClaims.map((candidate) => claimLine(candidate, detail)),
   )
   addSection('[Memory Relations]', input.relations.slice(0, MAX_RELATIONS))
   addSection(
     '[Evidence]',
-    input.evidence.slice(0, MAX_EVIDENCE).map((message) => evidenceLine(message)),
+    input.evidence.slice(0, MAX_EVIDENCE).map((message) => evidenceLine(message, detail, tokens)),
   )
   if (input.uncertainties.length > 0) {
     const lines = input.uncertainties.map((note) => `- ${note}`)
-    const header = '[Uncertainty]'
-    blocks.push(`${header}\n${lines.join('\n')}`)
-    used += estimateTokens(header) + lines.reduce((sum, line) => sum + estimateTokens(line) + 1, 0)
+    blocks.push(`[Uncertainty]\n${lines.join('\n')}`)
   }
-  return { text: blocks.join('\n\n'), truncated: truncated || used > input.maxTokens }
+  const text = blocks.join('\n\n')
+  return { text, cost: estimateTokens(text) }
 }
 
-function claimLine(candidate: MemoryCandidate): string {
+function claimLine(candidate: MemoryCandidate, detail: DetailLevel): string {
   if (candidate.record.kind !== 'claim') return ''
   const { claim, subject, objectEntity } = candidate.record
   const object =
-    claim.object.kind === 'literal' ? claim.object.value : (objectEntity?.name ?? '未知主体')
+    claim.object.kind === 'literal'
+      ? truncate(claim.object.value, detail.literal)
+      : (objectEntity?.name ?? '未知主体')
   return `- [claim:${claim.id}] ${subject.name} ${claim.predicate} ${object}（${statusLabel(claim.status)}）`
 }
 
-function entityLine(candidate: MemoryCandidate): string {
+function entityLine(candidate: MemoryCandidate, detail: DetailLevel): string {
   if (candidate.record.kind !== 'entity') return ''
   const { entity, aliases } = candidate.record
   const details = [
-    entity.description,
-    aliases.length > 0 ? `别名：${aliases.join('、')}` : null,
+    entity.description === null ? null : truncate(entity.description, detail.description),
+    aliases.length > 0 ? truncate(`别名：${aliases.join('、')}`, detail.description) : null,
   ].filter((value): value is string => value !== null && value.length > 0)
   const suffix = details.length > 0 ? `：${details.join('；')}` : ''
   return `- [entity:${entity.id}] ${entity.name}（${entity.type}）${suffix}`
 }
 
-function eventLine(candidate: MemoryCandidate): string {
+function eventLine(
+  candidate: MemoryCandidate,
+  detail: DetailLevel,
+  tokens: ReadonlySet<string>,
+): string {
   if (candidate.record.kind !== 'event') return ''
   const { event, participants } = candidate.record
   const date = event.occurredAt === null ? '时间未知' : formatDate(event.occurredAt)
   const people = participants.map((item) => `${item.entity.name}（${item.role}）`).join('、')
-  return `- [event:${event.id}] ${date} ${event.type}：${truncate(event.summary, 240)}${
+  return `- [event:${event.id}] ${date} ${event.type}：${excerpt(event.summary, tokens, detail.summary)}${
     people.length > 0 ? `；参与者：${people}` : ''
   }`
 }
 
-function evidenceLine(message: Message): string {
+function evidenceLine(message: Message, detail: DetailLevel, tokens: ReadonlySet<string>): string {
   const date = formatDate(message.occurredAt)
-  return `- [message:${message.id}] ${date} ${message.speakerId}：${truncate(message.content, 320)}`
+  return `- [message:${message.id}] ${date} ${message.speakerId}：${excerpt(message.content, tokens, detail.evidence)}`
 }
 
 function collectRelations(candidates: readonly MemoryCandidate[]): string[] {

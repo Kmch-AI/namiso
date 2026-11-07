@@ -1,4 +1,4 @@
-import type { TimePrecision } from '../types.ts'
+import type { MessageId, TimePrecision } from '../types.ts'
 import type {
   EmbeddingProvider,
   ExtractedClaim,
@@ -138,7 +138,7 @@ export class HttpExtractionProvider implements ExtractionProvider {
         {
           role: 'user',
           content: JSON.stringify({
-            focusMessageId: input.focusMessageId,
+            focusMessageIds: input.focusMessageIds,
             messages: input.messages,
             knownEntities: input.knownEntities,
           }),
@@ -164,7 +164,7 @@ export class HttpExtractionProvider implements ExtractionProvider {
     } catch (error) {
       throw new ProviderError('extraction content is not JSON', { cause: error })
     }
-    return parseExtractionResult(parsed, input.focusMessageId)
+    return parseExtractionResult(parsed, input.focusMessageIds)
   }
 
   private recordUsage(usage: ExtractionUsage | null): void {
@@ -209,23 +209,26 @@ function tokenCount(value: unknown): number | undefined {
   return Math.floor(value)
 }
 
-const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from one focus message.
-Extract only from the message whose id is focusMessageId. The other messages are context for resolving references; do not extract facts from them.
-knownEntities are for resolving names and aliases only. Do not output an entity unless the focus message mentions it.
+const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from a batch of focus messages.
+focusMessageIds lists the messages to extract from. The other messages are context for resolving references; do not extract facts from them.
+knownEntities are for resolving names and aliases only. Do not output an entity unless a focus message mentions it.
 Return one JSON object with keys entities, claims, events.
 entities: [{name, type, aliases?, description?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
 The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
 claims: [{subject: {name, type}, predicate, object: {kind: "literal", value} | {kind: "entity", name, type}, modality, confidence, evidenceMessageIds}].
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
 modality is asserted, uncertain, negated, hypothetical, or quoted.
-Every claim and event must cite focusMessageId in evidenceMessageIds. Do not invent facts. Use uncertain when the speaker is not asserting the fact.
-If the focus message contains no long-term memory, return {entities: [], claims: [], events: []}.`
+Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts. Use uncertain when the speaker is not asserting the fact.
+If the focus messages contain no long-term memory, return {entities: [], claims: [], events: []}.`
 
-function parseExtractionResult(value: unknown, focusMessageId: string): ExtractionResult {
+function parseExtractionResult(
+  value: unknown,
+  focusMessageIds: readonly [MessageId, ...MessageId[]],
+): ExtractionResult {
   const root = asRecord(value, 'extraction result')
-  const entities = parseItems(root['entities'], (item) => parseEntity(item, focusMessageId))
-  const claims = parseItems(root['claims'], (item) => parseClaim(item, focusMessageId))
-  const events = parseItems(root['events'], (item) => parseEvent(item, focusMessageId))
+  const entities = parseItems(root['entities'], (item) => parseEntity(item, focusMessageIds))
+  const claims = parseItems(root['claims'], (item) => parseClaim(item, focusMessageIds))
+  const events = parseItems(root['events'], (item) => parseEvent(item, focusMessageIds))
   return { entities, claims, events }
 }
 
@@ -243,7 +246,10 @@ function parseItems<T>(value: unknown, parse: (item: unknown) => T | null): T[] 
   return result
 }
 
-function parseEntity(item: unknown, focusMessageId: string): ExtractedEntity | null {
+function parseEntity(
+  item: unknown,
+  focusMessageIds: readonly [MessageId, ...MessageId[]],
+): ExtractedEntity | null {
   const record = asRecord(item, 'entity')
   const name = stringField(record, 'name').trim()
   if (name.length === 0) return null
@@ -252,7 +258,7 @@ function parseEntity(item: unknown, focusMessageId: string): ExtractedEntity | n
   const entities: ExtractedEntity = {
     name,
     type: entityTypeField(record, 'type'),
-    evidenceMessageIds: [asMessageId(focusMessageId)],
+    evidenceMessageIds: [focusMessageIds[0]],
     ...(aliases === undefined ? {} : { aliases }),
     ...(description === undefined ? {} : { description }),
   }
@@ -275,7 +281,10 @@ function parseModality(record: Record<string, unknown>): ExtractionModality {
   return 'asserted'
 }
 
-function parseClaim(item: unknown, focusMessageId: string): ExtractedClaim | null {
+function parseClaim(
+  item: unknown,
+  focusMessageIds: readonly [MessageId, ...MessageId[]],
+): ExtractedClaim | null {
   const record = asRecord(item, 'claim')
   const subject = asRecord(record['subject'], 'claim subject')
   const object = asRecord(record['object'], 'claim object')
@@ -299,14 +308,17 @@ function parseClaim(item: unknown, focusMessageId: string): ExtractedClaim | nul
     object: parsedObject,
     modality: parseModality(record),
     confidence: clamp(numberField(record, 'confidence', 0.8)),
-    evidenceMessageIds: evidenceIds(record, focusMessageId),
+    evidenceMessageIds: evidenceIds(record, focusMessageIds),
     ...(typeof validFrom === 'number' ? { validFrom } : {}),
   }
 }
 
 const PRECISIONS: readonly TimePrecision[] = ['exact', 'day', 'month', 'approximate', 'unknown']
 
-function parseEvent(item: unknown, focusMessageId: string): ExtractedEvent | null {
+function parseEvent(
+  item: unknown,
+  focusMessageIds: readonly [MessageId, ...MessageId[]],
+): ExtractedEvent | null {
   const record = asRecord(item, 'event')
   const type = stringField(record, 'type').trim()
   const summary = stringField(record, 'summary').trim()
@@ -342,7 +354,7 @@ function parseEvent(item: unknown, focusMessageId: string): ExtractedEvent | nul
     participants,
     modality: parseModality(record),
     confidence: clamp(numberField(record, 'confidence', 0.8)),
-    evidenceMessageIds: evidenceIds(record, focusMessageId),
+    evidenceMessageIds: evidenceIds(record, focusMessageIds),
     timePrecision,
     ...(typeof occurredAt === 'number' ? { occurredAt } : {}),
     ...(description === undefined ? {} : { description }),
@@ -351,11 +363,11 @@ function parseEvent(item: unknown, focusMessageId: string): ExtractedEvent | nul
 
 function evidenceIds(
   record: Record<string, unknown>,
-  focusMessageId: string,
+  focusMessageIds: readonly [MessageId, ...MessageId[]],
 ): readonly ReturnType<typeof asMessageId>[] {
   const values = optionalStringArray(record, 'evidenceMessageIds')
   if (values === undefined || values.length === 0) {
-    return [asMessageId(focusMessageId)]
+    return [focusMessageIds[0]]
   }
   return values.map(asMessageId)
 }

@@ -14,7 +14,7 @@ import type { EntityResolver } from './entity-resolver.ts'
 
 import { asEventId } from '../ids.ts'
 import { claimDocumentText, entityDocumentText, eventDocumentText } from '../indexing/documents.ts'
-import { getMessagesByIds, recentMessages } from '../storage/conversation-repo.ts'
+import { getMessagesByIds, markMessagesConsolidated } from '../storage/conversation-repo.ts'
 import {
   addAnnotation,
   getClaim,
@@ -26,7 +26,6 @@ import {
 } from '../storage/memory-repo.ts'
 import { MemoryLinker } from './linker.ts'
 
-const CONTEXT_WINDOW = 8
 const KNOWN_ENTITY_LIMIT = 50
 
 export class AnnotationPipeline {
@@ -52,18 +51,24 @@ export class AnnotationPipeline {
     this.linker = new MemoryLinker(db, resolver)
   }
 
-  async run(message: Message): Promise<void> {
-    const spaceId = message.memorySpaceId
-    const speakerName = speakerNameOf(message)
-    const speaker = this.resolver.resolveSpeaker({
-      spaceId,
-      speakerId: message.speakerId,
-      speakerName,
-      role: message.role,
-    })
+  async runBatch(focus: readonly Message[], context: readonly Message[]): Promise<void> {
+    const first = focus[0]
+    if (first === undefined) return
+    const spaceId = first.memorySpaceId
+    const focusIds = focus.map((message) => message.id)
+    const speakerNames = new Map<MessageId, string>()
+    const entityIds = new Set<EntityId>()
 
-    if (!this.extractRoles.has(message.role)) {
-      this.db.transaction(() => {
+    this.db.transaction(() => {
+      for (const message of focus) {
+        const speaker = this.resolver.resolveSpeaker({
+          spaceId,
+          speakerId: message.speakerId,
+          speakerName: speakerNameOf(message),
+          role: message.role,
+        })
+        speakerNames.set(message.id, speaker.name)
+        entityIds.add(speaker.id)
         addAnnotation(this.db, {
           spaceId,
           messageId: message.id,
@@ -72,25 +77,22 @@ export class AnnotationPipeline {
           role: 'speaker',
           extractorVersion: this.extractor.version,
         })
-      })
-      await this.indexer.sync(
-        spaceId,
-        this.indexItems(spaceId, new Set([speaker.id]), new Set(), new Set()),
-      )
+      }
+    })
+
+    const extractable = focus.filter((message) => this.extractRoles.has(message.role))
+    const extractionFocus = extractable[0]
+    if (extractionFocus === undefined) {
+      await this.indexer.sync(spaceId, this.indexItems(spaceId, entityIds, new Set(), new Set()))
+      markMessagesConsolidated(this.db, focusIds)
       return
     }
 
-    const context = recentMessages(
-      this.db,
-      message.conversationId,
-      message.messageIndex,
-      CONTEXT_WINDOW,
-    )
-    const messages: ExtractionMessage[] = [...context, message].map((item) => ({
+    const messages: ExtractionMessage[] = [...context, ...focus].map((item) => ({
       id: item.id,
       role: item.role,
       speakerId: item.speakerId,
-      speakerName: item.id === message.id ? speaker.name : speakerNameOf(item),
+      speakerName: speakerNames.get(item.id) ?? speakerNameOf(item),
       content: item.content,
       occurredAt: item.occurredAt,
       messageIndex: item.messageIndex,
@@ -98,44 +100,35 @@ export class AnnotationPipeline {
 
     const extraction = await this.extractor.extract({
       memorySpaceId: spaceId,
-      focusMessageId: message.id,
+      focusMessageIds: [extractionFocus.id, ...extractable.slice(1).map((item) => item.id)],
       messages,
       knownEntities: this.resolver.knownEntities(
         spaceId,
-        [message.content, ...context.map((item) => item.content)],
+        [...focus, ...context].map((item) => item.content),
         KNOWN_ENTITY_LIMIT,
       ),
     })
 
-    const validEvidence = this.validEvidenceMap(spaceId, extraction, message)
-    const entityIds = new Set<EntityId>()
+    const validEvidence = this.validEvidenceMap(spaceId, extraction, focusIds)
     const claimIds = new Set<string>()
     const eventIds = new Set<string>()
 
     this.db.transaction(() => {
-      addAnnotation(this.db, {
-        spaceId,
-        messageId: message.id,
-        targetType: 'entity',
-        targetId: speaker.id,
-        role: 'speaker',
-        extractorVersion: this.extractor.version,
-      })
-      entityIds.add(speaker.id)
-
       for (const entity of extraction.entities) {
+        const sourceMessageId =
+          entity.evidenceMessageIds.find((id) => validEvidence.has(id)) ?? extractionFocus.id
         const resolved = this.resolver.resolve({
           spaceId,
           name: entity.name,
           type: entity.type,
           ...(entity.description === undefined ? {} : { description: entity.description }),
           ...(entity.aliases === undefined ? {} : { aliases: entity.aliases }),
-          sourceMessageId: message.id,
+          sourceMessageId,
         })
         entityIds.add(resolved.id)
         addAnnotation(this.db, {
           spaceId,
-          messageId: message.id,
+          messageId: sourceMessageId,
           targetType: 'entity',
           targetId: resolved.id,
           role: 'mentioned',
@@ -145,7 +138,8 @@ export class AnnotationPipeline {
       }
 
       for (const claim of extraction.claims) {
-        const evidenceIds = evidenceFor(claim.evidenceMessageIds, message.id, validEvidence)
+        const evidenceIds = claim.evidenceMessageIds.filter((id) => validEvidence.has(id))
+        if (evidenceIds.length === 0) continue
         const result = this.linker.applyClaim(spaceId, claim, {
           extractorVersion: this.extractor.version,
           evidenceIds,
@@ -156,19 +150,22 @@ export class AnnotationPipeline {
         claimIds.add(result.claim.id)
         for (const previous of result.superseded) claimIds.add(previous.id)
         this.attachClaimEvidence(spaceId, result.claim, evidenceIds, validEvidence)
-        addAnnotation(this.db, {
-          spaceId,
-          messageId: message.id,
-          targetType: 'claim',
-          targetId: result.claim.id,
-          role: 'evidence',
-          confidence: claim.confidence,
-          extractorVersion: this.extractor.version,
-        })
+        for (const messageId of evidenceIds) {
+          addAnnotation(this.db, {
+            spaceId,
+            messageId,
+            targetType: 'claim',
+            targetId: result.claim.id,
+            role: 'evidence',
+            confidence: claim.confidence,
+            extractorVersion: this.extractor.version,
+          })
+        }
       }
 
       for (const event of extraction.events) {
-        const evidenceIds = evidenceFor(event.evidenceMessageIds, message.id, validEvidence)
+        const evidenceIds = event.evidenceMessageIds.filter((id) => validEvidence.has(id))
+        if (evidenceIds.length === 0) continue
         const result = this.linker.applyEvent(spaceId, event, {
           extractorVersion: this.extractor.version,
           evidenceIds,
@@ -176,15 +173,17 @@ export class AnnotationPipeline {
         eventIds.add(result.event.id)
         for (const participant of result.participants) entityIds.add(participant.entity.id)
         this.attachEventEvidence(spaceId, result.event, evidenceIds, validEvidence)
-        addAnnotation(this.db, {
-          spaceId,
-          messageId: message.id,
-          targetType: 'event',
-          targetId: result.event.id,
-          role: 'evidence',
-          confidence: event.confidence,
-          extractorVersion: this.extractor.version,
-        })
+        for (const messageId of evidenceIds) {
+          addAnnotation(this.db, {
+            spaceId,
+            messageId,
+            targetType: 'event',
+            targetId: result.event.id,
+            role: 'evidence',
+            confidence: event.confidence,
+            extractorVersion: this.extractor.version,
+          })
+        }
         for (const claim of result.affectedClaims) {
           claimIds.add(claim.id)
           this.attachClaimEvidence(spaceId, claim, evidenceIds, validEvidence)
@@ -195,14 +194,15 @@ export class AnnotationPipeline {
     })
 
     await this.indexer.sync(spaceId, this.indexItems(spaceId, entityIds, claimIds, eventIds))
+    markMessagesConsolidated(this.db, focusIds)
   }
 
   private validEvidenceMap(
     spaceId: MemorySpaceId,
     extraction: ExtractionResult,
-    focus: Message,
+    focusIds: readonly MessageId[],
   ): Map<MessageId, Message> {
-    const ids = new Set<MessageId>([focus.id])
+    const ids = new Set<MessageId>(focusIds)
     for (const claim of extraction.claims) {
       for (const id of claim.evidenceMessageIds) ids.add(id)
     }
@@ -213,7 +213,6 @@ export class AnnotationPipeline {
     for (const message of getMessagesByIds(this.db, [...ids])) {
       if (message.memorySpaceId === spaceId) valid.set(message.id, message)
     }
-    if (!valid.has(focus.id)) valid.set(focus.id, focus)
     return valid
   }
 
@@ -345,13 +344,4 @@ function evidenceTypeOf(message: Message): string {
   if (message.role === 'user') return 'user_statement'
   if (message.role === 'assistant') return 'assistant_statement'
   return 'external'
-}
-
-function evidenceFor(
-  ids: readonly MessageId[],
-  focusId: MessageId,
-  valid: Map<MessageId, Message>,
-): MessageId[] {
-  const result = ids.filter((id) => valid.has(id))
-  return result.length > 0 ? result : [focusId]
 }

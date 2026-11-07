@@ -148,6 +148,16 @@ Each memory space has at most one self entity, marked with `metadata.self = true
 
 Provider output is not trusted for this kind. An entity requested as `self` resolves to the self entity only when its name or alias matches; otherwise it is stored as `artifact`. `ensureEntity()` rejects `self`, so the public API cannot create a second one. Claims and event participants that refer to the assistant share the self entity ID. Persona, background, and preferences are stored as the self entity's description and as claims about it. Second-person queries add the self entity to retrieval mentions.
 
+## D24. Explicit consolidation instead of per-message extraction
+
+Ingestion used to enqueue one `annotate` job per message, and `drain()` called the extraction provider once per message. Batching messages before `drain()` did not reduce model calls, because each job carried one focus message.
+
+Extraction now belongs to an explicit consolidation step. `ingest()` appends the message and queues only the local chunk job. `consolidate()` selects messages with `consolidated_at` null, groups them per conversation, and sends one extraction call per batch of up to 32 messages, capped at 128. A failed call leaves the batch pending, and the next call retries. `drain()` covers chunk and index jobs only.
+
+The caller decides when memory is formed. The intended point is before context compaction or a session switch, when the agent is about to lose the raw conversation. Retrieval is unchanged and still runs on every `getContext()` call; only extraction moves off the turn path. The provider contract changed from `focusMessageId` to `focusMessageIds`, so one request can cover a whole batch.
+
+The effect is proportional to batch size. A 100-message session now costs four extraction calls instead of 100. The mini fixture reports `consolidation batches`; no formal 714-question run was repeated for this change.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

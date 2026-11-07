@@ -5,10 +5,10 @@
 | Stage | Scope                                                                             | Status                                                         |
 | ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | P0    | Raw conversations, chunks, embeddings, vector search                              | Implemented                                                    |
-| P1    | Entities, aliases, claims, events, annotations, evidence, extraction provider     | Implemented                                                    |
+| P1    | Entities, aliases, claims, events, annotations, evidence, batch extraction        | Implemented                                                    |
 | P2    | Memory links, entity resolution, state supersession, uncertainty, temporal fields | Implemented with rule-based extraction                         |
 | P3    | SQL, FTS5, vector, RRF, reranker, graph and timeline expansion                    | Implemented                                                    |
-| P4    | Context builder, token budget, evidence injection, uncertainty notes              | Implemented                                                    |
+| P4    | Context builder, soft token target, evidence injection, uncertainty notes         | Implemented                                                    |
 | P5    | Harness adapter                                                                   | Library API only; no Cortico adapter exists in this repository |
 
 ## Deferred

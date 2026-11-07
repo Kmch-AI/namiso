@@ -97,3 +97,30 @@ export function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
   return `${text.slice(0, Math.max(0, maxChars - 1))}…`
 }
+
+export function excerpt(text: string, tokens: ReadonlySet<string>, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  const limit = Math.max(1, maxChars)
+  const haystack = text.toLowerCase()
+  let matchIndex = -1
+  let matchLength = 0
+  for (const token of tokens) {
+    if (token.length === 0) continue
+    const index = haystack.indexOf(token)
+    if (index === -1) continue
+    if (
+      matchIndex === -1 ||
+      index < matchIndex ||
+      (index === matchIndex && token.length > matchLength)
+    ) {
+      matchIndex = index
+      matchLength = token.length
+    }
+  }
+  if (matchIndex === -1) return truncate(text, limit)
+  const centered = Math.max(0, matchIndex - Math.floor((limit - matchLength) / 2))
+  const start = Math.min(centered, Math.max(0, text.length - limit))
+  const end = Math.min(text.length, start + limit)
+  const body = text.slice(start, end)
+  return `${start > 0 ? '…' : ''}${body}${end < text.length ? '…' : ''}`
+}

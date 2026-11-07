@@ -65,7 +65,7 @@ test('time range filters structured events', async () => {
   namiso.close()
 })
 
-test('context budget truncates without returning empty context', async () => {
+test('a small budget compresses text without dropping items', async () => {
   const { namiso, say, drain } = await setup()
   for (let index = 0; index < 12; index += 1) {
     await say(USER, 'user', `第 ${index} 天我记录了很长的日记，主题是旅行和读书。`)
@@ -77,8 +77,31 @@ test('context budget truncates without returning empty context', async () => {
     maxTokens: 120,
   })
   assert.ok(context.text.length > 0)
-  assert.ok(context.tokenEstimate <= 200)
-  assert.equal(context.truncated, true)
+  assert.equal(context.compressed, true)
+  for (const item of context.items) {
+    assert.ok(context.text.includes(item.key), `context dropped ${item.key}`)
+  }
+  for (const message of context.evidence) {
+    assert.ok(context.text.includes(message.id), `context dropped ${message.id}`)
+  }
+  namiso.close()
+})
+
+test('compressed evidence keeps the span around the query terms', async () => {
+  const { namiso, say, drain } = await setup()
+  const password = '4821'
+  await say(
+    USER,
+    'user',
+    `${'前几天都在整理书架，'.repeat(20)}我的储物柜密码是 ${password}，请记好。${'后来又聊了些别的。'.repeat(20)}`,
+  )
+  await drain()
+  const context = await namiso.getContext({
+    query: '我的储物柜密码是什么？',
+    maxTokens: 120,
+  })
+  assert.equal(context.compressed, true)
+  assert.match(context.text, new RegExp(password))
   namiso.close()
 })
 

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 export const ENTITY_TYPE_MIGRATION_SQL = `
 UPDATE entities
@@ -27,6 +27,25 @@ WHERE json_extract(metadata, '$.self') = 1;
 UPDATE entities
 SET type = 'artifact'
 WHERE type = 'self' AND json_extract(metadata, '$.self') IS NOT 1;
+`
+
+export const MESSAGE_CONSOLIDATION_MIGRATION_SQL = `
+ALTER TABLE messages ADD COLUMN consolidated_at INTEGER;
+
+UPDATE messages
+SET consolidated_at = created_at
+WHERE id IN (
+  SELECT json_extract(payload, '$.messageId')
+  FROM jobs
+  WHERE type = 'annotate' AND status = 'completed'
+);
+
+DELETE FROM jobs WHERE type = 'annotate';
+`
+
+export const MESSAGE_CONSOLIDATION_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS idx_messages_consolidated
+ON messages(conversation_id, consolidated_at);
 `
 
 export const SCHEMA_SQL = `
@@ -74,6 +93,7 @@ CREATE TABLE IF NOT EXISTS messages (
   message_index INTEGER NOT NULL,
   occurred_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
+  consolidated_at INTEGER,
   metadata TEXT,
   FOREIGN KEY (memory_space_id) REFERENCES memory_spaces(id) ON DELETE CASCADE,
   FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE

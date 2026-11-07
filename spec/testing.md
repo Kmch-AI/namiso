@@ -24,19 +24,20 @@ Integration tests assert through the public API and never inspect tables. Provid
 
 ## Coverage
 
-| File                        | Behavior                                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `ingestion.test.ts`         | Message order, external-ID deduplication, job idempotency, space isolation                                                     |
-| `state-evolution.test.ts`   | Supersession, uncertain intent, timeline order, evidence retention                                                             |
-| `retrieval.test.ts`         | Three-channel retrieval, current claims, time ranges, budget truncation, evidence selection, rerank pool, both vector backends |
-| `forget.test.ts`            | Message, entity, and conversation deletion with index cleanup                                                                  |
-| `providers.test.ts`         | Hash embedding invariants, rule extraction, entity taxonomy, lexical rerank, HTTP payload and usage parsing                    |
-| `extraction-policy.test.ts` | Default and role-restricted extraction, known entity filtering and cap                                                         |
-| `self.test.ts`              | Canonical self entity, hard `self` guard, self/person events, identity updates, second-person retrieval                        |
-| `migration.test.ts`         | Schema versions 2 and 3 entity type migrations                                                                                 |
-| `api.test.ts`               | Boundary validation, alias resolution, manual links, reindex, closed instance                                                  |
+| File                        | Behavior                                                                                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ingestion.test.ts`         | Message order, external-ID deduplication, chunk job idempotency, space isolation                                                                         |
+| `consolidation.test.ts`     | Deferred extraction, one call per batch, batch sizing, conversation scoping, rejected input                                                              |
+| `state-evolution.test.ts`   | Supersession, uncertain intent, timeline order, evidence retention                                                                                       |
+| `retrieval.test.ts`         | Three-channel retrieval, current claims, time ranges, budget compression, query-centered excerpts, evidence selection, rerank pool, both vector backends |
+| `forget.test.ts`            | Message, entity, and conversation deletion with index cleanup                                                                                            |
+| `providers.test.ts`         | Hash embedding invariants, rule extraction, entity taxonomy, lexical rerank, HTTP payload and usage parsing                                              |
+| `extraction-policy.test.ts` | Batch focus coverage, role-restricted extraction, known entity filtering and cap                                                                         |
+| `self.test.ts`              | Canonical self entity, hard `self` guard, self/person events, identity updates, second-person retrieval                                                  |
+| `migration.test.ts`         | Entity type migrations at versions 2 and 3, consolidation backfill at version 4                                                                          |
+| `api.test.ts`               | Boundary validation, alias resolution, manual links, reindex, closed instance                                                                            |
 
-The default suite has 38 tests plus one skipped real-model test. It runs in under a second on the development machine.
+The default suite has 44 tests plus one skipped real-model test. It runs in under a second on the development machine.
 
 ## Writing a test
 
