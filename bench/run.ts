@@ -1,6 +1,8 @@
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import type { BenchmarkReport } from './chat-memory-benchmark.ts'
+import type { BenchmarkReport, ItemResult } from './chat-memory-benchmark.ts'
 
 import { providersFromEnv } from '../src/index.ts'
 import { runBenchmark } from './chat-memory-benchmark.ts'
@@ -15,6 +17,8 @@ const { values } = parseArgs({
     'top-k': { type: 'string' },
     mode: { type: 'string', default: 'hybrid' },
     models: { type: 'boolean', default: false },
+    db: { type: 'string' },
+    items: { type: 'string' },
     help: { type: 'boolean', default: false },
   },
   allowPositionals: false,
@@ -31,6 +35,8 @@ if (values.help) {
   --top-k <n>        retrieval depth (default 12)
   --mode <mode>      hybrid (default) or raw chunk baseline
   --models           read NAMISO_* provider variables and call real models
+  --db <path>        persistent database for resumable runs
+  --items <path>     append every finished item; existing ids are skipped
 `)
   process.exit(0)
 }
@@ -40,15 +46,46 @@ try {
   if (values.models && Object.keys(providers ?? {}).length === 0) {
     process.stdout.write('No NAMISO_* provider variables found; using default providers.\n')
   }
+  const databasePath = values.db === undefined ? undefined : resolve(values.db)
+  const itemsPath = values.items === undefined ? undefined : resolve(values.items)
+  const completedIds = new Set<string>()
+  if (itemsPath !== undefined && existsSync(itemsPath)) {
+    for (const line of readFileSync(itemsPath, 'utf8').split(/\r?\n/)) {
+      if (line.trim().length === 0) continue
+      try {
+        const parsed = JSON.parse(line) as ItemResult
+        if (parsed.error === undefined) completedIds.add(parsed.id)
+      } catch {
+        continue
+      }
+    }
+  }
+  if (completedIds.size > 0 && databasePath === undefined) {
+    throw new Error('resuming from --items requires --db with the same persistent database')
+  }
+  if (itemsPath !== undefined && !existsSync(dirname(itemsPath))) {
+    mkdirSync(dirname(itemsPath), { recursive: true })
+  }
   const { report, results } = await runBenchmark({
     datasetPath: values.dataset,
-    outputDir: values.out,
+    ...(itemsPath === undefined ? { outputDir: values.out } : {}),
     ...(values.limit === undefined ? {} : { limit: Number(values.limit) }),
     ...(values.persona === undefined ? {} : { persona: values.persona }),
     ...(values['max-tokens'] === undefined ? {} : { maxTokens: Number(values['max-tokens']) }),
     ...(values['top-k'] === undefined ? {} : { topK: Number(values['top-k']) }),
     ...(values.mode === 'raw' ? { mode: 'raw' as const } : {}),
     ...(providers === undefined ? {} : { providers }),
+    ...(databasePath === undefined ? {} : { databasePath }),
+    ...(completedIds.size === 0 ? {} : { completedIds }),
+    ...(itemsPath === undefined
+      ? {}
+      : {
+          onItemResult: (result) => {
+            if (result.error !== undefined) return
+            appendFileSync(itemsPath, `${JSON.stringify(result)}\n`)
+          },
+        }),
+    onProgress: (message) => process.stdout.write(`${message}\n`),
   })
   process.stdout.write(`${formatReport(report)}\n`)
   const usage = providers?.extraction?.usage
@@ -64,7 +101,11 @@ try {
       process.stdout.write(`- ${failure.id}: ${failure.error ?? ''}\n`)
     }
   }
-  process.stdout.write(`\nContexts: ${values.out}/contexts.jsonl\n`)
+  process.stdout.write(
+    itemsPath === undefined
+      ? `\nContexts: ${values.out}/contexts.jsonl\n`
+      : `\nItems: ${itemsPath}\n`,
+  )
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
   process.exitCode = 1

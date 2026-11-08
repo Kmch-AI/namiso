@@ -91,6 +91,10 @@ export interface RunOptions {
   topK?: number
   mode?: BenchmarkMode
   providers?: ProviderSet
+  databasePath?: string
+  completedIds?: ReadonlySet<string>
+  onProgress?: (message: string) => void
+  onItemResult?: (result: ItemResult) => void
 }
 
 export interface RunOutput {
@@ -144,7 +148,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
       (left, right) => left.轮次 - right.轮次,
     )
     const namiso = await Namiso.open({
-      databasePath: ':memory:',
+      databasePath: options.databasePath ?? ':memory:',
       memorySpace: { name: `bench-${persona}` },
       vectorIndex: 'auto',
       ...options.providers,
@@ -155,9 +159,19 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
       extraction: health.extraction.version,
       reranker: health.reranker.model,
     }
-    const conversation = namiso.createConversation({ externalId: persona })
+    const conversation =
+      namiso.listConversations().find((item) => item.externalId === persona) ??
+      namiso.createConversation({ externalId: persona })
     let ingestedTurns = 0
     for (const item of items) {
+      if (options.completedIds?.has(item.id) === true) {
+        options.onProgress?.(`${persona} skip ${item.id}`)
+        continue
+      }
+      const itemStarted = performance.now()
+      options.onProgress?.(
+        `${persona} ${results.length + 1}/${items.length} start ${item.id} turns=${ingestedTurns}`,
+      )
       try {
         const ingestStarted = performance.now()
         while (ingestedTurns < item.cutoff_turn) {
@@ -232,8 +246,33 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
           error: error instanceof Error ? error.message : String(error),
         })
       }
+      const last = results.at(-1)
+      if (last !== undefined && last.id === item.id) options.onItemResult?.(last)
+      options.onProgress?.(
+        `${persona} ${results.length}/${items.length} done ${item.id} in ${Math.round(performance.now() - itemStarted)}ms`,
+      )
     }
     namiso.close()
+    if (options.outputDir !== undefined && results.length > 0) {
+      const partial = summarize({
+        datasetRoot: dataset.root,
+        generatedAt: startedAt,
+        mode: options.mode ?? 'hybrid',
+        providers: providerIdentity ?? {
+          embedding: 'unknown',
+          extraction: 'unknown',
+          reranker: 'unknown',
+        },
+        results,
+        personas: byPersona.size,
+        turnsIngested,
+        consolidationBatches,
+        ingestMs,
+        hasAnswerKey: dataset.answerKey.size > 0,
+      })
+      writeOutputs(join(options.outputDir, 'partial'), results, partial)
+      options.onProgress?.(`${persona} wrote ${results.length} partial results`)
+    }
   }
 
   const report = summarize({

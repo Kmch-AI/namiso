@@ -137,6 +137,8 @@ The numbers above measure evidence recall. A whole-question pass count needs an 
 
 `answer.ts` and `judge.ts` read `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_API_KEY`, and `NAMISO_EXTRACTION_MODEL` from `.env`. Both keep partial output and skip finished IDs, so a rerun resumes. Both accept `--concurrency`, `--reasoning`, and `--max-tokens`. A pass count is comparable to another run only when the answer model, judge model, prompts, and dataset commit match.
 
+A formal run can take hours. Pass `--db <file>` and `--items <file>` to make it resumable. Every finished question is appended to the items file, and a rerun with the same paths skips those IDs. The database keeps consolidated messages, so extraction is not repeated for finished prefixes. The two flags are required together; `--items` without `--db` is rejected.
+
 ### End-to-end pass count
 
 Run on 2026-11-07 against the formal dataset with the offline Namiso stack.
