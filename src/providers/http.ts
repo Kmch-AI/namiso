@@ -158,12 +158,7 @@ export class HttpExtractionProvider implements ExtractionProvider {
     if (typeof content !== 'string') {
       throw new ProviderError('extraction response has no string content')
     }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(content)
-    } catch (error) {
-      throw new ProviderError('extraction content is not JSON', { cause: error })
-    }
+    const parsed = parseJsonContent(content)
     return parseExtractionResult(parsed, input.focusMessageIds)
   }
 
@@ -220,6 +215,23 @@ events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type
 modality is asserted, uncertain, negated, hypothetical, or quoted.
 Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts. Use uncertain when the speaker is not asserting the fact.
 If the focus messages contain no long-term memory, return {entities: [], claims: [], events: []}.`
+
+function parseJsonContent(content: string): unknown {
+  try {
+    return JSON.parse(content)
+  } catch (error) {
+    const start = content.indexOf('{')
+    const end = content.lastIndexOf('}')
+    if (start !== -1 && end > start) {
+      try {
+        return JSON.parse(content.slice(start, end + 1))
+      } catch {
+        // fall through to the original error
+      }
+    }
+    throw new ProviderError('extraction content is not JSON', { cause: error })
+  }
+}
 
 function parseExtractionResult(
   value: unknown,

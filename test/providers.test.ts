@@ -82,6 +82,20 @@ const rerankFetch: typeof fetch = async () =>
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
 
+const fencedFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: `\`\`\`json\n${JSON.stringify({ entities: [], claims: [], events: [] })}\n\`\`\``,
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
 test('hash embeddings are deterministic, normalized, and fixed width', async () => {
   const provider = new HashEmbeddingProvider({ dimensions: 64 })
   const [left, right] = await provider.embed(['我在使用 TTS-A。', '我在使用 TTS-A。'])
@@ -279,6 +293,21 @@ test('HTTP providers parse boundary payloads', async () => {
     { index: 0, score: 0.1 },
     { index: 1, score: 0.9 },
   ])
+})
+
+test('HTTP extraction tolerates fenced JSON', async () => {
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: fencedFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [],
+    knownEntities: [],
+  })
+  assert.deepEqual(result, { entities: [], claims: [], events: [] })
 })
 
 test('health reports extraction usage from the HTTP provider', async () => {

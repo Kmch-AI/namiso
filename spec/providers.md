@@ -19,7 +19,7 @@ The prompt uses the entity set in `spec/data-model.md`. `self` is the special ki
 
 The default `RuleExtractionProvider` uses deterministic regular expressions. It is suitable for tests and small offline demos, not production extraction. Coverage and limits are in `spec/annotation.md`.
 
-`HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. Malformed items are dropped; malformed top-level output throws. Evidence IDs that the model cannot know fall back to the first focus message. Each HTTP call covers one consolidation batch.
+`HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. If the content has surrounding prose or a code fence, the provider retries with the substring from the first `{` to the last `}`. Malformed items are dropped; content with no parseable object throws. Evidence IDs that the model cannot know fall back to the first focus message. Each HTTP call covers one consolidation batch.
 
 Options:
 
