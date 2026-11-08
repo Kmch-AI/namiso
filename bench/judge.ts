@@ -114,14 +114,18 @@ async function judgeOne(packet: Packet): Promise<Record<string, unknown>> {
     })
     const review = parseReview(content)
     if (review !== null && isValidReview(review, packet)) {
-      return review
+      return {
+        ...review,
+        answer_sha256: packet.answer_sha256,
+        rubric_sha256: packet.rubric_sha256,
+      }
     }
     lastError = review === null ? 'review is not JSON' : 'review failed validation'
     messages.push(
       { role: 'assistant', content },
       {
         role: 'user',
-        content: `That output was invalid: ${lastError}. Return only one JSON object. required must contain exactly ${packet.rubric.required.length} boolean value(s), one per rubric.required entry in order. Copy answer_sha256 and rubric_sha256 from the packet and keep reason non-empty.`,
+        content: `That output was invalid: ${lastError}. Return only one JSON object. required must contain exactly ${packet.rubric.required.length} boolean value(s), one per rubric.required entry in order. Keep reason non-empty.`,
       },
     )
   }
@@ -144,8 +148,6 @@ function parseReview(content: string): Record<string, unknown> | null {
 
 function isValidReview(review: Record<string, unknown>, packet: Packet): boolean {
   if (review['id'] !== packet.id) return false
-  if (review['answer_sha256'] !== packet.answer_sha256) return false
-  if (review['rubric_sha256'] !== packet.rubric_sha256) return false
   const required = review['required']
   if (!Array.isArray(required) || required.length !== packet.rubric.required.length) return false
   if (!required.every((value) => typeof value === 'boolean')) return false

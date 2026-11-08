@@ -141,20 +141,36 @@ A formal run can take hours. Pass `--db <file>` and `--items <file>` to make it 
 
 ### End-to-end pass count
 
-Run on 2026-11-07 against the formal dataset with the offline Namiso stack.
+Both runs answered and judged through the local gateway with the benchmark's `grading/judge-prompt.md`. They differ in the retrieval and extraction stack.
 
-| Item         | Value                                                   |
-| ------------ | ------------------------------------------------------- |
-| Answer model | `group/deepseek-v4.1-flash` through the local gateway   |
-| Judge        | the same model, `grading/judge-prompt.md`               |
-| Questions    | 714                                                     |
-| Passed       | 539 (75.5%)                                             |
-| Failures     | 0 answer failures, 0 unscored questions                 |
-| Runtime      | answers 659 s, judge 2850 s plus retries, concurrency 6 |
+| Run         | Extraction          | Embedding and rerank                                 | Passed            |
+| ----------- | ------------------- | ---------------------------------------------------- | ----------------- |
+| Offline     | rule-v2             | hash 256 dimensions, lexical reranker                | 539 / 714 (75.5%) |
+| Real models | DeepSeek V4.1 Flash | Qwen3-Embedding 0.6B 1024 dimensions, Qwen3-Reranker | 654 / 714 (91.6%) |
 
-By interval: d0 163/189, d3 140/184, d15 125/174, d45 111/167. Pass rate falls as the interval grows, which matches the retrieval result.
+Real-model run, 2026-11-08:
 
-This number is not directly comparable to the benchmark repository's published results. Those runs answered through a different channel and judged with Codex. This run used one local model for both roles, so the judge may favor its own phrasing. Retrieval evidence recall is 74%, while the judged pass rate is 75.5%; a correct answer can be paraphrased from evidence that the anchor check does not credit, and the judge accepts paraphrase. Raw answers, packets, reviews, and judgments stay in `bench/out/`, which is ignored.
+| Item                       | Value                                        |
+| -------------------------- | -------------------------------------------- |
+| Answer model               | `workbuddy2api/cn:deepseek-v4.1-flash`       |
+| Judge                      | the same model                               |
+| Extraction                 | the same model, 32-message batches           |
+| Embedding                  | `Qwen3-Embedding-0.6B-Q8_0`, 1024 dimensions |
+| Reranker                   | `Qwen3-Reranker-0.6B.Q4_K_M`                 |
+| Retrieval evidence recall  | 87.7%                                        |
+| Context hit                | 90.8%                                        |
+| Context tokens p50/p95/max | 1327 / 1740 / 2084                           |
+| Retrieval latency p50/p95  | 554 / 1328 ms                                |
+| Questions                  | 714, none unanswered                         |
+| Answer runtime             | 544 s at concurrency 6                       |
+
+By interval: d0 175/189, d3 169/184, d15 161/174, d45 149/167. By persona: P01 80/88, P12 77/79, P14 76/82, P16 111/123, P17 159/172, P20 151/170.
+
+The context maximum exceeds the 1600 target because the soft budget keeps every selected item and reports `overBudget` instead of dropping entries.
+
+Sixteen extraction calls returned wrapped or malformed JSON during the first pass. The brace-substring fallback and smaller batches recovered them; every question completed.
+
+Neither row is directly comparable to the benchmark repository's published scores. Those runs answered through a different channel and judged with Codex. Here one local model answered and judged, so the judge may favor its own phrasing. The gap between the two rows measures the providers more than the engine. Raw answers, packets, reviews, and judgments stay in `bench/out/`, which is ignored.
 
 ## Provenance
 
