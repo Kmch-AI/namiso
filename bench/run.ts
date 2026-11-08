@@ -19,6 +19,7 @@ const { values } = parseArgs({
     models: { type: 'boolean', default: false },
     db: { type: 'string' },
     items: { type: 'string' },
+    'consolidate-batch': { type: 'string' },
     help: { type: 'boolean', default: false },
   },
   allowPositionals: false,
@@ -37,6 +38,7 @@ if (values.help) {
   --models           read NAMISO_* provider variables and call real models
   --db <path>        persistent database for resumable runs
   --items <path>     append every finished item; existing ids are skipped
+  --consolidate-batch <n>  extraction batch size (default 32)
 `)
   process.exit(0)
 }
@@ -76,6 +78,9 @@ try {
     ...(values.mode === 'raw' ? { mode: 'raw' as const } : {}),
     ...(providers === undefined ? {} : { providers }),
     ...(databasePath === undefined ? {} : { databasePath }),
+    ...(values['consolidate-batch'] === undefined
+      ? {}
+      : { consolidateBatch: Number(values['consolidate-batch']) }),
     ...(completedIds.size === 0 ? {} : { completedIds }),
     ...(itemsPath === undefined
       ? {}

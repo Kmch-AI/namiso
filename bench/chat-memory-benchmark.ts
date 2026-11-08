@@ -92,6 +92,7 @@ export interface RunOptions {
   mode?: BenchmarkMode
   providers?: ProviderSet
   databasePath?: string
+  consolidateBatch?: number
   completedIds?: ReadonlySet<string>
   onProgress?: (message: string) => void
   onItemResult?: (result: ItemResult) => void
@@ -183,7 +184,12 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
           turnsIngested += 1
         }
         await namiso.drain()
-        const consolidation = await namiso.consolidate({ conversationId: conversation.id })
+        const consolidation = await namiso.consolidate({
+          conversationId: conversation.id,
+          ...(options.consolidateBatch === undefined
+            ? {}
+            : { batchSize: options.consolidateBatch }),
+        })
         consolidationBatches += consolidation.batches
         ingestMs += performance.now() - ingestStarted
         const messages = namiso.getMessages({
