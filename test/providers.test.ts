@@ -43,6 +43,9 @@ const extractionFetch: typeof fetch = async () =>
                 {
                   subject: { name: '用户A', type: 'person' },
                   predicate: 'uses',
+                  attribute: 'uses',
+                  cardinality: 'one',
+                  change: 'replaces',
                   object: { kind: 'entity', name: 'IndexTTS2', type: 'artifact' },
                   modality: 'asserted',
                   confidence: 0.9,
@@ -293,6 +296,9 @@ test('HTTP providers parse boundary payloads', async () => {
     knownEntities: [],
   })
   assert.equal(result.claims[0]?.predicate, 'uses')
+  assert.equal(result.claims[0]?.attribute, 'uses')
+  assert.equal(result.claims[0]?.cardinality, 'one')
+  assert.equal(result.claims[0]?.change, 'replaces')
   assert.deepEqual(result.claims[0]?.evidenceMessageIds, ['message-9'])
   assert.equal(result.events[0]?.type, 'usage_change')
   assert.equal(result.entities[0]?.type, 'artifact')

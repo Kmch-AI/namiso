@@ -3,6 +3,10 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { NamisoError } from '../errors.ts'
 import {
+  CLAIM_ATTRIBUTE_BACKFILL_SQL,
+  CLAIM_ATTRIBUTE_COLUMN_SQL,
+  CLAIM_ATTRIBUTE_INDEX_SQL,
+  CLAIM_CARDINALITY_COLUMN_SQL,
   ENTITY_TYPE_MIGRATION_SQL,
   MESSAGE_CONSOLIDATION_INDEX_SQL,
   MESSAGE_CONSOLIDATION_MIGRATION_SQL,
@@ -49,6 +53,16 @@ export class Database {
       this.raw.exec(MESSAGE_CONSOLIDATION_MIGRATION_SQL)
     }
     this.raw.exec(MESSAGE_CONSOLIDATION_INDEX_SQL)
+    if (version < 5) {
+      if (!this.hasColumn('claims', 'attribute')) {
+        this.raw.exec(CLAIM_ATTRIBUTE_COLUMN_SQL)
+      }
+      if (!this.hasColumn('claims', 'cardinality')) {
+        this.raw.exec(CLAIM_CARDINALITY_COLUMN_SQL)
+      }
+      this.raw.exec(CLAIM_ATTRIBUTE_BACKFILL_SQL)
+    }
+    this.raw.exec(CLAIM_ATTRIBUTE_INDEX_SQL)
     if (version < SCHEMA_VERSION) {
       this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     }

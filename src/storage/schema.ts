@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 export const ENTITY_TYPE_MIGRATION_SQL = `
 UPDATE entities
@@ -46,6 +46,20 @@ DELETE FROM jobs WHERE type = 'annotate';
 export const MESSAGE_CONSOLIDATION_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_messages_consolidated
 ON messages(conversation_id, consolidated_at);
+`
+
+export const CLAIM_ATTRIBUTE_COLUMN_SQL = 'ALTER TABLE claims ADD COLUMN attribute TEXT'
+
+export const CLAIM_CARDINALITY_COLUMN_SQL =
+  "ALTER TABLE claims ADD COLUMN cardinality TEXT NOT NULL DEFAULT 'many'"
+
+export const CLAIM_ATTRIBUTE_BACKFILL_SQL = `
+UPDATE claims SET attribute = lower(trim(predicate)) WHERE attribute IS NULL;
+`
+
+export const CLAIM_ATTRIBUTE_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS idx_claims_attribute
+ON claims(memory_space_id, subject_id, attribute, status);
 `
 
 export const SCHEMA_SQL = `
@@ -143,6 +157,8 @@ CREATE TABLE IF NOT EXISTS claims (
   memory_space_id TEXT NOT NULL,
   subject_id TEXT NOT NULL,
   predicate TEXT NOT NULL,
+  attribute TEXT,
+  cardinality TEXT NOT NULL DEFAULT 'many',
   object_type TEXT NOT NULL,
   object_value TEXT,
   object_entity_id TEXT,
@@ -161,6 +177,17 @@ CREATE INDEX IF NOT EXISTS idx_claims_subject
 ON claims(memory_space_id, subject_id, predicate);
 CREATE INDEX IF NOT EXISTS idx_claims_status
 ON claims(memory_space_id, status);
+
+CREATE TABLE IF NOT EXISTS attributes (
+  memory_space_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  cardinality TEXT NOT NULL DEFAULT 'many',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (memory_space_id, key),
+  FOREIGN KEY (memory_space_id) REFERENCES memory_spaces(id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,

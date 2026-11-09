@@ -1,4 +1,6 @@
 import type {
+  ClaimCardinality,
+  ClaimChange,
   EntityId,
   EntityKind,
   MemorySpaceId,
@@ -48,11 +50,18 @@ export interface KnownEntity {
   aliases: string[]
 }
 
+export interface KnownAttribute {
+  key: string
+  label: string
+  cardinality: ClaimCardinality
+}
+
 export interface ExtractionInput {
   memorySpaceId: MemorySpaceId
   focusMessageIds: readonly [MessageId, ...MessageId[]]
   messages: readonly ExtractionMessage[]
   knownEntities: readonly KnownEntity[]
+  knownAttributes?: readonly KnownAttribute[]
 }
 
 export interface ExtractedEntity {
@@ -70,6 +79,9 @@ export type ExtractedObject =
 export interface ExtractedClaim {
   subject: { name: string; type: EntityKind }
   predicate: string
+  attribute?: string
+  cardinality?: ClaimCardinality
+  change?: ClaimChange
   object: ExtractedObject
   modality: ExtractionModality
   confidence: number

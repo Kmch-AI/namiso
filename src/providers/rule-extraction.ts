@@ -13,6 +13,8 @@ import type {
 const UNCERTAIN =
   /可能|也许|大概|应该|说不定|打算|准备|考虑|想|maybe|might|probably|perhaps|plan to|thinking about/i
 
+const ONE_VALUED = new Set(['name', 'occupation', 'location', 'age', 'uses', 'works_at', 'status'])
+
 export class RuleExtractionProvider implements ExtractionProvider {
   readonly version = 'rule-v2'
 
@@ -82,9 +84,13 @@ export class RuleExtractionProvider implements ExtractionProvider {
             : claim.object.kind === 'entity' && claim.object.name === object.name),
       )
       if (duplicate) return
+      const cardinality = ONE_VALUED.has(predicate) ? 'one' : 'many'
       claims.push({
         subject: { name: speakerName, type: speakerType },
         predicate,
+        attribute: predicate,
+        cardinality,
+        change: cardinality === 'one' ? 'replaces' : 'adds',
         object,
         modality,
         confidence,

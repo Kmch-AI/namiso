@@ -11,9 +11,11 @@ interface ExtractionProvider {
 }
 ```
 
-Input contains the focus message IDs, the message batch, and known entities. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
+Input contains the focus message IDs, the message batch, known entities, and known attributes. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
 
-The extraction prompt must extract only from the messages listed in `focusMessageIds`. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless a focus message mentions them. The engine sends only entities mentioned in the focus batch or the recent context, capped at 50; it does not send the whole space.
+Each claim carries `predicate` plus optional `attribute`, `cardinality`, and `change`. `attribute` is the stable state key; the pipeline normalizes it and falls back to the predicate. `cardinality` is `one` or `many`. `change` is `new`, `adds`, `replaces`, `retracts`, or `disputes`. A provider that omits these fields keeps the legacy behavior: the predicate becomes the attribute, the known one-valued predicate set gets `one`, and every other attribute gets `many`. The HTTP prompt sends `knownAttributes` so the model can reuse an existing key across batches.
+
+The extraction prompt must extract only from the messages listed in `focusMessageIds`. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless a focus message mentions them. The engine sends only entities mentioned in the focus batch or the recent context, capped at 50; it does not send the whole space. Known attributes are those whose key or label appears in the focus batch or recent context, capped at 24.
 
 The prompt uses the entity set in `spec/data-model.md`. `self` is the special kind for the assistant itself, and the self entity is sent first in `knownEntities`. The prompt instructs the model to attach the assistant's persona, background, and preferences to that entity, and to classify models, tools, other agents, and AI products as `artifact`, and companies and institutions as `group`. The HTTP parser accepts the general types plus `self`; any other value falls back to `other`.
 

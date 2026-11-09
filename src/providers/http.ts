@@ -1,4 +1,4 @@
-import type { MessageId, TimePrecision } from '../types.ts'
+import type { ClaimCardinality, ClaimChange, MessageId, TimePrecision } from '../types.ts'
 import type {
   EmbeddingProvider,
   ExtractedClaim,
@@ -141,6 +141,7 @@ export class HttpExtractionProvider implements ExtractionProvider {
             focusMessageIds: input.focusMessageIds,
             messages: input.messages,
             knownEntities: input.knownEntities,
+            knownAttributes: input.knownAttributes ?? [],
           }),
         },
       ],
@@ -232,10 +233,14 @@ function tokenCount(value: unknown): number | undefined {
 const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from a batch of focus messages.
 focusMessageIds lists the messages to extract from. The other messages are context for resolving references; do not extract facts from them.
 knownEntities are for resolving names and aliases only. Do not output an entity unless a focus message mentions it.
+knownAttributes lists state keys already used in this memory space. Reuse an existing key when the meaning matches.
 Return one JSON object with keys entities, claims, events.
 entities: [{name, type, aliases?, description?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
 The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
-claims: [{subject: {name, type}, predicate, object: {kind: "literal", value} | {kind: "entity", name, type}, modality, confidence, evidenceMessageIds}].
+claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, modality, confidence, evidenceMessageIds}].
+attribute is a short stable key reused across mentions. predicate is the human-readable label.
+cardinality is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit it when reusing a known attribute.
+change is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute. Use retracts when it explicitly denies the recorded value. Use disputes when sources disagree and the record cannot decide.
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
 modality is asserted, uncertain, negated, hypothetical, or quoted.
 Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts. Use uncertain when the speaker is not asserting the fact.
@@ -310,6 +315,9 @@ const MODALITIES: readonly ExtractionModality[] = [
   'quoted',
 ]
 
+const CARDINALITIES: readonly ClaimCardinality[] = ['one', 'many']
+const CHANGES: readonly ClaimChange[] = ['new', 'adds', 'replaces', 'retracts', 'disputes']
+
 function parseModality(record: Record<string, unknown>): ExtractionModality {
   const value = record['modality']
   if (typeof value === 'string' && (MODALITIES as readonly string[]).includes(value)) {
@@ -339,6 +347,17 @@ function parseClaim(
   if (parsedObject.kind === 'literal' && parsedObject.value.length === 0) return null
   if (parsedObject.kind === 'entity' && parsedObject.name.length === 0) return null
   const validFrom = record['validFrom']
+  const attribute = typeof record['attribute'] === 'string' ? record['attribute'].trim() : ''
+  const cardinality =
+    typeof record['cardinality'] === 'string' &&
+    (CARDINALITIES as readonly string[]).includes(record['cardinality'])
+      ? (record['cardinality'] as ClaimCardinality)
+      : undefined
+  const change =
+    typeof record['change'] === 'string' &&
+    (CHANGES as readonly string[]).includes(record['change'])
+      ? (record['change'] as ClaimChange)
+      : undefined
   return {
     subject: { name: subjectName, type: entityTypeField(subject, 'type') },
     predicate,
@@ -347,6 +366,9 @@ function parseClaim(
     confidence: clamp(numberField(record, 'confidence', 0.8)),
     evidenceMessageIds: evidenceIds(record, focusMessageIds),
     ...(typeof validFrom === 'number' ? { validFrom } : {}),
+    ...(attribute.length === 0 ? {} : { attribute }),
+    ...(cardinality === undefined ? {} : { cardinality }),
+    ...(change === undefined ? {} : { change }),
   }
 }
 

@@ -67,6 +67,18 @@ export function normalizeName(name: string): string {
   return name.normalize('NFKC').trim().toLowerCase()
 }
 
+export function normalizeAttribute(value: string): string {
+  const normalized = value
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/^["'「『]+|["'」』]+$/g, '')
+    .replace(/[。！？!?，,；;：:、]+$/g, '')
+    .trim()
+  return normalized.length > 64 ? normalized.slice(0, 64) : normalized
+}
+
 export function estimateTokens(text: string): number {
   const cjk = (text.match(/[㐀-鿿]/g) ?? []).length
   const rest = text.length - cjk

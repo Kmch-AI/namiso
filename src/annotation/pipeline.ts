@@ -1,8 +1,15 @@
 import type { Indexer, IndexItem } from '../indexing/indexer.ts'
-import type { ExtractionMessage, ExtractionProvider, ExtractionResult } from '../providers/types.ts'
+import type {
+  ExtractionMessage,
+  ExtractionProvider,
+  ExtractionResult,
+  KnownAttribute,
+} from '../providers/types.ts'
 import type { Database } from '../storage/database.ts'
 import type {
   Claim,
+  ClaimCardinality,
+  ClaimChange,
   EntityId,
   Event,
   MemorySpaceId,
@@ -14,6 +21,7 @@ import type { EntityResolver } from './entity-resolver.ts'
 
 import { asEventId } from '../ids.ts'
 import { claimDocumentText, entityDocumentText, eventDocumentText } from '../indexing/documents.ts'
+import { ensureAttribute, listAttributes } from '../storage/attribute-repo.ts'
 import { getMessagesByIds, markMessagesConsolidated } from '../storage/conversation-repo.ts'
 import {
   addAnnotation,
@@ -24,9 +32,20 @@ import {
   linkMemoryEvidence,
   listEventParticipants,
 } from '../storage/memory-repo.ts'
+import { normalizeAttribute } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
+const KNOWN_ATTRIBUTE_LIMIT = 24
+const LEGACY_ONE_VALUED = new Set([
+  'name',
+  'occupation',
+  'location',
+  'age',
+  'uses',
+  'works_at',
+  'status',
+])
 
 export class AnnotationPipeline {
   private readonly db: Database
@@ -107,6 +126,10 @@ export class AnnotationPipeline {
         [...focus, ...context].map((item) => item.content),
         KNOWN_ENTITY_LIMIT,
       ),
+      knownAttributes: this.knownAttributes(
+        spaceId,
+        [...focus, ...context].map((item) => item.content),
+      ),
     })
 
     const validEvidence = this.validEvidenceMap(spaceId, extraction, focusIds)
@@ -140,10 +163,31 @@ export class AnnotationPipeline {
       for (const claim of extraction.claims) {
         const evidenceIds = claim.evidenceMessageIds.filter((id) => validEvidence.has(id))
         if (evidenceIds.length === 0) continue
-        const result = this.linker.applyClaim(spaceId, claim, {
-          extractorVersion: this.extractor.version,
-          evidenceIds,
+        const attributeKey =
+          normalizeAttribute(claim.attribute ?? claim.predicate) ||
+          normalizeAttribute(claim.predicate)
+        if (attributeKey.length === 0) continue
+        const declared: ClaimCardinality =
+          claim.cardinality ?? (LEGACY_ONE_VALUED.has(claim.predicate) ? 'one' : 'many')
+        const attribute = ensureAttribute(this.db, spaceId, {
+          key: attributeKey,
+          label: claim.predicate,
+          cardinality: declared,
         })
+        const change: ClaimChange = claim.change ?? 'new'
+        const result = this.linker.applyClaim(
+          spaceId,
+          {
+            extracted: claim,
+            attribute: attribute.key,
+            cardinality: attribute.cardinality,
+            change,
+          },
+          {
+            extractorVersion: this.extractor.version,
+            evidenceIds,
+          },
+        )
         if (result === null) continue
         entityIds.add(result.subject.id)
         if (result.objectEntity !== null) entityIds.add(result.objectEntity.id)
@@ -195,6 +239,16 @@ export class AnnotationPipeline {
 
     await this.indexer.sync(spaceId, this.indexItems(spaceId, entityIds, claimIds, eventIds))
     markMessagesConsolidated(this.db, focusIds)
+  }
+
+  private knownAttributes(spaceId: MemorySpaceId, texts: readonly string[]): KnownAttribute[] {
+    const haystack = texts.join('\n').toLowerCase()
+    return listAttributes(this.db, spaceId, 200)
+      .filter(
+        (attribute) =>
+          haystack.includes(attribute.key) || haystack.includes(attribute.label.toLowerCase()),
+      )
+      .slice(0, KNOWN_ATTRIBUTE_LIMIT)
   }
 
   private validEvidenceMap(

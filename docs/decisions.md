@@ -168,6 +168,16 @@ Workspace and memory space lookups now reuse an existing row by name when the ca
 
 Deferred: the as-of replay harness, extraction schema v5, token estimator calibration, and a context-aware internal judge. The next change is the extraction contract, because all 7,260 claims in the real-model databases are active with no supersession and no validity time.
 
+## D26. Attribute-keyed claim state
+
+The real-model databases held 7,260 claims, 6,309 globally distinct predicates, 17 rows matching the seven-predicate whitelist, zero superseded claims, and zero validity times. Free-text predicates meant the state machine almost never ran.
+
+Claims now store `attribute`, `cardinality`, and the result of a change verb. The pipeline normalizes the attribute, resolves cardinality from the `attributes` registry, and applies `new`, `adds`, `replaces`, `retracts`, or `disputes`. One-valued attributes supersede a later value and keep the old row with `valid_until`; older evidence lands as superseded history. Many-valued attributes accumulate, and an explicit replace removes only the matching object. Retraction never falls back to another value. The context groups conflicts by attribute.
+
+Schema version 5 adds the columns and the registry, and backfills `attribute` from the normalized predicate. Existing claims default to `many`, so an upgrade does not change current state. Providers that omit the new fields keep legacy behavior.
+
+Verification: 61 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

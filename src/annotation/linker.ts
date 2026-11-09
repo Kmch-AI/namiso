@@ -3,7 +3,10 @@ import type { ExtractedClaim, ExtractedEvent } from '../providers/types.ts'
 import type { Database } from '../storage/database.ts'
 import type {
   Claim,
+  ClaimCardinality,
+  ClaimChange,
   ClaimObject,
+  ClaimStatus,
   Entity,
   EntityId,
   Event,
@@ -15,7 +18,6 @@ import { nowSeconds } from '../ids.ts'
 import {
   addMemoryLink,
   addParticipant,
-  findActiveClaim,
   findEventBySignature,
   findPreviousEventForActor,
   insertClaim,
@@ -24,22 +26,19 @@ import {
   setClaimStatus,
 } from '../storage/memory-repo.ts'
 
-const FUNCTIONAL_PREDICATES = new Set([
-  'name',
-  'occupation',
-  'location',
-  'age',
-  'uses',
-  'works_at',
-  'status',
-])
-
 export interface ClaimWriteResult {
   claim: Claim
   created: boolean
   superseded: Claim[]
   subject: Entity
   objectEntity: Entity | null
+}
+
+export interface ClaimStateInput {
+  extracted: ExtractedClaim
+  attribute: string
+  cardinality: ClaimCardinality
+  change: ClaimChange
 }
 
 export interface EventWriteResult {
@@ -60,9 +59,10 @@ export class MemoryLinker {
 
   applyClaim(
     spaceId: MemorySpaceId,
-    extracted: ExtractedClaim,
+    input: ClaimStateInput,
     options: { extractorVersion: string; evidenceIds: readonly MessageId[] },
   ): ClaimWriteResult | null {
+    const { extracted, attribute, cardinality, change } = input
     if (extracted.modality !== 'asserted') return null
     const subject = this.resolver.resolve({
       spaceId,
@@ -88,72 +88,92 @@ export class MemoryLinker {
       extractorVersion: options.extractorVersion,
       evidenceMessageIds: options.evidenceIds,
       modality: extracted.modality,
+      attribute,
+      cardinality,
+      change,
+    }
+    const active = listClaimsBySubject(this.db, spaceId, subject.id).filter(
+      (claim) => claim.attribute === attribute,
+    )
+    const assertedAt = extracted.validFrom ?? nowSeconds()
+    const insert = (status?: ClaimStatus, validUntil?: number): Claim =>
+      insertClaim(this.db, {
+        spaceId,
+        subjectId: subject.id,
+        predicate: extracted.predicate,
+        attribute,
+        cardinality,
+        object,
+        confidence: extracted.confidence,
+        ...(status === undefined ? {} : { status }),
+        ...(extracted.validFrom === undefined ? {} : { validFrom: extracted.validFrom }),
+        ...(validUntil === undefined ? {} : { validUntil }),
+        metadata,
+      })
+
+    if (change !== 'retracts') {
+      const same = active.find((claim) => sameObject(claim.object, object))
+      if (same !== undefined) {
+        return { claim: same, created: false, superseded: [], subject, objectEntity }
+      }
     }
 
-    if (FUNCTIONAL_PREDICATES.has(extracted.predicate)) {
-      const previous = findActiveClaim(this.db, spaceId, subject.id, extracted.predicate)
-      if (previous !== null) {
-        if (sameObject(previous.object, object)) {
-          return {
-            claim: previous,
-            created: false,
-            superseded: [],
-            subject,
-            objectEntity,
-          }
+    if (change === 'retracts') {
+      const matching = active.filter((claim) => sameObject(claim.object, object))
+      const first = matching[0]
+      if (first !== undefined) {
+        for (const claim of matching) {
+          setClaimStatus(this.db, claim.id, 'retracted', assertedAt)
         }
-        const claim = insertClaim(this.db, {
-          spaceId,
-          subjectId: subject.id,
-          predicate: extracted.predicate,
-          object,
-          confidence: extracted.confidence,
-          ...(extracted.validFrom === undefined ? {} : { validFrom: extracted.validFrom }),
-          metadata,
-        })
-        const validUntil = extracted.validFrom ?? nowSeconds()
-        setClaimStatus(this.db, previous.id, 'superseded', validUntil)
-        addMemoryLink(this.db, {
-          spaceId,
-          sourceType: 'claim',
-          sourceId: claim.id,
-          relation: 'supersedes',
-          targetType: 'claim',
-          targetId: previous.id,
-        })
         return {
-          claim,
-          created: true,
-          superseded: [previous],
-          subject,
-          objectEntity,
-        }
-      }
-    } else {
-      const existing = listClaimsBySubject(this.db, spaceId, subject.id).find(
-        (claim) => claim.predicate === extracted.predicate && sameObject(claim.object, object),
-      )
-      if (existing !== undefined) {
-        return {
-          claim: existing,
+          claim: first,
           created: false,
-          superseded: [],
+          superseded: matching,
           subject,
           objectEntity,
         }
       }
+      const claim = insert('retracted')
+      return { claim, created: true, superseded: [], subject, objectEntity }
     }
 
-    const claim = insertClaim(this.db, {
-      spaceId,
-      subjectId: subject.id,
-      predicate: extracted.predicate,
-      object,
-      confidence: extracted.confidence,
-      ...(extracted.validFrom === undefined ? {} : { validFrom: extracted.validFrom }),
-      metadata,
-    })
-    return { claim, created: true, superseded: [], subject, objectEntity }
+    if (change === 'disputes') {
+      const claim = insert()
+      return { claim, created: true, superseded: [], subject, objectEntity }
+    }
+
+    const replacing =
+      change === 'replaces' || ((change === 'new' || change === 'adds') && cardinality === 'one')
+    if (!replacing) {
+      const claim = insert()
+      return { claim, created: true, superseded: [], subject, objectEntity }
+    }
+
+    const targets =
+      cardinality === 'one' ? active : active.filter((claim) => sameObject(claim.object, object))
+    if (change === 'new' && cardinality === 'one' && targets.length > 0) {
+      const newer = targets.filter((claim) => (claim.validFrom ?? claim.createdAt) > assertedAt)
+      if (newer.length === targets.length) {
+        const validUntil = Math.min(...targets.map((claim) => claim.validFrom ?? claim.createdAt))
+        const claim = insert('superseded', validUntil)
+        return { claim, created: true, superseded: [], subject, objectEntity }
+      }
+    }
+    const claim = insert()
+    const superseded: Claim[] = []
+    for (const target of targets) {
+      setClaimStatus(this.db, target.id, 'superseded', assertedAt)
+      addMemoryLink(this.db, {
+        spaceId,
+        sourceType: 'claim',
+        sourceId: claim.id,
+        relation: 'supersedes',
+        targetType: 'claim',
+        targetId: target.id,
+      })
+      superseded.push(target)
+    }
+    return { claim, created: true, superseded, subject, objectEntity }
   }
 
   applyEvent(
@@ -254,7 +274,7 @@ export class MemoryLinker {
     options: { extractorVersion: string; evidenceIds: readonly MessageId[] },
   ): Claim[] {
     const active = listClaimsBySubject(this.db, spaceId, actor.id).filter(
-      (claim) => claim.predicate === 'uses',
+      (claim) => claim.attribute === 'uses',
     )
     const same = active.find(
       (claim) => claim.object.kind === 'entity' && claim.object.entityId === object.id,
@@ -269,6 +289,8 @@ export class MemoryLinker {
       spaceId,
       subjectId: actor.id,
       predicate: 'uses',
+      attribute: 'uses',
+      cardinality: 'one',
       object: { kind: 'entity', entityId: object.id },
       confidence: extracted.confidence,
       ...(extracted.occurredAt === undefined ? {} : { validFrom: extracted.occurredAt }),
@@ -297,7 +319,7 @@ export class MemoryLinker {
     extracted: ExtractedEvent,
   ): Claim[] {
     const active = listClaimsBySubject(this.db, spaceId, actor.id).filter(
-      (claim) => claim.predicate === 'uses',
+      (claim) => claim.attribute === 'uses',
     )
     for (const claim of active) {
       setClaimStatus(this.db, claim.id, 'superseded', extracted.occurredAt ?? nowSeconds())
@@ -315,10 +337,6 @@ function sameObject(left: ClaimObject, right: ClaimObject): boolean {
     return left.entityId === right.entityId
   }
   return false
-}
-
-export function isFunctionalPredicate(predicate: string): boolean {
-  return FUNCTIONAL_PREDICATES.has(predicate)
 }
 
 export function entityIdsOf(claims: readonly Claim[]): EntityId[] {

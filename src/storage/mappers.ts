@@ -124,6 +124,8 @@ export function mapClaim(row: Row): Claim {
     memorySpaceId: asMemorySpaceId(text(row, 'memory_space_id')),
     subjectId: asEntityId(text(row, 'subject_id')),
     predicate: text(row, 'predicate'),
+    attribute: textOrNull(row, 'attribute') ?? text(row, 'predicate'),
+    cardinality: textOrNull(row, 'cardinality') === 'one' ? 'one' : 'many',
     object,
     status: oneOf(row, 'status', CLAIM_STATUSES),
     validFrom: numberOrNull(row, 'valid_from'),

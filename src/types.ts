@@ -116,11 +116,17 @@ export type ClaimObject =
   | { kind: 'literal'; value: string }
   | { kind: 'entity'; entityId: EntityId }
 
+export type ClaimCardinality = 'one' | 'many'
+
+export type ClaimChange = 'new' | 'adds' | 'replaces' | 'retracts' | 'disputes'
+
 export interface Claim {
   id: ClaimId
   memorySpaceId: MemorySpaceId
   subjectId: EntityId
   predicate: string
+  attribute: string
+  cardinality: ClaimCardinality
   object: ClaimObject
   status: ClaimStatus
   validFrom: number | null

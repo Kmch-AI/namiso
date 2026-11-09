@@ -1,6 +1,7 @@
 import type {
   Annotation,
   Claim,
+  ClaimCardinality,
   ClaimObject,
   ClaimStatus,
   Entity,
@@ -232,6 +233,8 @@ export interface InsertClaimInput {
   spaceId: MemorySpaceId
   subjectId: EntityId
   predicate: string
+  attribute: string
+  cardinality: ClaimCardinality
   object: ClaimObject
   status?: ClaimStatus
   validFrom?: number
@@ -247,14 +250,16 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
   const status = input.status ?? 'active'
   db.run(
     `INSERT INTO claims (
-      id, memory_space_id, subject_id, predicate, object_type, object_value,
-      object_entity_id, status, valid_from, valid_until, confidence, created_at,
+      id, memory_space_id, subject_id, predicate, attribute, cardinality, object_type,
+      object_value, object_entity_id, status, valid_from, valid_until, confidence, created_at,
       updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.subjectId,
     input.predicate,
+    input.attribute,
+    input.cardinality,
     input.object.kind,
     input.object.kind === 'literal' ? input.object.value : null,
     input.object.kind === 'entity' ? input.object.entityId : null,
@@ -271,6 +276,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     memorySpaceId: input.spaceId,
     subjectId: input.subjectId,
     predicate: input.predicate,
+    attribute: input.attribute,
+    cardinality: input.cardinality,
     object: input.object,
     status,
     validFrom: input.validFrom ?? null,
@@ -284,23 +291,6 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
 
 export function getClaim(db: Database, claimId: string): Claim | null {
   const row = db.get('SELECT * FROM claims WHERE id = ?', claimId)
-  return row === undefined ? null : mapClaim(row)
-}
-
-export function findActiveClaim(
-  db: Database,
-  spaceId: MemorySpaceId,
-  subjectId: EntityId,
-  predicate: string,
-): Claim | null {
-  const row = db.get(
-    `SELECT * FROM claims
-     WHERE memory_space_id = ? AND subject_id = ? AND predicate = ? AND status = 'active'
-     ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    spaceId,
-    subjectId,
-    predicate,
-  )
   return row === undefined ? null : mapClaim(row)
 }
 

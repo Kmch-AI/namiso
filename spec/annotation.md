@@ -30,8 +30,10 @@ Known entities are filtered before the call. The self entity is always included 
 The provider returns:
 
 - entities: name, type, optional aliases and description;
-- claims: subject, predicate, object, modality, confidence, evidence message IDs;
+- claims: subject, predicate, optional attribute, cardinality, and change verb, object, modality, confidence, evidence message IDs;
 - events: type, summary, participants, optional time, precision, modality, confidence, evidence message IDs.
+
+`attribute` is a short stable key. `predicate` stays the human-readable label. `cardinality` is `one` or `many`; when omitted, the pipeline uses the legacy one-valued predicate set or defaults to `many`. `change` is `new`, `adds`, `replaces`, `retracts`, or `disputes`; when omitted, it is `new`.
 
 Modality is `asserted`, `uncertain`, `negated`, `hypothetical`, or `quoted`. Only `asserted` claims become active. Uncertain statements can still produce events, with the modality stored in metadata.
 
@@ -74,17 +76,22 @@ Aliases are unique per space. Two similar names are never merged by string simil
 
 ## Claim linking
 
-`MemoryLinker` applies these rules:
+The pipeline normalizes the claim attribute, resolves its cardinality from the provider or the `attributes` registry, and passes the change verb to `MemoryLinker`. The linker applies these rules:
 
-| Situation                                   | Result                                                                        |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| Same functional predicate, same object      | Reuse the active claim; add evidence                                          |
-| Same functional predicate, different object | Insert a new active claim; mark the old `superseded`; add a `supersedes` link |
-| Non-functional predicate                    | Accumulate claims unless an identical active claim exists                     |
-| Uncertain or negated claim                  | Do not create an active claim                                                 |
-| Provider retry                              | Reuse existing rows; no duplicate claims                                      |
+| Situation                                                         | Result                                                                 |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Same attribute and same object                                    | Reuse the active claim; add evidence                                   |
+| One-valued attribute, different object, newer or explicit replace | Insert a new active claim; supersede the old; add a `supersedes` link  |
+| One-valued attribute, different object, older evidence            | Insert the new claim as `superseded` history with `valid_until`        |
+| Many-valued attribute, new object                                 | Insert an active claim                                                 |
+| Many-valued attribute, explicit replace on the matching object    | Replace only that object; other values stay active                     |
+| `retracts` with a matching object                                 | Mark the matching active claims `retracted`                            |
+| `retracts` with no matching object                                | Insert a `retracted` claim so the recorded denial is not lost          |
+| `disputes`                                                        | Insert the claim alongside the current value; the context renders both |
+| Uncertain, negated, hypothetical, or quoted claim                 | Not written as an active claim                                         |
+| Provider retry                                                    | Reuse existing rows; no duplicate claims                               |
 
-Functional predicates are `name`, `occupation`, `location`, `age`, `uses`, `works_at`, and `status`.
+Attribute keys are normalized by `normalizeAttribute()`: NFKC, trimmed, lowercase ASCII, collapsed whitespace, and stripped wrapping punctuation. An empty result falls back to the normalized predicate. The registry keeps the first declared cardinality for a key; it never upgrades a `many` attribute to `one`. Predicate remains the display label and the indexed text.
 
 ## Event linking
 
@@ -106,7 +113,7 @@ Evidence is created from messages with one of `user_statement`, `assistant_state
 
 ## Conflict detection
 
-The retriever checks active claims with the same subject and predicate. Different objects produce an uncertainty note in the context. The annotation pipeline does not silently choose between conflicting active claims; it records them and leaves resolution to retrieval or a later provider.
+The context builder groups active claims by subject and attribute. Two different values in one group render a conflict line with both values and dates. The annotation pipeline does not silently choose between conflicting active claims; it records them and leaves resolution to a later explicit `replaces` or `retracts` claim.
 
 ## Known gaps
 

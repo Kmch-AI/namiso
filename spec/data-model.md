@@ -16,7 +16,8 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 | `messages`            | Raw conversation, append-only; `consolidated_at` marks extracted rows                | Unique `(conversation_id, message_index)`; unique external ID per space |
 | `entities`            | People, groups, places, animals, objects, artifacts, activities, topics, other, self | Space and name index                                                    |
 | `entity_aliases`      | Alternate names                                                                      | Unique alias per space                                                  |
-| `claims`              | Subject, predicate, object facts                                                     | Subject and predicate index; status                                     |
+| `claims`              | Subject, attribute, predicate, object facts                                          | Subject and attribute index; status                                     |
+| `attributes`          | Attribute key, label, and cardinality per space                                      | Primary key `(memory_space_id, key)`                                    |
 | `events`              | Time-bound occurrences                                                               | Time, type, and status indexes                                          |
 | `event_participants`  | Entity roles in an event                                                             | Composite primary key                                                   |
 | `annotations`         | Message-to-memory links                                                              | Unique `(message_id, target_type, target_id, role)`                     |
@@ -64,7 +65,11 @@ Chunk IDs are deterministic: `chunk:<conversationId>:<ordinal>`. Job IDs are det
 
 A superseded claim keeps its row. Its `valid_until` records when the replacement took effect. A `memory_links` row with `supersedes` connects the new claim to the old one.
 
-Functional predicates (`name`, `occupation`, `location`, `age`, `uses`, `works_at`, `status`) allow one active value per subject and predicate. Other predicates can accumulate multiple active claims, so `likes` and `friend_of` do not replace earlier values.
+Each claim stores a stable `attribute` key and a `cardinality` of `one` or `many`. The extraction contract may also send a change verb: `new`, `adds`, `replaces`, `retracts`, or `disputes`. The `attributes` table remembers the first declared cardinality for each key, so a later batch cannot silently change a many-valued attribute into a replacing one.
+
+One-valued attributes hold one current value. A later different value supersedes the active claim, sets `valid_until`, and adds a `supersedes` link. If the incoming evidence is older than every active value, the new claim is stored as `superseded` history instead. Many-valued attributes accumulate active claims; an explicit `replaces` removes only a claim with the same object. `retracts` marks the matching active value retracted and never falls back to another value. `disputes` stores the claim alongside the current value, and the context renders both in the conflict section.
+
+Schema version 5 adds `claims.attribute` and `claims.cardinality`, backfills the attribute from the normalized predicate, and creates the `attributes` table. Existing claims default to `many`, so an upgrade does not change which values are current.
 
 ## Event state
 
