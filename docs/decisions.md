@@ -336,6 +336,8 @@ Tokens: extraction 1,042,215 prompt (316,158 cache hit, 726,057 miss) and 213,13
 
 Comparison: the 2026-11-08 run passed 654/714 (91.6%) with the legacy extraction format, thinking answer and judge, and the pre-hardening reranker; its recorded cost was $1.7204. The current run is 6.4 points lower and 63% cheaper. The comparison is confounded by reasoning effort, wire format, reranker excerpts, and endpoint drift, so it is a configuration result, not an attribution. A pass-rate comparison at equal reasoning effort remains open.
 
+Two follow-up experiments split the 106 failures. Re-answering all 106 with reasoning `low` and judging with the same `none` judge recovered 34, which projects to 642/714 (89.9%). Re-judging the original answers with a `low` judge recovered 8 of the 83 that produced valid reviews. Answer effort is the larger factor; judge effort is small. The remaining 64 failures include 42 whose context contained no anchor message, so retrieval and extraction changes account for the rest. The earlier answer path inherited the provider's thinking default, which is why the equal-effort premise did not hold: that run billed 104,497 answer output tokens against roughly 36k tokens of delivered answer text, while this run billed 31,978 with zero reasoning tokens.
+
 The first pass of this run also exposed the reranker pool defect in D39: with the 25-document cap, persona recall was 13–50%. Rerunning the same databases with the 50-document default produced the retrieval numbers above.
 
 Verification: 106 tests pass, 1 integration test skipped. The failed extraction batch stays pending; a rerun of that persona retries it.
