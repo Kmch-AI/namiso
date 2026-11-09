@@ -62,18 +62,16 @@ The reranker judges relevance only. It does not decide whether a claim is curren
 
 ## Selection
 
-Selection runs over the renderable candidates (entity, claim, and event) first. Conversation chunks and message candidates are source-only: they never render as lines of their own, so they yield visible slots to structured records. Raw dialogue still reaches the model through its evidence messages, and a source share of the slots keeps an episode reachable when structured extraction missed it.
+Selection runs over the renderable candidates (entity, claim, and event) first. Conversation chunks and message candidates are source-only: they never render as lines of their own, so they cannot occupy a visible slot while a structured record is available. The source-only pool still contributes evidence messages, up to the first eight ranked entries.
 
-The source share is `min(4, floor(topK / 3))`, capped by the number of source candidates. Those top-ranked source candidates join the selection, and the renderable coverage runs with the remaining slots. At the default `topK` of 12 this reserves 4 source slots and 8 record slots. The source-only pool also contributes evidence messages, up to the first eight ranked entries.
-
-The renderable pool feeds coverage selection, which returns `min(slots, pool length)` items:
+The renderable pool feeds coverage selection, which returns `min(topK, pool length)` items:
 
 1. Take rank 1.
 2. For each facet, keep the highest-ranked unpicked candidate that shares at least half the facet's tokens and scores at least 0.25 × the top score. If a selected candidate already covers the facet, no slot is used.
 3. For each explicitly named entity, do the same with a candidate whose structured record names it.
 4. Fill the remaining slots with `0.7 × score − 0.3 × max Jaccard(tokens, selected)`.
 
-If fewer renderable candidates exist than the record slots, the remaining slots fill from the ranked source-only pool and the trace notes it. Quota slots stop at topK. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
+If fewer renderable candidates exist than `topK`, the remaining slots fill from the ranked source-only pool and the trace notes it. Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
 
 ## Validation
 
@@ -99,12 +97,11 @@ Expansion can add superseded claims to a current-query result. That is intention
 
 ## Evidence selection
 
-The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in four passes:
+The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in three passes:
 
-1. For each candidate in rank order, choose its single highest-overlap message. This pass gives every kept candidate a chance, so a high-ranked record cannot take the whole budget with its supporting messages.
+1. For each candidate in rank order, choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, and linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short.
 2. Add the messages adjacent to each chosen message when slots remain.
-3. Repeat the overlap pass with each candidate's full limit: chunks contribute up to three messages, claims and events up to four. Linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short.
-4. Fill remaining slots with the highest-ranked messages that had no overlap.
+3. Fill remaining slots with the highest-ranked messages that had no overlap.
 
 Chosen evidence is displayed in time order. This keeps the context readable while preserving the message that answers the query.
 

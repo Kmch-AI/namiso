@@ -67,56 +67,7 @@ test('topK slots go to renderable records when enough exist', async () => {
     (candidate) =>
       candidate.kind === 'entity' || candidate.kind === 'claim' || candidate.kind === 'event',
   )
-  assert.equal(renderable.length, 2)
-  assert.ok(result.candidates.some((candidate) => candidate.kind === 'chunk'))
-  namiso.close()
-})
-
-test('source candidates keep the topK slots that structured records cannot fill', async () => {
-  const extraction: ExtractionProvider = {
-    version: 'source-slot-test',
-    async extract(input) {
-      const claims = input.focusMessageIds.flatMap((id) => {
-        const message = input.messages.find((item) => item.id === id)
-        if (message === undefined) return []
-        return [
-          {
-            subject: { name: USER, type: 'person' as const },
-            predicate: '整理书架',
-            object: { kind: 'literal' as const, value: message.content },
-            modality: 'asserted' as const,
-            confidence: 0.9,
-            evidenceMessageIds: [id],
-          },
-        ]
-      })
-      return {
-        entities: [{ name: USER, type: 'person', evidenceMessageIds: [input.focusMessageIds[0]] }],
-        claims,
-        events: [],
-      }
-    },
-  }
-  const { namiso, say, drain } = await setup({ extraction })
-  for (let index = 0; index < 12; index += 1) {
-    await say(USER, 'user', `第 ${index} 天我在整理书架。`)
-  }
-  await drain()
-  const result = await namiso.retrieve({
-    query: '我整理书架的事',
-    topK: 6,
-    includeRelations: false,
-    rerank: false,
-  })
-  const renderable = result.candidates.filter(
-    (candidate) =>
-      candidate.kind === 'entity' || candidate.kind === 'claim' || candidate.kind === 'event',
-  )
-  const sources = result.candidates.filter(
-    (candidate) => candidate.kind === 'chunk' || candidate.kind === 'message',
-  )
-  assert.equal(renderable.length, 4)
-  assert.equal(sources.length, 2)
+  assert.equal(renderable.length, 3)
   namiso.close()
 })
 
@@ -216,64 +167,6 @@ test('query-matching evidence survives crowded contexts', async () => {
   assert.ok(
     context.evidence.some((message) => message.content.includes(password)),
     'the matching message should be selected even when earlier chunks crowd the ranking',
-  )
-  namiso.close()
-})
-
-test('a high-ranked record cannot take the whole evidence budget', async () => {
-  const password = '4821'
-  const extraction: ExtractionProvider = {
-    version: 'evidence-turn-test',
-    async extract(input) {
-      const plain = input.focusMessageIds.flatMap((id) => {
-        const message = input.messages.find((item) => item.id === id)
-        return message === undefined || message.content.includes('密码') ? [] : [message]
-      })
-      const claims = [0, 1, 2].map((group) => ({
-        subject: { name: USER, type: 'person' as const },
-        predicate: '储物柜密码',
-        object: { kind: 'literal' as const, value: '储物柜密码我记着，检查记录都正常' },
-        modality: 'asserted' as const,
-        confidence: 0.9,
-        evidenceMessageIds: plain.slice(group * 4, group * 4 + 4).map((message) => message.id),
-      }))
-      return {
-        entities: [{ name: USER, type: 'person', evidenceMessageIds: [input.focusMessageIds[0]] }],
-        claims: claims.filter((claim) => claim.evidenceMessageIds.length > 0),
-        events: [],
-      }
-    },
-  }
-  const { namiso, say, drain } = await setup({
-    extraction,
-    reranker: {
-      model: 'claim-first-reranker',
-      async rerank(input) {
-        return input.documents.map((document, index) => ({
-          index,
-          score: document.includes('密码我记着') ? 1 : 0.1,
-        }))
-      },
-    },
-  })
-  for (let index = 0; index < 12; index += 1) {
-    await say(
-      USER,
-      'user',
-      `第 ${index} 天，我把储物柜里的东西一件件拿出来检查了一遍，擦干净又放回去，没什么特别的。`,
-    )
-  }
-  await say(USER, 'user', `我的储物柜密码是 ${password}。`)
-  await drain()
-  const result = await namiso.retrieve({ query: '我的储物柜密码是什么？', topK: 4 })
-  const chunkIndex = result.candidates.findIndex(
-    (candidate) => candidate.kind === 'chunk' || candidate.kind === 'message',
-  )
-  assert.ok(chunkIndex > 0, 'the source chunk should rank below the structured claims')
-  const context = await namiso.getContext({ query: '我的储物柜密码是什么？', topK: 4 })
-  assert.ok(
-    context.evidence.some((message) => message.content.includes(password)),
-    'the source chunk keeps one evidence slot even when claims have more matching messages',
   )
   namiso.close()
 })

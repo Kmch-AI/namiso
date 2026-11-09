@@ -667,14 +667,13 @@ function collectEvidence(
   })
   const chosen: Message[] = []
   const seen = new Set<string>()
-  const take = (onlyMatching: boolean, perCandidate = Number.POSITIVE_INFINITY): void => {
+  const take = (onlyMatching: boolean): void => {
     for (const item of prepared) {
       if (chosen.length >= MAX_EVIDENCE) return
       let added = 0
       for (const entry of item.messages) {
         if (onlyMatching && entry.score === 0 && !item.linked) continue
-        if (added >= item.perCandidateLimit || added >= perCandidate) break
-        if (chosen.length >= MAX_EVIDENCE) break
+        if (added >= item.perCandidateLimit || chosen.length >= MAX_EVIDENCE) break
         if (seen.has(entry.message.id)) continue
         seen.add(entry.message.id)
         chosen.push(entry.message)
@@ -682,7 +681,7 @@ function collectEvidence(
       }
     }
   }
-  take(true, 1)
+  take(true)
   const initial = chosen.slice()
   for (const message of initial) {
     if (chosen.length >= MAX_EVIDENCE) break
@@ -701,7 +700,6 @@ function collectEvidence(
       chosen.push(neighbor)
     }
   }
-  take(true)
   take(false)
   return chosen.toSorted((left, right) => left.occurredAt - right.occurredAt)
 }
