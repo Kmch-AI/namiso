@@ -22,6 +22,7 @@ import {
   listRecentEvents,
 } from '../storage/memory-repo.ts'
 import { getDocument, searchFts } from '../storage/search-repo.ts'
+import { segment } from '../text.ts'
 import {
   candidateFromSource,
   claimCandidate,
@@ -80,10 +81,11 @@ export class Retriever {
       throw new Error('query cannot be empty')
     }
     const parsed = parseQuery(query)
+    const queryTokens = new Set(segment(query))
     const notes: string[] = []
     const mentioned = this.resolveMentioned(options.memorySpaceId, query, options.entityIds)
     const allowed = allowedKinds(options.memoryTypes)
-    const sqlItems = this.sqlChannel(options, parsed, mentioned).filter((candidate) =>
+    const sqlItems = this.sqlChannel(options, parsed, mentioned, queryTokens).filter((candidate) =>
       allowed.has(candidate.kind),
     )
     const ftsItems = this.ftsChannel(options.memorySpaceId, query).filter((candidate) =>
@@ -176,6 +178,7 @@ export class Retriever {
     options: RetrieveOptions,
     parsed: ParsedQuery,
     mentioned: readonly Entity[],
+    queryTokens: ReadonlySet<string>,
   ): MemoryCandidate[] {
     const spaceId = options.memorySpaceId
     const includeInactive = parsed.wantsHistory || !parsed.wantsCurrent
@@ -189,10 +192,7 @@ export class Retriever {
         ? []
         : listClaimsForEntities(this.db, spaceId, entityIds, {
             includeInactive,
-            limit: 40,
-          }).toSorted((left, right) => {
-            if (left.status === right.status) return 0
-            return left.status === 'active' ? -1 : 1
+            limit: 80,
           })
     const claimItems = claims.flatMap((claim) => {
       const candidate = claimCandidate(this.db, claim)
@@ -205,7 +205,7 @@ export class Retriever {
           : []
         : listEventsForEntities(this.db, spaceId, entityIds, {
             includeInactive,
-            limit: 40,
+            limit: 60,
             ...(options.timeRange?.from === undefined ? {} : { from: options.timeRange.from }),
             ...(options.timeRange?.to === undefined ? {} : { to: options.timeRange.to }),
           })
@@ -213,10 +213,12 @@ export class Retriever {
       const candidate = eventCandidate(this.db, event)
       return candidate === null ? [] : [candidate]
     })
+    const rankedClaims = rankStructured(claimItems, queryTokens, parsed)
+    const rankedEvents = rankStructured(eventItems, queryTokens, parsed)
     const ordered =
       parsed.intent === 'entity'
-        ? [...entities, ...claimItems, ...eventItems]
-        : [...claimItems, ...entities, ...eventItems]
+        ? [...entities, ...rankedClaims, ...rankedEvents]
+        : [...rankedClaims, ...entities, ...rankedEvents]
     const items = new Map<string, MemoryCandidate>()
     for (const candidate of ordered) {
       if (!items.has(candidate.key)) items.set(candidate.key, candidate)
@@ -433,6 +435,40 @@ export class Retriever {
     }
     return { items: [...extras.values()], count: extras.size }
   }
+}
+
+function rankStructured(
+  items: readonly MemoryCandidate[],
+  queryTokens: ReadonlySet<string>,
+  parsed: ParsedQuery,
+): MemoryCandidate[] {
+  return items
+    .map((candidate) => ({ candidate, score: structuredRelevance(candidate, queryTokens, parsed) }))
+    .toSorted((left, right) => {
+      if (left.score !== right.score) return right.score - left.score
+      const leftAt = left.candidate.occurredAt ?? 0
+      const rightAt = right.candidate.occurredAt ?? 0
+      if (leftAt !== rightAt) return rightAt - leftAt
+      return left.candidate.key.localeCompare(right.candidate.key)
+    })
+    .map((entry) => entry.candidate)
+}
+
+function structuredRelevance(
+  candidate: MemoryCandidate,
+  queryTokens: ReadonlySet<string>,
+  parsed: ParsedQuery,
+): number {
+  let score = 0
+  for (const token of segment(`${candidate.title}\n${candidate.text}`)) {
+    if (queryTokens.has(token)) score += 1
+  }
+  if (candidate.status === 'active' && (parsed.wantsCurrent || parsed.intent === 'general')) {
+    score += 0.25
+  }
+  if (parsed.intent === 'event' && candidate.kind === 'event') score += 0.5
+  if (parsed.intent === 'entity' && candidate.kind === 'entity') score += 0.5
+  return score
 }
 
 function allowedKinds(

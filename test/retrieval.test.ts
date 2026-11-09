@@ -284,3 +284,48 @@ test('retrieval diagnostics stay out of the model context', async () => {
   assert.ok(context.trace.notes.some((note) => note.includes('Reranker')))
   namiso.close()
 })
+
+test('structured retrieval ranks relevant claims above newer unrelated ones', async () => {
+  const password = '4821'
+  const extraction: ExtractionProvider = {
+    version: 'ranking-test',
+    async extract(input) {
+      const claims = input.focusMessageIds.flatMap((id) => {
+        const message = input.messages.find((item) => item.id === id)
+        if (message === undefined) return []
+        return [
+          {
+            subject: { name: USER, type: 'person' as const },
+            predicate: message.content.includes('密码') ? '储物柜密码' : '无关记录',
+            object: { kind: 'literal' as const, value: message.content },
+            modality: 'asserted' as const,
+            confidence: 0.9,
+            evidenceMessageIds: [id],
+          },
+        ]
+      })
+      return {
+        entities: [{ name: USER, type: 'person', evidenceMessageIds: [input.focusMessageIds[0]] }],
+        claims,
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', `我的储物柜密码是 ${password}。`)
+  for (let index = 0; index < 60; index += 1) {
+    await say(USER, 'user', `第 ${index} 条无关记录。`)
+  }
+  await drain()
+  const result = await namiso.retrieve({ query: '我的储物柜密码是什么？', rerank: false })
+  const matching = result.candidates.find(
+    (candidate) =>
+      candidate.record.kind === 'claim' &&
+      candidate.record.claim.object.kind === 'literal' &&
+      candidate.record.claim.object.value.includes(password),
+  )
+  assert.ok(matching !== undefined)
+  const sql = result.trace.channels.find((channel) => channel.channel === 'sql')
+  assert.ok(sql?.topKeys.includes(matching.key), 'the relevant claim should rank first in SQL')
+  namiso.close()
+})

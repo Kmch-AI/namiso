@@ -20,7 +20,7 @@ Entity resolution checks explicit `entityIds` first. Otherwise it matches every 
 
 ## Channels
 
-**SQL** returns mentioned entities, claims for those entities, and events with those participants. Active claims sort before inactive ones. With no mentioned entity, an event or history query returns recent events.
+**SQL** returns mentioned entities, claims for those entities, and events with those participants. Claims and events are ranked by query overlap with their document text, then by status or intent boosts and recency, before the channel cap. This keeps recent but unrelated records from displacing a relevant older one. With no mentioned entity, an event or history query returns recent events.
 
 **FTS5** searches pre-segmented document text. Chinese text is segmented with `Intl.Segmenter('zh', { granularity: 'word' })`; the index stores words separated by spaces. The default SQLite tokenizer then handles each word. Query terms are ORed with quotes. This avoids relying on a tokenizer that does not segment Chinese.
 
