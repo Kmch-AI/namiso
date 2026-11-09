@@ -51,15 +51,14 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "oxlint -c oxlint.config.ts --fix",
-      "oxfmt -c oxfmt.config.ts"
+      "oxlint --fix"
     ],
-    "*.{json,jsonc,md,yml,yaml}": [
-      "oxfmt -c oxfmt.config.ts"
+    "*.{ts,tsx,json,jsonc,md,yml,yaml}": [
+      "oxfmt"
     ]
   },
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@12.16.1"
+  "packageManager": "pnpm@12.18.0"
 }
