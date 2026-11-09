@@ -324,6 +324,22 @@ The real-model full run exposed this: P16 evidence recall was 13% and P01 33%. R
 
 Verification: 106 tests pass, 1 integration test skipped. Rerunning the same real-model databases with the fix raised evidence recall from 50% to 86% on P12, from 20% to 72% on P14, from 33% to 90% on P01, from 13% to 81% on P16, and from 18% to 75% on P17, with context hit following the same path. The combined 714-item run reaches 77.8% evidence recall and 82.5% context hit. The formal offline run is unaffected because it uses the lexical reranker.
 
+## D40. Full real-model run with reasoning off
+
+Configuration: compact wire format, `knownFacts` off, reasoning effort `none` for extraction, answer, and judge, real Qwen3 embedding and reranker, calibrated token estimate, and the 50-document reranker pool from D39. Six personas ran in parallel over all 714 items.
+
+Retrieval: 713 scored, 1 extraction error (`P20-CASE-045/d15`), 77.8% evidence recall, 82.5% context hit, context tokens p50 1178, p95 1599, max 1600.
+
+Pass count: 608/714 = 85.2%. By persona: P01 73/88 (83.0%), P12 72/79 (91.1%), P14 65/82 (79.3%), P16 107/123 (87.0%), P17 148/172 (86.0%), P20 143/170 (84.1%).
+
+Tokens: extraction 1,042,215 prompt (316,158 cache hit, 726,057 miss) and 213,135 completion; answer 1,381,033 prompt (all miss) and 31,978 completion; judge 890,036 prompt (319,740 hit, 570,296 miss) and 152,574 completion. Total 3,710,971 tokens, 397,687 of them output, with zero reasoning tokens. Cost at DeepSeek-V4.1-Flash off-peak prices: $0.2377 extraction + $0.2263 answer + $0.1780 judge = $0.6421; at peak prices $1.2843. Embedding and reranking run on local servers and add no API cost.
+
+Comparison: the 2026-11-08 run passed 654/714 (91.6%) with the legacy extraction format, thinking answer and judge, and the pre-hardening reranker; its recorded cost was $1.7204. The current run is 6.4 points lower and 63% cheaper. The comparison is confounded by reasoning effort, wire format, reranker excerpts, and endpoint drift, so it is a configuration result, not an attribution. A pass-rate comparison at equal reasoning effort remains open.
+
+The first pass of this run also exposed the reranker pool defect in D39: with the 25-document cap, persona recall was 13–50%. Rerunning the same databases with the 50-document default produced the retrieval numbers above.
+
+Verification: 106 tests pass, 1 integration test skipped. The failed extraction batch stays pending; a rerun of that persona retries it.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
