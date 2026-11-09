@@ -77,8 +77,13 @@ interface RenderState {
   next: Record<MemoryRef['kind'], number>
 }
 
+interface ClaimDate {
+  at: number
+  fromValidFrom: boolean
+}
+
 interface DateLookup {
-  claims: Map<string, number | null>
+  claims: Map<string, ClaimDate | null>
   events: Map<string, number | null>
 }
 
@@ -271,7 +276,10 @@ function claimLine(
       : (objectEntity?.name ?? '未知主体')
   const negative = claim.polarity === 'negative' ? '≠ ' : ''
   const date = dates.claims.get(claim.id) ?? null
-  const recorded = date === null ? '' : `，记录于 ${formatDate(date, state.timeZone)}`
+  const recorded =
+    date === null
+      ? ''
+      : `，${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, state.timeZone)}`
   const status =
     section === 'unconfirmed'
       ? `${MODALITY_LABELS[claim.modality] ?? '未确认'}${recorded}`
@@ -361,16 +369,26 @@ function collectDates(db: Database, candidates: readonly MemoryCandidate[]): Dat
     }
     return min
   }
-  const claims = new Map<string, number | null>()
+  const claims = new Map<string, ClaimDate | null>()
   const events = new Map<string, number | null>()
   for (const candidate of candidates) {
     if (candidate.record.kind === 'claim') {
-      claims.set(candidate.record.claim.id, earliest(candidate.evidenceMessageIds))
+      const claim = candidate.record.claim
+      claims.set(
+        claim.id,
+        claim.validFrom === null
+          ? claimDate(earliest(candidate.evidenceMessageIds), false)
+          : { at: claim.validFrom, fromValidFrom: true },
+      )
     } else if (candidate.record.kind === 'event') {
       events.set(candidate.record.event.id, earliest(candidate.evidenceMessageIds))
     }
   }
   return { claims, events }
+}
+
+function claimDate(at: number | null, fromValidFrom: boolean): ClaimDate | null {
+  return at === null ? null : { at, fromValidFrom }
 }
 
 function describedEntities(candidates: readonly MemoryCandidate[]): Set<string> {
@@ -397,7 +415,7 @@ function collectConflicts(
 ): string[] {
   const groups = new Map<
     string,
-    { subject: string; predicate: string; values: Map<string, number | null> }
+    { subject: string; predicate: string; values: Map<string, ClaimDate | null> }
   >()
   for (const candidate of claims) {
     if (candidate.record.kind !== 'claim') continue
@@ -427,7 +445,9 @@ function collectConflicts(
   for (const group of groups.values()) {
     if (group.values.size < 2) continue
     const parts = [...group.values.entries()].map(([value, date]) =>
-      date === null ? value : `${value}（记录于 ${formatDate(date, timeZone)}）`,
+      date === null
+        ? value
+        : `${value}（${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, timeZone)}）`,
     )
     lines.push(
       `- ${group.subject} ${group.predicate}：${parts.join('；')}。记录未判定哪个正确，不要自行选择。`,

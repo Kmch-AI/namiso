@@ -225,6 +225,13 @@ function parseExtractionUsage(value: unknown): ExtractionUsage | null {
   }
 }
 
+function timeSeconds(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const seconds = value > 1e11 ? value / 1000 : value
+  if (seconds < 0 || seconds > 4_102_444_800) return undefined
+  return Math.floor(seconds)
+}
+
 function tokenCount(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
   return Math.floor(value)
@@ -237,11 +244,12 @@ knownAttributes lists state keys already used in this memory space. Reuse an exi
 Return one JSON object with keys entities, claims, events.
 entities: [{name, type, aliases?, description?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
 The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
-claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, modality, confidence, evidenceMessageIds}].
+claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, validFrom?, modality, confidence, evidenceMessageIds}].
 attribute is a short stable key reused across mentions. predicate is the human-readable label.
 cardinality is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit it when reusing a known attribute.
 change is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute. Use retracts when it explicitly denies the recorded value. Use disputes when sources disagree and the record cannot decide.
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
+occurredAt and validFrom are absolute epoch seconds. Resolve every relative expression such as yesterday, next Wednesday, or 前天 against the occurredAt of the message that states it. If it cannot be resolved, omit the field; for an event, also use timePrecision unknown or approximate.
 modality is asserted, reported, uncertain, negated, hypothetical, or quoted. Use reported when the speaker relays someone else's statement. Use uncertain when the speaker is not asserting the fact.
 Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts.
 If the focus messages contain no long-term memory, return {entities: [], claims: [], events: []}.`
@@ -347,7 +355,7 @@ function parseClaim(
       : { kind: 'literal', value: stringField(object, 'value').trim() }
   if (parsedObject.kind === 'literal' && parsedObject.value.length === 0) return null
   if (parsedObject.kind === 'entity' && parsedObject.name.length === 0) return null
-  const validFrom = record['validFrom']
+  const validFrom = timeSeconds(record['validFrom'])
   const attribute = typeof record['attribute'] === 'string' ? record['attribute'].trim() : ''
   const cardinality =
     typeof record['cardinality'] === 'string' &&
@@ -366,7 +374,7 @@ function parseClaim(
     modality: parseModality(record),
     confidence: clamp(numberField(record, 'confidence', 0.8)),
     evidenceMessageIds: evidenceIds(record, focusMessageIds),
-    ...(typeof validFrom === 'number' ? { validFrom } : {}),
+    ...(validFrom === undefined ? {} : { validFrom }),
     ...(attribute.length === 0 ? {} : { attribute }),
     ...(cardinality === undefined ? {} : { cardinality }),
     ...(change === undefined ? {} : { change }),
@@ -401,7 +409,7 @@ function parseEvent(
         }
       })
     : []
-  const occurredAt = record['occurredAt']
+  const occurredAt = timeSeconds(record['occurredAt'])
   const precision = record['timePrecision']
   const timePrecision =
     typeof precision === 'string' && (PRECISIONS as readonly string[]).includes(precision)
@@ -416,7 +424,7 @@ function parseEvent(
     confidence: clamp(numberField(record, 'confidence', 0.8)),
     evidenceMessageIds: evidenceIds(record, focusMessageIds),
     timePrecision,
-    ...(typeof occurredAt === 'number' ? { occurredAt } : {}),
+    ...(occurredAt === undefined ? {} : { occurredAt }),
     ...(description === undefined ? {} : { description }),
   }
 }

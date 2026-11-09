@@ -74,6 +74,40 @@ const extractionFetch: typeof fetch = async () =>
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
 
+const timeValueFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              entities: [],
+              claims: [
+                {
+                  subject: { name: '用户A', type: 'person' },
+                  predicate: '生日',
+                  object: { kind: 'literal', value: '3月2日' },
+                  validFrom: 1_790_000_000_000,
+                },
+                {
+                  subject: { name: '用户A', type: 'person' },
+                  predicate: '年龄',
+                  object: { kind: 'literal', value: '30' },
+                  validFrom: -1,
+                },
+              ],
+              events: [
+                { type: 'meeting', summary: '见面', occurredAt: 1_790_000_060_500 },
+                { type: 'meeting', summary: '旧事', occurredAt: '2026-03-02' },
+              ],
+            }),
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
 const rerankFetch: typeof fetch = async () =>
   new Response(
     JSON.stringify({
@@ -328,6 +362,24 @@ test('HTTP providers parse boundary payloads', async () => {
     { index: 0, score: 0.1 },
     { index: 1, score: 0.9 },
   ])
+})
+
+test('HTTP extraction stores times as seconds and drops unresolved times', async () => {
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: timeValueFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [],
+    knownEntities: [],
+  })
+  assert.equal(result.claims[0]?.validFrom, 1_790_000_000)
+  assert.equal(result.claims[1]?.validFrom, undefined)
+  assert.equal(result.events[0]?.occurredAt, 1_790_000_060)
+  assert.equal(result.events[1]?.occurredAt, undefined)
 })
 
 test('HTTP extraction tolerates fenced JSON', async () => {

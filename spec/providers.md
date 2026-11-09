@@ -13,7 +13,7 @@ interface ExtractionProvider {
 
 Input contains the focus message IDs, the message batch, known entities, and known attributes. Output contains entities, claims, events, and evidence message IDs. See `src/providers/types.ts` for the full shape.
 
-Each claim carries `predicate` plus optional `attribute`, `cardinality`, and `change`. `attribute` is the stable state key; the pipeline normalizes it and falls back to the predicate. `cardinality` is `one` or `many`. `change` is `new`, `adds`, `replaces`, `retracts`, or `disputes`. A provider that omits these fields keeps the legacy behavior: the predicate becomes the attribute, the known one-valued predicate set gets `one`, and every other attribute gets `many`. The HTTP prompt sends `knownAttributes` so the model can reuse an existing key across batches.
+Each claim carries `predicate` plus optional `attribute`, `cardinality`, `change`, and `validFrom`. `attribute` is the stable state key; the pipeline normalizes it and falls back to the predicate. `cardinality` is `one` or `many`. `change` is `new`, `adds`, `replaces`, `retracts`, or `disputes`. `validFrom` is the absolute time the value became true. A provider that omits these fields keeps the legacy behavior: the predicate becomes the attribute, the known one-valued predicate set gets `one`, and every other attribute gets `many`. The HTTP prompt sends `knownAttributes` so the model can reuse an existing key across batches.
 
 The extraction prompt must extract only from the messages listed in `focusMessageIds`. Context messages and known entities are for resolving references. `knownEntities` must not appear in the output unless a focus message mentions them. The engine sends only entities mentioned in the focus batch or the recent context, capped at 50; it does not send the whole space. Known attributes are those whose key or label appears in the focus batch or recent context, capped at 24.
 
@@ -22,6 +22,8 @@ The prompt uses the entity set in `spec/data-model.md`. `self` is the special ki
 The default `RuleExtractionProvider` uses deterministic regular expressions. It is suitable for tests and small offline demos, not production extraction. Coverage and limits are in `spec/annotation.md`.
 
 `HttpExtractionProvider` posts an OpenAI-compatible chat completion with `response_format: { type: "json_object" }`. It reads `choices[0].message.content` and parses the JSON object. If the content has surrounding prose or a code fence, the provider retries with the substring from the first `{` to the last `}`. Malformed items are dropped; content with no parseable object throws. Evidence IDs that the model cannot know fall back to the first focus message. Each HTTP call covers one consolidation batch.
+
+Claim `validFrom` and event `occurredAt` are absolute epoch seconds. The prompt resolves a relative expression such as 昨天 or next Wednesday against the occurrence time of the message that states it, and omits the field when it cannot. The parser also accepts milliseconds: a value above 10^11 is divided by 1000. A negative, out-of-range, or non-numeric time is dropped rather than guessed.
 
 Options:
 

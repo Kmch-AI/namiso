@@ -20,6 +20,7 @@ interface ClaimSpec {
   change: ClaimChange
   value: string
   modality?: MemoryModality
+  validFrom?: number
 }
 
 function claimProvider(make: (content: string, id: MessageId) => ClaimSpec): ExtractionProvider {
@@ -42,6 +43,7 @@ function claimProvider(make: (content: string, id: MessageId) => ClaimSpec): Ext
             modality: spec.modality ?? 'asserted',
             confidence: 0.9,
             evidenceMessageIds: [id],
+            ...(spec.validFrom === undefined ? {} : { validFrom: spec.validFrom }),
           },
         ],
         events: [],
@@ -73,6 +75,8 @@ test('a one-valued attribute supersedes the previous value', async () => {
   assert.ok(details !== null)
   assert.deepEqual(valuesOf(details.claims, 'active'), ['上海'])
   assert.deepEqual(valuesOf(details.claims, 'superseded'), ['苏州'])
+  const context = await namiso.getContext({ query: '我住在哪里？', timeZone: 'UTC' })
+  assert.match(context.text, /记录于 2026-09-21（周一）/)
   namiso.close()
 })
 
@@ -239,6 +243,24 @@ test('assistant-only evidence about another person is stored as quoted', async (
   assert.equal(details.claims[0]?.modality, 'quoted')
   const context = await namiso.getContext({ query: '用户住在哪里？' })
   assert.match(context.text, /\[Unconfirmed\]/)
+  namiso.close()
+})
+
+test('a claim date comes from validFrom rather than the evidence date', async () => {
+  const extraction = claimProvider((content) => ({
+    predicate: '居住地',
+    attribute: '居住地',
+    cardinality: 'one',
+    change: 'replaces',
+    value: content,
+    validFrom: Date.parse('2026-03-02T04:00:00Z') / 1000,
+  }))
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '上海')
+  await drain()
+  const context = await namiso.getContext({ query: '我住在哪里？', timeZone: 'UTC' })
+  assert.match(context.text, /始于 2026-03-02（周一）/)
+  assert.doesNotMatch(context.text, /始于 2026-09-/)
   namiso.close()
 })
 

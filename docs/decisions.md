@@ -186,6 +186,14 @@ Schema version 6 adds `claims.modality`, `claims.polarity`, and `events.modality
 
 Verification: 64 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
 
+## D28. Absolute time for claims and events
+
+The extractor saw relative expressions such as 昨天 or next Wednesday but had no instruction for resolving them, and neither side carried a unit. Claims had no time field at all, so the context showed the earliest evidence message date. A value the user reported as having started years earlier therefore rendered as the day it was mentioned.
+
+Claims now carry `validFrom`, and both `validFrom` and event `occurredAt` are absolute epoch seconds. The prompt resolves each relative expression against the occurrence time of the message that states it and omits the field when it cannot. The parser also accepts milliseconds from models that send them, and drops negative, out-of-range, or non-numeric values rather than guessing. The context renders a validity date as `始于` and an evidence fallback as `记录于`, so the model can tell when a value became true from when it was recorded.
+
+Verification: 66 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
