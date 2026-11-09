@@ -93,6 +93,7 @@ export interface RunOptions {
   providers?: ProviderSet
   databasePath?: string
   consolidateBatch?: number
+  knownFacts?: boolean
   timeZone?: string
   completedIds?: ReadonlySet<string>
   onProgress?: (message: string) => void
@@ -153,6 +154,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
       databasePath: options.databasePath ?? ':memory:',
       memorySpace: { name: `bench-${persona}` },
       vectorIndex: 'auto',
+      ...(options.knownFacts === true ? { knownFacts: true } : {}),
       ...options.providers,
     })
     const health = namiso.health()
@@ -278,6 +280,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
         consolidationBatches,
         ingestMs,
         hasAnswerKey: dataset.answerKey.size > 0,
+        knownFacts: options.knownFacts === true,
       })
       writeOutputs(join(options.outputDir, 'partial'), results, partial)
       options.onProgress?.(`${persona} wrote ${results.length} partial results`)
@@ -299,6 +302,7 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
     consolidationBatches,
     ingestMs,
     hasAnswerKey: dataset.answerKey.size > 0,
+    knownFacts: options.knownFacts === true,
   })
   if (options.outputDir !== undefined) {
     writeOutputs(options.outputDir, results, report)
@@ -346,6 +350,7 @@ function summarize(input: {
   consolidationBatches: number
   ingestMs: number
   hasAnswerKey: boolean
+  knownFacts: boolean
 }): BenchmarkReport {
   const scored = input.results.filter(
     (result) => result.error === undefined && result.anchorTotal > 0 && result.retrievalRequired,
@@ -394,6 +399,9 @@ function summarize(input: {
   ]
   if (!input.hasAnswerKey) {
     notes.push('No answer key found; evidence recall was not scored.')
+  }
+  if (input.knownFacts) {
+    notes.push('Known-facts digest was sent to the extraction provider.')
   }
   return {
     datasetRoot: input.datasetRoot,

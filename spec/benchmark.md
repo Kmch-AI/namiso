@@ -44,11 +44,25 @@ node bench/run.ts --dataset <path> --mode raw --out bench/out/formal-raw
 pnpm bench
 ```
 
-Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`, `--models`.
+Options: `--limit`, `--persona`, `--max-tokens`, `--top-k`, `--mode hybrid|raw`, `--models`, `--known-facts`.
 
-`--models` builds providers from `NAMISO_*` variables. Without it, the run uses the offline defaults and the report records them. When the extraction provider exposes usage, the CLI prints cumulative prompt, completion, reasoning, and total tokens after the report.
+`--models` builds providers from `NAMISO_*` variables. Without it, the run uses the offline defaults and the report records them. When the extraction provider exposes usage, the CLI prints cumulative prompt, completion, reasoning, and total tokens after the report. `--known-facts` sends the known-facts digest; the report notes when it was on.
 
 `bench/out/` is ignored by git. Each run writes `contexts.jsonl` and `report.json`.
+
+## Extraction A/B
+
+`bench/extraction-ab.ts` compares extraction configurations on one persona's history without running retrieval. It writes one SQLite database per arm, ingests the first `batches × 16` turns with the same message shape as `bench/run.ts`, calls `consolidate()` once, and reads counts from the stored rows.
+
+```bash
+node --env-file=.env bench/extraction-ab.ts \
+  --dataset ../chat-memory-benchmark/datasets/natural-timegrid-20261101-v2 \
+  --persona P17 --batches 20 --out bench/out/extraction-ab
+```
+
+Arms are `compact` (default wire format, known-facts digest off), `legacy` (the earlier request and prompt shape), and `compact-facts` (default wire format with the digest). `--arms` restricts the run. Each arm writes `<arm>.json`; the run writes `summary.json`. The summary reports entity, claim, and event counts; descriptions, aliases, supersession, duplicate active claims, modality, sensitivity, and absolute time counts; evidence fallbacks and drops; and provider usage including cache hit and miss tokens. The embedding provider is the offline hash implementation, so only extraction calls the model service.
+
+The tool measures extraction output, not answer quality. A count difference is a signal to inspect, not a pass or fail.
 
 ## Metrics
 
