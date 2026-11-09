@@ -2,7 +2,9 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { chat, modelFromEnv, readJsonl } from './model.ts'
+import type { ChatUsage } from './model.ts'
+
+import { addUsage, chatWithUsage, emptyUsage, modelFromEnv, readJsonl } from './model.ts'
 
 interface Packet {
   id: string
@@ -73,6 +75,7 @@ const started = performance.now()
 let completed = 0
 let failed = 0
 let cursor = 0
+const usage = emptyUsage()
 
 const workers = Array.from({ length: concurrency }, async () => {
   while (true) {
@@ -100,6 +103,8 @@ const workers = Array.from({ length: concurrency }, async () => {
 await Promise.all(workers)
 const elapsed = ((performance.now() - started) / 1000).toFixed(1)
 process.stdout.write(`done: ${completed} judged, ${failed} failed, ${elapsed}s\n`)
+writeFileSync(`${outputPath}.usage.json`, `${JSON.stringify(usage, null, 2)}\n`)
+process.stdout.write(`usage: ${JSON.stringify(usage)}\n`)
 
 async function judgeOne(packet: Packet): Promise<Record<string, unknown>> {
   const messages: Array<{ role: string; content: string }> = [
@@ -108,10 +113,18 @@ async function judgeOne(packet: Packet): Promise<Record<string, unknown>> {
   ]
   let lastError = 'invalid review'
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const content = await chat(messages, model, {
-      maxTokens,
-      ...(values.reasoning === undefined ? {} : { reasoning: values.reasoning }),
-    })
+    let content: string
+    try {
+      const result = await chatWithUsage(messages, model, {
+        maxTokens,
+        ...(values.reasoning === undefined ? {} : { reasoning: values.reasoning }),
+      })
+      addUsage(usage, result.usage)
+      content = result.content
+    } catch (error) {
+      addUsage(usage, errorUsage(error))
+      throw error
+    }
     const review = parseReview(content)
     if (review !== null && isValidReview(review, packet)) {
       return {
@@ -130,6 +143,13 @@ async function judgeOne(packet: Packet): Promise<Record<string, unknown>> {
     )
   }
   throw new Error(lastError)
+}
+
+function errorUsage(error: unknown): ChatUsage {
+  if (error !== null && typeof error === 'object' && 'usage' in error) {
+    return (error as { usage: ChatUsage }).usage
+  }
+  return emptyUsage()
 }
 
 function parseReview(content: string): Record<string, unknown> | null {

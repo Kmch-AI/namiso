@@ -149,7 +149,7 @@ The numbers above measure evidence recall. A whole-question pass count needs an 
 4. `node bench/judge.ts --packets bench/out/packets.jsonl --prompt <benchmark>/grading/judge-prompt.md --out bench/out/reviews.jsonl` produces one review per question and validates every field before writing it.
 5. `python <benchmark>/grading/grade.py score --packets ... --reviews ... --out ... --summary ...` applies the pass rules.
 
-`answer.ts` and `judge.ts` read `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_API_KEY`, and `NAMISO_EXTRACTION_MODEL` from `.env`. Both keep partial output and skip finished IDs, so a rerun resumes. Both accept `--concurrency`, `--reasoning`, and `--max-tokens`. A pass count is comparable to another run only when the answer model, judge model, prompts, and dataset commit match.
+`answer.ts` and `judge.ts` read `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_API_KEY`, and `NAMISO_EXTRACTION_MODEL` from `.env`. Both keep partial output and skip finished IDs, so a rerun resumes. Both accept `--concurrency`, `--reasoning`, and `--max-tokens`, and both write `<out>.usage.json` with call count, prompt, completion, reasoning, total, and cache hit and miss tokens, including retried attempts. A pass count is comparable to another run only when the answer model, judge model, prompts, and dataset commit match.
 
 A formal run can take hours. Pass `--db <file>` and `--items <file>` to make it resumable. Every finished question is appended to the items file, and a rerun with the same paths skips those IDs. The database keeps consolidated messages, so extraction is not repeated for finished prefixes. The two flags are required together; `--items` without `--db` is rejected.
 

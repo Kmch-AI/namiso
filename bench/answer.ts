@@ -2,7 +2,9 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { chat as chatCompletion, modelFromEnv, readJsonl } from './model.ts'
+import type { ChatResult, ChatUsage } from './model.ts'
+
+import { addUsage, chatWithUsage, emptyUsage, modelFromEnv, readJsonl } from './model.ts'
 
 interface ContextRow {
   id: string
@@ -91,6 +93,7 @@ const started = performance.now()
 let completed = 0
 let failed = 0
 let cursor = 0
+const usage = emptyUsage()
 
 const workers = Array.from({ length: concurrency }, async () => {
   while (true) {
@@ -106,10 +109,12 @@ const workers = Array.from({ length: concurrency }, async () => {
       continue
     }
     try {
-      const answer = await answerOne(row, item)
-      appendFileSync(outputPath, `${JSON.stringify({ id: row.id, answer })}\n`)
+      const result = await answerOne(row, item)
+      addUsage(usage, result.usage)
+      appendFileSync(outputPath, `${JSON.stringify({ id: row.id, answer: result.content })}\n`)
       completed += 1
     } catch (error) {
+      addUsage(usage, errorUsage(error))
       failed += 1
       process.stderr.write(`${row.id}: ${error instanceof Error ? error.message : String(error)}\n`)
     }
@@ -122,8 +127,17 @@ const workers = Array.from({ length: concurrency }, async () => {
 await Promise.all(workers)
 const elapsed = ((performance.now() - started) / 1000).toFixed(1)
 process.stdout.write(`done: ${completed} answered, ${failed} failed, ${elapsed}s\n`)
+writeFileSync(`${outputPath}.usage.json`, `${JSON.stringify(usage, null, 2)}\n`)
+process.stdout.write(`usage: ${JSON.stringify(usage)}\n`)
 
-async function answerOne(row: ContextRow, item: ExamItem): Promise<string> {
+function errorUsage(error: unknown): ChatUsage {
+  if (error !== null && typeof error === 'object' && 'usage' in error) {
+    return (error as { usage: ChatUsage }).usage
+  }
+  return emptyUsage()
+}
+
+async function answerOne(row: ContextRow, item: ExamItem): Promise<ChatResult> {
   const recent = recentTurns(item)
   const prompt = [
     `Current time: ${item.now}`,
@@ -137,7 +151,7 @@ async function answerOne(row: ContextRow, item: ExamItem): Promise<string> {
     'Current message:',
     row.question,
   ].join('\n')
-  const content = await chatCompletion(
+  const result = await chatWithUsage(
     [
       { role: 'system', content: ANSWER_SYSTEM_PROMPT },
       { role: 'user', content: prompt },
@@ -148,7 +162,7 @@ async function answerOne(row: ContextRow, item: ExamItem): Promise<string> {
       ...(values.reasoning === undefined ? {} : { reasoning: values.reasoning }),
     },
   )
-  return content.trim()
+  return { content: result.content.trim(), usage: result.usage }
 }
 
 function recentTurns(item: ExamItem): string[] {
