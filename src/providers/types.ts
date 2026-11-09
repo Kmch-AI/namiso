@@ -106,6 +106,8 @@ export interface ExtractionUsage {
   readonly completionTokens: number
   readonly totalTokens: number
   readonly reasoningTokens: number
+  readonly cacheHitTokens?: number
+  readonly cacheMissTokens?: number
 }
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high'

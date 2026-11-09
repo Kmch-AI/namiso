@@ -28,7 +28,7 @@ Options:
 | `reasoningEffort` | `reasoning_effort` | `none`, `minimal`, `low`, `medium`, or `high`; endpoint support varies |
 | `onUsage`         | not sent           | Called as `(usage, total)` after each response that includes usage     |
 
-The provider parses `usage` from the response. `lastUsage` holds the latest call, `usage` holds cumulative totals, and `reasoningTokens` reads `completion_tokens_details.reasoning_tokens`. `health()` reports the cumulative totals when the provider exposes them. A response without `usage` leaves the totals unchanged and sets `lastUsage` to `null`.
+The provider parses `usage` from the response. `lastUsage` holds the latest call, `usage` holds cumulative totals, and `reasoningTokens` reads `completion_tokens_details.reasoning_tokens`. `cacheHitTokens` and `cacheMissTokens` read `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens`, or `prompt_tokens_details.cached_tokens`; both stay absent when the response reports neither. `health()` reports the cumulative totals when the provider exposes them. A response without `usage` leaves the totals unchanged and sets `lastUsage` to `null`.
 
 ## Embedding
 

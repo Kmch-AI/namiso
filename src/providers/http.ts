@@ -110,7 +110,7 @@ export interface HttpExtractionOptions extends HttpBaseOptions {
 export class HttpExtractionProvider implements ExtractionProvider {
   readonly version: string
   lastUsage: ExtractionUsage | null = null
-  private totals = {
+  private totals: ExtractionUsage = {
     promptTokens: 0,
     completionTokens: 0,
     totalTokens: 0,
@@ -165,11 +165,21 @@ export class HttpExtractionProvider implements ExtractionProvider {
   private recordUsage(usage: ExtractionUsage | null): void {
     this.lastUsage = usage
     if (usage === null) return
+    const cacheHitTokens =
+      usage.cacheHitTokens === undefined
+        ? this.totals.cacheHitTokens
+        : (this.totals.cacheHitTokens ?? 0) + usage.cacheHitTokens
+    const cacheMissTokens =
+      usage.cacheMissTokens === undefined
+        ? this.totals.cacheMissTokens
+        : (this.totals.cacheMissTokens ?? 0) + usage.cacheMissTokens
     this.totals = {
       promptTokens: this.totals.promptTokens + usage.promptTokens,
       completionTokens: this.totals.completionTokens + usage.completionTokens,
       totalTokens: this.totals.totalTokens + usage.totalTokens,
       reasoningTokens: this.totals.reasoningTokens + usage.reasoningTokens,
+      ...(cacheHitTokens === undefined ? {} : { cacheHitTokens }),
+      ...(cacheMissTokens === undefined ? {} : { cacheMissTokens }),
     }
     this.options.onUsage?.(usage, { ...this.totals })
   }
@@ -188,6 +198,19 @@ function parseExtractionUsage(value: unknown): ExtractionUsage | null {
       : undefined
   const reasoningTokens =
     tokenCount(detailsRecord?.['reasoning_tokens']) ?? tokenCount(record['reasoning_tokens']) ?? 0
+  const promptDetails = record['prompt_tokens_details']
+  const promptDetailsRecord =
+    promptDetails !== null && typeof promptDetails === 'object' && !Array.isArray(promptDetails)
+      ? (promptDetails as Record<string, unknown>)
+      : undefined
+  const cacheHitTokens =
+    tokenCount(record['prompt_cache_hit_tokens']) ??
+    tokenCount(promptDetailsRecord?.['cached_tokens'])
+  const cacheMissTokens =
+    tokenCount(record['prompt_cache_miss_tokens']) ??
+    (promptTokens === undefined || cacheHitTokens === undefined
+      ? undefined
+      : Math.max(0, promptTokens - cacheHitTokens))
   if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
     return null
   }
@@ -196,6 +219,8 @@ function parseExtractionUsage(value: unknown): ExtractionUsage | null {
     completionTokens: completionTokens ?? 0,
     totalTokens: totalTokens ?? (promptTokens ?? 0) + (completionTokens ?? 0),
     reasoningTokens,
+    ...(cacheHitTokens === undefined ? {} : { cacheHitTokens }),
+    ...(cacheMissTokens === undefined ? {} : { cacheMissTokens }),
   }
 }
 

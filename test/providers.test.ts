@@ -96,6 +96,35 @@ const fencedFetch: typeof fetch = async () =>
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
 
+const cacheUsageFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ entities: [], claims: [], events: [] }) } }],
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 10,
+        total_tokens: 110,
+        prompt_cache_hit_tokens: 60,
+        prompt_cache_miss_tokens: 40,
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
+const detailUsageFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ entities: [], claims: [], events: [] }) } }],
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 5,
+        total_tokens: 105,
+        prompt_tokens_details: { cached_tokens: 25 },
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
 test('hash embeddings are deterministic, normalized, and fixed width', async () => {
   const provider = new HashEmbeddingProvider({ dimensions: 64 })
   const [left, right] = await provider.embed(['我在使用 TTS-A。', '我在使用 TTS-A。'])
@@ -340,6 +369,42 @@ test('health reports extraction usage from the HTTP provider', async () => {
     reasoningTokens: 5,
   })
   namiso.close()
+})
+
+test('extraction usage reports cache hit and miss tokens', async () => {
+  const extraction = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: cacheUsageFetch,
+  })
+  await extraction.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [],
+    knownEntities: [],
+  })
+  assert.deepEqual(extraction.usage, {
+    promptTokens: 100,
+    completionTokens: 10,
+    totalTokens: 110,
+    reasoningTokens: 0,
+    cacheHitTokens: 60,
+    cacheMissTokens: 40,
+  })
+
+  const detailExtraction = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: detailUsageFetch,
+  })
+  await detailExtraction.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [],
+    knownEntities: [],
+  })
+  assert.equal(detailExtraction.usage?.cacheHitTokens, 25)
+  assert.equal(detailExtraction.usage?.cacheMissTokens, 75)
 })
 
 test('provider environment parsing is all-or-nothing', () => {
