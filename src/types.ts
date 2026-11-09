@@ -256,7 +256,7 @@ export interface RetrievalTimeRange {
   to?: number
 }
 
-export type RetrievalChannel = 'sql' | 'fts' | 'vector' | 'graph' | 'timeline'
+export type RetrievalChannel = 'sql' | 'fts' | 'vector' | 'facet' | 'graph' | 'timeline'
 
 export type CandidateRecord =
   | { kind: 'message'; message: Message }
@@ -308,6 +308,17 @@ export interface RetrievalTrace {
   elapsedMs: number
   notes: string[]
   time?: RetrievalTimeTrace
+  aspects?: QueryAspect[]
+  facets?: string[]
+  coverage?: CoverageTrace
+}
+
+export type QueryAspect = 'current' | 'change' | 'event_time' | 'entity' | 'history' | 'general'
+
+export interface CoverageTrace {
+  floor: number
+  facets: Array<{ text: string; key: string | null; added: boolean }>
+  entities: Array<{ entityId: string; key: string | null; added: boolean }>
 }
 
 export type TimeGranularity = 'exact' | 'day' | 'week' | 'month' | 'year'

@@ -16,7 +16,9 @@ Retrieval combines structured lookup, full-text search, and vector search. The p
 
 A query with both current and history markers is general. A current query filters out non-active claims after fusion. A history query keeps superseded claims.
 
-Entity resolution checks explicit `entityIds` first. Otherwise it matches every entity name and alias against the query text. A query containing a second-person marker (`你`, `您`, `you`, `your`) adds the self entity, so questions such as `你的性格是什么` reach the assistant's persona claims. A query containing a first-person marker also adds the latest user speaker. This is how `我现在使用什么模型` reaches the user's active claims without naming the user.
+`analyzeQuery()` adds a multi-label view alongside that projection. Aspects are `current`, `change`, `event_time`, `entity`, `history`, and `general`; `general` appears only when no other aspect matched. Aspects are cues, not exclusive categories. A change query keeps inactive claims and fetches events. Facets split the query at clause punctuation and at whole-token conjunctions (`和`, `与`, `以及`, `and`, `or`, and similar), keep the first three non-duplicate fragments with content, and drop a fragment whose token set equals the whole query. `trace.intent` keeps the older single-label projection, so existing callers are unchanged.
+
+Entity resolution checks explicit `entityIds` first. Otherwise it matches every entity name and alias against the query text. A query containing a second-person marker (`你`, `您`, `you`, `your`) adds the self entity, so questions such as `你的性格是什么` reach the assistant's persona claims. A query containing a first-person marker also adds the latest user speaker. This is how `我现在使用什么模型` reaches the user's active claims without naming the user. Only explicitly named or explicitly requested entities create coverage quotas; self and speaker entities added by a pronoun do not.
 
 ## Query time
 
@@ -30,7 +32,7 @@ The windows are a soft signal. A claim or event in a window gains 0.5 in the SQL
 
 **FTS5** searches pre-segmented document text. Chinese text is segmented with `Intl.Segmenter('zh', { granularity: 'word' })`; the index stores words separated by spaces. The default SQLite tokenizer then handles each word. Query terms are ORed with quotes. This avoids relying on a tokenizer that does not segment Chinese.
 
-**Vector** embeds the query and searches `sqlite-vec` for the nearest documents. If the extension is unavailable, the engine scans stored float32 vectors and computes cosine similarity. Both backends return document IDs; the engine maps them to chunk, entity, claim, or event candidates.
+**Vector** embeds the query and searches `sqlite-vec` for the nearest documents. If the extension is unavailable, the engine scans stored float32 vectors and computes cosine similarity. Both backends return document IDs; the engine maps them to chunk, entity, claim, or event candidates. When the query has facets, the same batched `embed` call also embeds each facet, and the best rank per candidate across the facet searches forms one **facet** channel.
 
 Channels return at most 80 candidates. The FTS channel asks for the top 30 matches before that cap.
 
@@ -55,6 +57,17 @@ The top 50 fused candidates form the ranking pool. The first `rerankPool` of the
 If the reranker throws, retrieval keeps the RRF order and adds a note to the trace. If it returns fewer scores than documents, missing scores fall back to normalized RRF. If every returned score lies within 1e-9 of the others, the scores carry no ranking information; retrieval keeps the RRF order and notes the degenerate result in the trace.
 
 The reranker judges relevance only. It does not decide whether a claim is current or an event is uncertain.
+
+## Selection
+
+The ranked pool feeds coverage selection, which returns `min(topK, pool length)` items:
+
+1. Take rank 1.
+2. For each facet, keep the highest-ranked unpicked candidate that shares at least half the facet's tokens and scores at least 0.25 × the top score. If a selected candidate already covers the facet, no slot is used.
+3. For each explicitly named entity, do the same with a candidate whose structured record names it.
+4. Fill the remaining slots with `0.7 × score − 0.3 × max Jaccard(tokens, selected)`.
+
+Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
 
 ## Validation
 
@@ -126,11 +139,14 @@ The builder renders every selected item at full detail first. If the estimate ex
 
 Every result includes a trace with:
 
-- query and parsed intent;
+- query and parsed intent; `intent` is the older single-label projection;
+- multi-label aspects and facet strings;
 - resolved entity IDs;
-- per-channel counts and top five keys;
+- per-channel counts and top five keys, including the facet channel;
 - fused, reranked, and expanded counts; `rerankedCount` is the number sent to the reranker and is 0 when reranking is off;
+- the coverage floor and each facet or entity quota result;
+- the interpreted time windows, clock, and zone when a query has a bounded time expression;
 - elapsed milliseconds;
-- notes for degraded reranking, conflicts, and uncertain events.
+- notes for degraded reranking, degenerate reranker scores, unavailable vector search, conflicts, and uncertain events.
 
 The trace is the first place to look when a memory is missing from the context.

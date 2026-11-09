@@ -7,6 +7,7 @@ import type {
   Entity,
   MemoryCandidate,
   MemorySpaceId,
+  QueryAspect,
   RetrievalChannel,
   RetrievalTimeRange,
   RetrievalTrace,
@@ -30,6 +31,8 @@ import {
   eventCandidate,
   messageCandidate,
 } from './candidates.ts'
+import { selectWithCoverage } from './coverage.ts'
+import { analyzeQuery } from './query-analysis.ts'
 import { parseQuery } from './query-parser.ts'
 import { resolveTimeExpressions } from './time-expression.ts'
 
@@ -87,6 +90,7 @@ export class Retriever {
       throw new Error('query cannot be empty')
     }
     const parsed = parseQuery(query)
+    const analysis = analyzeQuery(query)
     const queryTokens = new Set(segment(query))
     const now = options.now ?? nowSeconds()
     const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE
@@ -94,17 +98,31 @@ export class Retriever {
     const notes: string[] = []
     const mentioned = this.resolveMentioned(options.memorySpaceId, query, options.entityIds)
     const allowed = allowedKinds(options.memoryTypes)
-    const sqlItems = this.sqlChannel(options, parsed, mentioned, queryTokens, windows).filter(
-      (item) => allowed.has(item.kind),
-    )
-    const ftsItems = this.ftsChannel(options.memorySpaceId, query).filter((candidate) =>
-      allowed.has(candidate.kind),
+    const sqlItems = this.sqlChannel(
+      options,
+      parsed,
+      analysis.aspects,
+      mentioned.entities,
+      queryTokens,
+      windows,
+    ).filter((item) => allowed.has(item.kind))
+    const ftsItems = this.ftsChannel(options.memorySpaceId, query).filter((item) =>
+      allowed.has(item.kind),
     )
     let vectorItems: MemoryCandidate[] = []
+    let facetItems: MemoryCandidate[] = []
     try {
-      vectorItems = (await this.vectorChannel(options.memorySpaceId, query)).filter((candidate) =>
-        allowed.has(candidate.kind),
-      )
+      const texts = [query, ...analysis.facets.map((facet) => facet.text)]
+      const vectors = await this.embedding.embed(texts)
+      const raw = vectors[0]
+      if (raw !== undefined) {
+        vectorItems = this.searchVector(options.memorySpaceId, raw).filter((item) =>
+          allowed.has(item.kind),
+        )
+      }
+      if (analysis.facets.length > 0) {
+        facetItems = this.facetChannel(options.memorySpaceId, vectors.slice(1), allowed)
+      }
     } catch (error) {
       notes.push(`向量召回不可用：${error instanceof Error ? error.message : String(error)}`)
     }
@@ -113,6 +131,7 @@ export class Retriever {
       { channel: 'sql', items: sqlItems },
       { channel: 'fts', items: ftsItems },
       { channel: 'vector', items: vectorItems },
+      ...(analysis.facets.length === 0 ? [] : [{ channel: 'facet' as const, items: facetItems }]),
     ]
     const fused = this.fuse(channelResults)
     const validated = this.validate(fused, parsed, options.timeRange)
@@ -124,7 +143,12 @@ export class Retriever {
       Math.min(options.rerankPool ?? RERANK_POOL_LIMIT, RERANK_POOL_LIMIT),
     )
     const ranked = await this.rank(query, validated.candidates, rerank, rerankPool, notes, windows)
-    const selected = ranked.slice(0, topK)
+    const coverage = selectWithCoverage(ranked, {
+      topK,
+      facets: analysis.facets,
+      entityIds: mentioned.coverageIds,
+    })
+    const selected = coverage.selected
     const expansion =
       options.includeRelations === false
         ? { items: [], count: 0 }
@@ -136,7 +160,7 @@ export class Retriever {
       id: newId(),
       query,
       intent: parsed.intent,
-      entityIds: mentioned.map((entity) => entity.id),
+      entityIds: mentioned.entities.map((entity) => entity.id),
       channels: channelResults.map((result) => ({
         channel: result.channel,
         count: result.items.length,
@@ -147,6 +171,11 @@ export class Retriever {
       expandedCount: expansion.count,
       elapsedMs: Math.round((performance.now() - started) * 100) / 100,
       notes,
+      aspects: analysis.aspects,
+      ...(analysis.facets.length === 0
+        ? {}
+        : { facets: analysis.facets.map((facet) => facet.text) }),
+      coverage: coverage.trace,
       ...(windows.length === 0 ? {} : { time: { now, timeZone, windows } }),
     }
     return { candidates: resultCandidates, total: fused.length, trace }
@@ -156,7 +185,7 @@ export class Retriever {
     spaceId: MemorySpaceId,
     query: string,
     entityIds: readonly string[] | undefined,
-  ): Entity[] {
+  ): { entities: Entity[]; coverageIds: string[] } {
     if (entityIds !== undefined && entityIds.length > 0) {
       const resolved: Entity[] = []
       for (const id of entityIds) {
@@ -165,34 +194,43 @@ export class Retriever {
           resolved.push(entity.record.entity)
         }
       }
-      return resolved
+      return { entities: resolved, coverageIds: resolved.map((entity) => entity.id) }
     }
-    const mentioned = this.resolver.findMentioned(spaceId, query, 5)
+    const named = this.resolver.findMentioned(spaceId, query, 5)
+    const coverageIds = named.map((entity) => entity.id)
+    const mentioned = [...named]
     if (/你|您|you\b|your\b/i.test(query)) {
       const self = this.resolver.self(spaceId)
       if (self !== null && !mentioned.some((entity) => entity.id === self.id)) {
         mentioned.unshift(self)
       }
     }
-    if (!/我|I\b|my\b/i.test(query)) return mentioned
+    if (!/我|I\b|my\b/i.test(query)) return { entities: mentioned, coverageIds }
     const speakerId = latestUserSpeakerId(this.db, spaceId)
-    if (speakerId === null) return mentioned
+    if (speakerId === null) return { entities: mentioned, coverageIds }
     const speaker = this.resolver.findSpeaker(spaceId, speakerId)
     if (speaker === null || mentioned.some((entity) => entity.id === speaker.id)) {
-      return mentioned
+      return { entities: mentioned, coverageIds }
     }
-    return [speaker, ...mentioned]
+    return { entities: [speaker, ...mentioned], coverageIds }
   }
 
   private sqlChannel(
     options: RetrieveOptions,
     parsed: ParsedQuery,
+    aspects: readonly QueryAspect[],
     mentioned: readonly Entity[],
     queryTokens: ReadonlySet<string>,
     windows: readonly TimeWindow[],
   ): MemoryCandidate[] {
     const spaceId = options.memorySpaceId
-    const includeInactive = parsed.wantsHistory || !parsed.wantsCurrent
+    const includeInactive =
+      parsed.wantsHistory || aspects.includes('change') || !parsed.wantsCurrent
+    const wantsEvents =
+      parsed.intent === 'event' ||
+      parsed.intent === 'history' ||
+      aspects.includes('change') ||
+      windows.length > 0
     const entityIds = mentioned.map((entity) => entity.id)
     const entities = mentioned.flatMap((entity) => {
       const candidate = candidateFromSource(this.db, spaceId, 'entity', entity.id)
@@ -211,7 +249,7 @@ export class Retriever {
     })
     const events =
       entityIds.length === 0
-        ? parsed.intent === 'event' || parsed.intent === 'history'
+        ? wantsEvents
           ? listRecentEvents(this.db, spaceId, 20)
           : []
         : listEventsForEntities(this.db, spaceId, entityIds, {
@@ -248,25 +286,38 @@ export class Retriever {
     return [...items.values()].slice(0, CANDIDATES_PER_CHANNEL)
   }
 
-  private async vectorChannel(spaceId: MemorySpaceId, query: string): Promise<MemoryCandidate[]> {
-    const [vector] = await this.embedding.embed([query])
-    if (vector === undefined) return []
+  private searchVector(spaceId: MemorySpaceId, vector: readonly number[]): MemoryCandidate[] {
     const hits = this.vectors.search(vector, spaceId, 40)
     const items = new Map<string, MemoryCandidate>()
     for (const hit of hits) {
       const document = getDocument(this.db, asDocumentId(hit.documentId))
       if (document === null || document.memorySpaceId !== spaceId) continue
-      const candidate = candidateFromSource(
-        this.db,
-        spaceId,
-        document.sourceType,
-        document.sourceId,
-      )
-      if (candidate === null || items.has(candidate.key)) continue
-      candidate.score = hit.score
-      items.set(candidate.key, candidate)
+      const item = candidateFromSource(this.db, spaceId, document.sourceType, document.sourceId)
+      if (item === null || items.has(item.key)) continue
+      item.score = hit.score
+      items.set(item.key, item)
     }
     return [...items.values()].slice(0, CANDIDATES_PER_CHANNEL)
+  }
+
+  private facetChannel(
+    spaceId: MemorySpaceId,
+    vectors: readonly (readonly number[])[],
+    allowed: ReadonlySet<CandidateRecord['kind']>,
+  ): MemoryCandidate[] {
+    const best = new Map<string, { item: MemoryCandidate; rank: number }>()
+    for (const vector of vectors) {
+      for (const [rank, item] of this.searchVector(spaceId, vector).entries()) {
+        if (!allowed.has(item.kind)) continue
+        const existing = best.get(item.key)
+        if (existing === undefined || rank < existing.rank) {
+          best.set(item.key, { item, rank })
+        }
+      }
+    }
+    return [...best.values()]
+      .toSorted((left, right) => left.rank - right.rank)
+      .map((entry) => entry.item)
   }
 
   private fuse(results: readonly ChannelResult[]): MemoryCandidate[] {

@@ -238,6 +238,18 @@ The first design used a hard filter with a widening fallback. Review found it wo
 
 Verification: 89 tests pass, 1 integration test skipped. The formal offline run stays at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717. The d3 interval moved from 75.0% to 76.0% evidence recall; the other intervals are unchanged. This is a dev-set observation, not a held-out claim.
 
+## D33. Multi-label query aspects, facets, and coverage selection
+
+The query parser returned one intent from one marker set. Multi-clause and differently-worded questions could lose their second or third fact to the `topK` cut.
+
+`analyzeQuery()` adds multi-label aspects (`current`, `change`, `event_time`, `entity`, `history`, `general`) and up to three facets split on clause punctuation and whole-token conjunctions. `trace.intent` keeps the older projection, so existing callers and tests are unchanged. The SQL channel uses aspects to keep inactive claims for change queries and to fetch events for change, history, event-time, and time-window queries.
+
+Facets are embedded in the same `embed` call as the raw query, and the best rank per candidate across the facet searches becomes one RRF channel. Selection reserves one slot for rank 1, one per facet, and one per explicitly named entity, then fills with a 0.7/0.3 Jaccard MMR. Quota slots respect `topK` and a 0.25 score floor. Self and speaker entities added by a pronoun create no quota, an empty pool returns an empty selection, and a facet counts as covered only when at least half its tokens overlap a selected item.
+
+Measured on the formal offline run: aggregate evidence recall and context hit are unchanged at 74.0% and 78.0%. Interval results move (d0 78% to 77%, d3 78% to 79%, d45 77% to 76%). Context tokens p50 moves from 717 to 724. Retrieval latency p50 moves from 12.2 to 30.8 ms because the hash embedder runs three vectors on multi-clause queries; facets trigger on 619 of 714 queries. The offline hash embedder cannot exploit semantic facet similarity, so this is a no-regression check, not evidence of a gain. A real-model A/B remains the gate.
+
+Verification: 94 tests pass, 1 integration test skipped.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

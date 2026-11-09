@@ -145,7 +145,7 @@ await memory.retrieve({
 }): Promise<RetrieveResult>
 ```
 
-`RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score.
+`RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score. The trace adds `aspects`, `facets`, `coverage`, and, when the query has a bounded time expression, `time` with the interpreted windows.
 
 `now` and `timeZone` control interpretation of relative time expressions. They never filter: a resolved window boosts matching records and appears in the trace and the context. Use `timeRange` for a deterministic filter.
 

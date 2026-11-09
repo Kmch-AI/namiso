@@ -396,9 +396,15 @@ test('an in-window event outranks an out-of-window event', async () => {
       return { entities: [], claims: [], events }
     },
   }
-  const { namiso, say, drain } = await setup({ extraction })
+  const { namiso, conversation, say, drain } = await setup({ extraction })
   await say(USER, 'user', '项目进度讨论')
-  await say(USER, 'user', '项目进度讨论')
+  await namiso.ingest({
+    conversationId: conversation.id,
+    speakerId: USER,
+    role: 'user',
+    content: '项目进度讨论',
+    occurredAt: 1_790_000_000 + 86_400,
+  })
   await drain()
   const result = await namiso.retrieve({
     query: '昨天的项目进度讨论',
@@ -419,6 +425,43 @@ test('now rejects invalid epoch values', async () => {
     namiso.retrieve({ query: '我喜欢什么？', now: -1 }),
     /now must be a non-negative epoch time/,
   )
+  namiso.close()
+})
+
+test('coverage selection keeps one slot per facet and respects topK', async () => {
+  const { namiso, say, drain } = await setup({ chunking: { size: 1, overlap: 0 } })
+  await say(USER, 'user', '我喜欢苹果。')
+  await say(USER, 'user', '我喜欢香蕉。')
+  await drain()
+  const pair = await namiso.retrieve({
+    query: '苹果和香蕉',
+    topK: 2,
+    rerank: false,
+    includeRelations: false,
+  })
+  const text = pair.candidates.map((item) => item.text).join('\n')
+  assert.match(text, /苹果/)
+  assert.match(text, /香蕉/)
+
+  const single = await namiso.retrieve({
+    query: '苹果和香蕉',
+    topK: 1,
+    rerank: false,
+    includeRelations: false,
+  })
+  assert.equal(single.candidates.length, 1)
+  namiso.close()
+})
+
+test('empty result sets and unnamed queries have no coverage quotas', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '我喜欢评弹。')
+  await drain()
+  const empty = await namiso.retrieve({ query: '我喜欢什么？', memoryTypes: [] })
+  assert.deepEqual(empty.candidates, [])
+  assert.equal(empty.trace.coverage?.floor, 0)
+  const unnamed = await namiso.retrieve({ query: '我喜欢什么？', rerank: false })
+  assert.deepEqual(unnamed.trace.coverage?.entities, [])
   namiso.close()
 })
 
