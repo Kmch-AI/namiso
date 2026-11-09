@@ -28,6 +28,7 @@ export async function rebuildIndexes(
       vectors.remove(document.id)
     }
     db.run('DELETE FROM fts_documents WHERE memory_space_id = ?', spaceId)
+    db.run('DELETE FROM fts_ngrams WHERE memory_space_id = ?', spaceId)
     db.run('DELETE FROM embedding_documents WHERE memory_space_id = ?', spaceId)
   })
 

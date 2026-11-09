@@ -465,6 +465,43 @@ test('empty result sets and unnamed queries have no coverage quotas', async () =
   namiso.close()
 })
 
+test('CJK bigram fallback finds a substring that word segmentation misses', async () => {
+  const { namiso, say, drain } = await setup({ chunking: { size: 1, overlap: 0 } })
+  await say(USER, 'user', '我昨天去了杭州西湖。')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '州西',
+    memoryTypes: ['conversation'],
+    rerank: false,
+    includeRelations: false,
+  })
+  assert.ok(
+    result.candidates.some((item) => item.kind === 'chunk' && item.text.includes('杭州西湖')),
+  )
+  assert.ok(result.trace.notes.some((note) => note.includes('二元组')))
+  namiso.close()
+})
+
+test('word hits skip the bigram fallback when they are already sufficient', async () => {
+  const { namiso, say, drain } = await setup({ chunking: { size: 1, overlap: 0 } })
+  for (const text of ['杭州有一条河。', '杭州的春天很好。', '杭州的秋天也很好。']) {
+    await say(USER, 'user', text)
+  }
+  await drain()
+  const result = await namiso.retrieve({
+    query: '杭州',
+    memoryTypes: ['conversation'],
+    rerank: false,
+    includeRelations: false,
+  })
+  assert.ok(result.candidates.length > 0)
+  assert.equal(
+    result.trace.notes.some((note) => note.includes('二元组')),
+    false,
+  )
+  namiso.close()
+})
+
 test('linked claim evidence includes a follow-up with no query overlap', async () => {
   const extraction: ExtractionProvider = {
     version: 'closure-test',

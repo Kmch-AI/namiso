@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 export const ENTITY_TYPE_MIGRATION_SQL = `
 UPDATE entities
@@ -399,6 +399,15 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status
 ON jobs(status, run_after);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_documents USING fts5(
+  document_key UNINDEXED,
+  memory_space_id UNINDEXED,
+  kind UNINDEXED,
+  source_id UNINDEXED,
+  text,
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_ngrams USING fts5(
   document_key UNINDEXED,
   memory_space_id UNINDEXED,
   kind UNINDEXED,

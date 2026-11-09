@@ -250,6 +250,16 @@ Measured on the formal offline run: aggregate evidence recall and context hit ar
 
 Verification: 94 tests pass, 1 integration test skipped.
 
+## D34. CJK bigram fallback in a separate FTS table
+
+Word segmentation misses a substring query such as `州西` against `杭州西湖`, because the document indexes `杭州` and `西湖` and the query becomes one word. Adding bigrams to the existing `fts_documents` table would collide with word tokens: FTS5 cannot tell a word from a bigram, so the first stage would match bigrams before any gate.
+
+Schema version 8 adds `fts_ngrams`, populated with CJK bigrams only. The retriever runs the word FTS first, filtered to the requested kinds; only when fewer than three eligible word hits remain does it run the bigram query and append new candidates after the word hits. The kind filter runs before the gate, so a conversation-only query is not closed by claim-only word hits. The trace notes the fallback.
+
+Verification: 96 tests pass, 1 integration test skipped. Two fixtures cover substring recovery and the no-fallback path. The formal offline run is unchanged at 74.0% evidence recall and 78.0% context hit, with context tokens p50 724. Ingest rose from 16.1s to 26.3s for 2240 turns because each document writes two FTS rows. The dev set shows no recall gain from this mechanism; it is a generic CJK recall fallback, not a tuned one.
+
+Turn-pair documents are not added. The chunk policy already accepts size 1 or 2, so a caller can get turn-level windows without a new source type, and a new source type would need its own candidate mapping, forget and rebuild paths, and duplicate fusion. Automatic entity merge is not added either: alias text is already indexed and matched, and merging on name similarity would be unsafe. Both stay deferred.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

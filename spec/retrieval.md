@@ -32,6 +32,8 @@ The windows are a soft signal. A claim or event in a window gains 0.5 in the SQL
 
 **FTS5** searches pre-segmented document text. Chinese text is segmented with `Intl.Segmenter('zh', { granularity: 'word' })`; the index stores words separated by spaces. The default SQLite tokenizer then handles each word. Query terms are ORed with quotes. This avoids relying on a tokenizer that does not segment Chinese.
 
+A second index stores CJK bigrams. The FTS channel runs the word query first, filtered to the requested memory types. When fewer than three eligible word hits remain, it runs the bigram query and appends new candidates after the word hits. This recovers a substring such as `州西` from a document that segmented as `杭州` and `西湖`. The trace notes when the fallback ran.
+
 **Vector** embeds the query and searches `sqlite-vec` for the nearest documents. If the extension is unavailable, the engine scans stored float32 vectors and computes cosine similarity. Both backends return document IDs; the engine maps them to chunk, entity, claim, or event candidates. When the query has facets, the same batched `embed` call also embeds each facet, and the best rank per candidate across the facet searches forms one **facet** channel.
 
 Channels return at most 80 candidates. The FTS channel asks for the top 30 matches before that cap.

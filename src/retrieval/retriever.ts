@@ -23,7 +23,7 @@ import {
   listEventsForEntities,
   listRecentEvents,
 } from '../storage/memory-repo.ts'
-import { getDocument, searchFts } from '../storage/search-repo.ts'
+import { getDocument, searchFts, searchFtsNgrams } from '../storage/search-repo.ts'
 import { segment } from '../text.ts'
 import {
   candidateFromSource,
@@ -60,6 +60,7 @@ const RRF_K = 60
 const CANDIDATES_PER_CHANNEL = 80
 const RERANK_POOL_LIMIT = 50
 const TIME_BOOST = 0.1
+const FTS_STAGE_MIN = 3
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 export class Retriever {
@@ -106,9 +107,7 @@ export class Retriever {
       queryTokens,
       windows,
     ).filter((item) => allowed.has(item.kind))
-    const ftsItems = this.ftsChannel(options.memorySpaceId, query).filter((item) =>
-      allowed.has(item.kind),
-    )
+    const ftsItems = this.ftsChannel(options.memorySpaceId, query, allowed, notes)
     let vectorItems: MemoryCandidate[] = []
     let facetItems: MemoryCandidate[] = []
     try {
@@ -275,13 +274,41 @@ export class Retriever {
     return [...items.values()].slice(0, CANDIDATES_PER_CHANNEL)
   }
 
-  private ftsChannel(spaceId: MemorySpaceId, query: string): MemoryCandidate[] {
+  private ftsChannel(
+    spaceId: MemorySpaceId,
+    query: string,
+    allowed: ReadonlySet<CandidateRecord['kind']>,
+    notes: string[],
+  ): MemoryCandidate[] {
+    const word = this.ftsHits(spaceId, query, allowed)
+    if (word.length >= FTS_STAGE_MIN) return word
+    const seen = new Set(word.map((item) => item.key))
+    const merged = [...word]
+    for (const hit of searchFtsNgrams(this.db, spaceId, query, 30)) {
+      if (merged.length >= CANDIDATES_PER_CHANNEL) break
+      const item = candidateFromSource(this.db, spaceId, hit.kind, hit.sourceId)
+      if (item === null || seen.has(item.key) || !allowed.has(item.kind)) continue
+      item.score = hit.score
+      seen.add(item.key)
+      merged.push(item)
+    }
+    if (merged.length > word.length) {
+      notes.push('FTS 词级命中不足，已补充 CJK 二元组检索。')
+    }
+    return merged
+  }
+
+  private ftsHits(
+    spaceId: MemorySpaceId,
+    query: string,
+    allowed: ReadonlySet<CandidateRecord['kind']>,
+  ): MemoryCandidate[] {
     const items = new Map<string, MemoryCandidate>()
     for (const hit of searchFts(this.db, spaceId, query, 30)) {
-      const candidate = candidateFromSource(this.db, spaceId, hit.kind, hit.sourceId)
-      if (candidate === null || items.has(candidate.key)) continue
-      candidate.score = hit.score
-      items.set(candidate.key, candidate)
+      const item = candidateFromSource(this.db, spaceId, hit.kind, hit.sourceId)
+      if (item === null || items.has(item.key) || !allowed.has(item.kind)) continue
+      item.score = hit.score
+      items.set(item.key, item)
     }
     return [...items.values()].slice(0, CANDIDATES_PER_CHANNEL)
   }

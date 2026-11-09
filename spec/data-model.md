@@ -29,6 +29,7 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 | `embedding_documents` | Retrieval document text and stored vector                                            | Unique `(source_type, source_id, model_name)`                           |
 | `jobs`                | Outbox for chunk and index work                                                      | Unique `dedupe_key`; status and `run_after` index                       |
 | `fts_documents`       | FTS5 index over pre-segmented document text                                          | Virtual table, rebuilt from documents                                   |
+| `fts_ngrams`          | FTS5 index over CJK bigrams used as a second retrieval stage                         | Virtual table, rebuilt from documents                                   |
 | `vec_documents`       | sqlite-vec table keyed by document ID                                                | Virtual table, dimensions from the embedding provider                   |
 
 ## Entity types
@@ -102,3 +103,5 @@ An evidence row names its source. The first version uses `source_type = 'message
 `embedding_documents` stores the retrieval text, its content hash, model name and version, dimensions, and a float32 vector blob. FTS rows and `vec_documents` rows are keyed by the document ID.
 
 Changing the embedding model changes the document identity. `reindex()` deletes the space's documents and index rows, rebuilds document text from structured records and chunks, and re-embeds. The schema does not depend on any provider.
+
+Schema version 8 adds `fts_ngrams`. `SCHEMA_SQL` creates it on open, so an existing database gets an empty table; call `reindex()` once to populate it. `indexDocument()` and `deleteFtsDocument()` maintain both FTS tables together.

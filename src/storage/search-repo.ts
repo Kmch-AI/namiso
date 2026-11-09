@@ -2,7 +2,7 @@ import type { DocumentId, MemorySourceType, MemorySpaceId } from '../types.ts'
 import type { Database } from './database.ts'
 
 import { asDocumentId, asMemorySpaceId } from '../ids.ts'
-import { hashText, toFtsQuery, toIndexText } from '../text.ts'
+import { hashText, toFtsQuery, toIndexText, toNgramQuery, toNgramText } from '../text.ts'
 import { count, oneOf, readNumber, text } from './database.ts'
 import { blobToVector } from './vector-store.ts'
 
@@ -232,10 +232,20 @@ export function indexDocument(db: Database, document: EmbeddingDocument): void {
     document.sourceId,
     toIndexText(document.content),
   )
+  db.run(
+    `INSERT INTO fts_ngrams (document_key, memory_space_id, kind, source_id, text)
+     VALUES (?, ?, ?, ?, ?)`,
+    document.id,
+    document.memorySpaceId,
+    document.sourceType,
+    document.sourceId,
+    toNgramText(document.content),
+  )
 }
 
 export function deleteFtsDocument(db: Database, documentId: DocumentId): void {
   db.run('DELETE FROM fts_documents WHERE document_key = ?', documentId)
+  db.run('DELETE FROM fts_ngrams WHERE document_key = ?', documentId)
 }
 
 export interface FtsHit {
@@ -251,13 +261,31 @@ export function searchFts(
   query: string,
   limit: number,
 ): FtsHit[] {
-  const ftsQuery = toFtsQuery(query)
+  return searchFtsTable(db, 'fts_documents', toFtsQuery(query), spaceId, limit)
+}
+
+export function searchFtsNgrams(
+  db: Database,
+  spaceId: MemorySpaceId,
+  query: string,
+  limit: number,
+): FtsHit[] {
+  return searchFtsTable(db, 'fts_ngrams', toNgramQuery(query), spaceId, limit)
+}
+
+function searchFtsTable(
+  db: Database,
+  table: 'fts_documents' | 'fts_ngrams',
+  ftsQuery: string,
+  spaceId: MemorySpaceId,
+  limit: number,
+): FtsHit[] {
   if (ftsQuery.length === 0) return []
   return db
     .all(
-      `SELECT document_key, source_id, kind, bm25(fts_documents) AS rank
-       FROM fts_documents
-       WHERE fts_documents MATCH ? AND memory_space_id = ?
+      `SELECT document_key, source_id, kind, bm25(${table}) AS rank
+       FROM ${table}
+       WHERE ${table} MATCH ? AND memory_space_id = ?
        ORDER BY rank ASC LIMIT ?`,
       ftsQuery,
       spaceId,

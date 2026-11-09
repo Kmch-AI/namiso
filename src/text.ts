@@ -57,6 +57,29 @@ export function toIndexText(text: string): string {
   return segment(text).join(' ')
 }
 
+export function toNgramText(text: string): string {
+  return cjkBigrams(text).join(' ')
+}
+
+export function toNgramQuery(text: string): string {
+  const grams = [...new Set(cjkBigrams(text))]
+  return grams.map((gram) => `"${gram}"`).join(' OR ')
+}
+
+function cjkBigrams(text: string): string[] {
+  const grams: string[] = []
+  for (const run of text.normalize('NFKC').match(/[㐀-鿿]+/g) ?? []) {
+    if (run.length === 1) {
+      grams.push(run)
+      continue
+    }
+    for (let index = 0; index < run.length - 1; index += 1) {
+      grams.push(run.slice(index, index + 2))
+    }
+  }
+  return grams
+}
+
 export function toFtsQuery(text: string): string {
   const tokens = [...new Set(segment(text))]
   if (tokens.length === 0) return ''

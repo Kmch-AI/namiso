@@ -11,6 +11,7 @@
 | P4    | Context builder, soft token target, evidence injection, uncertainty notes              | Implemented                                                    |
 | P5    | Harness adapter                                                                        | Library API only; no Cortico adapter exists in this repository |
 | P6    | Attribute state, modality, absolute time, sensitivity and disclosure, context contract | Implemented                                                    |
+| P7    | Query time, multi-label facets, coverage selection, CJK bigram fallback                | Implemented                                                    |
 
 ## Deferred
 
