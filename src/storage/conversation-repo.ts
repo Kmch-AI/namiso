@@ -28,10 +28,16 @@ export interface EnsureWorkspaceInput {
 }
 
 export function ensureWorkspace(db: Database, input: EnsureWorkspaceInput): Workspace {
+  const existing =
+    input.id === undefined
+      ? db.get(
+          'SELECT * FROM workspaces WHERE name = ? ORDER BY created_at ASC, rowid ASC LIMIT 1',
+          input.name,
+        )
+      : db.get('SELECT * FROM workspaces WHERE id = ?', input.id)
+  if (existing !== undefined) return mapWorkspace(existing)
   const id = asWorkspaceId(input.id ?? crypto.randomUUID())
   const createdAt = input.createdAt ?? nowSeconds()
-  const existing = db.get('SELECT * FROM workspaces WHERE id = ?', id)
-  if (existing !== undefined) return mapWorkspace(existing)
   db.run(
     'INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)',
     id,
@@ -53,10 +59,18 @@ export function ensureMemorySpace(
   workspaceId: WorkspaceId,
   input: EnsureMemorySpaceInput,
 ): MemorySpace {
+  const existing =
+    input.id === undefined
+      ? db.get(
+          `SELECT * FROM memory_spaces WHERE workspace_id = ? AND name = ?
+           ORDER BY created_at ASC, rowid ASC LIMIT 1`,
+          workspaceId,
+          input.name,
+        )
+      : db.get('SELECT * FROM memory_spaces WHERE id = ?', input.id)
+  if (existing !== undefined) return mapMemorySpace(existing)
   const id = asMemorySpaceId(input.id ?? crypto.randomUUID())
   const createdAt = input.createdAt ?? nowSeconds()
-  const existing = db.get('SELECT * FROM memory_spaces WHERE id = ?', id)
-  if (existing !== undefined) return mapMemorySpace(existing)
   db.run(
     'INSERT INTO memory_spaces (id, workspace_id, name, config, created_at) VALUES (?, ?, ?, ?, ?)',
     id,

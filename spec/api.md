@@ -32,8 +32,8 @@ const memory = await Namiso.open({
 | Option                               | Default                   | Notes                                              |
 | ------------------------------------ | ------------------------- | -------------------------------------------------- |
 | `databasePath`                       | required                  | Use `:memory:` for tests                           |
-| `workspace.id`, `workspace.name`     | generated, `default`      | Existing workspace is reused by ID                 |
-| `memorySpace.id`, `memorySpace.name` | generated, `default`      | Existing space is reused by ID                     |
+| `workspace.id`, `workspace.name`     | generated, `default`      | Reused by ID, or by name when ID is omitted        |
+| `memorySpace.id`, `memorySpace.name` | generated, `default`      | Reused by ID, or by name within the workspace      |
 | `embedding`                          | `HashEmbeddingProvider`   | Dimensions must stay stable for a database         |
 | `extraction`                         | `RuleExtractionProvider`  | Use an LLM provider for production                 |
 | `extractRoles`                       | `['user', 'assistant']`   | Roles sent to extraction; system and tool stay raw |

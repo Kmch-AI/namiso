@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'vitest'
 
 import { Namiso, NotFoundError, ValidationError } from '../src/index.ts'
@@ -136,4 +139,29 @@ test('closed instances reject further work', async () => {
     () => namiso.getMessages(),
     (error: unknown) => error instanceof ValidationError,
   )
+})
+
+test('opening by name reuses the existing workspace and memory space', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'namiso-open-'))
+  const databasePath = join(directory, 'memory.db')
+  try {
+    const first = await Namiso.open({ databasePath, vectorIndex: 'exact' })
+    const ids = { workspace: first.workspace.id, space: first.memorySpace.id }
+    const conversation = first.createConversation()
+    await first.ingest({
+      conversationId: conversation.id,
+      speakerId: '用户A',
+      role: 'user',
+      content: '我在使用 TTS-A。',
+    })
+    first.close()
+
+    const second = await Namiso.open({ databasePath, vectorIndex: 'exact' })
+    assert.equal(second.workspace.id, ids.workspace)
+    assert.equal(second.memorySpace.id, ids.space)
+    assert.equal(second.getMessages().length, 1)
+    second.close()
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
