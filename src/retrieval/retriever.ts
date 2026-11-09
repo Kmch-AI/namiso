@@ -60,6 +60,7 @@ interface ChannelResult {
 const RRF_K = 60
 const CANDIDATES_PER_CHANNEL = 80
 const SOURCE_EVIDENCE_POOL = 8
+const SOURCE_SELECTION_SLOTS = 4
 const RERANK_POOL_LIMIT = 50
 const TIME_BOOST = 0.1
 const FTS_STAGE_MIN = 3
@@ -146,14 +147,15 @@ export class Retriever {
     const ranked = await this.rank(query, validated.candidates, rerank, rerankPool, notes, windows)
     const renderable = ranked.filter((candidate) => isRenderableKind(candidate.kind))
     const sourceOnly = ranked.filter((candidate) => !isRenderableKind(candidate.kind))
+    const sourceSlots = Math.min(SOURCE_SELECTION_SLOTS, Math.floor(topK / 3), sourceOnly.length)
     const coverage = selectWithCoverage(renderable, {
-      topK,
+      topK: topK - sourceSlots,
       facets: analysis.facets,
       entityIds: mentioned.coverageIds,
     })
-    const selected = [...coverage.selected]
+    const selected = [...coverage.selected, ...sourceOnly.slice(0, sourceSlots)]
     if (selected.length < topK) {
-      selected.push(...sourceOnly.slice(0, topK - selected.length))
+      selected.push(...sourceOnly.slice(sourceSlots, sourceSlots + topK - selected.length))
       notes.push('可渲染记录不足，已用原始对话补足 topK。')
     }
     const sources =
