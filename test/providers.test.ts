@@ -133,6 +133,15 @@ const compactFetch: typeof fetch = async () =>
                   ev: [0],
                   k: 'one',
                   ch: 'replaces',
+                  vf: 1_790_000_050,
+                },
+                {
+                  s: '阿桐',
+                  p: '月薪',
+                  a: '月薪',
+                  o: { k: 'l', v: '三千' },
+                  ev: [0],
+                  v: 1_790_000_100,
                 },
               ],
               v: [
@@ -519,6 +528,8 @@ test('compact extraction parses short keys and type codes', async () => {
   assert.equal(result.claims[0]?.cardinality, 'one')
   assert.equal(result.claims[0]?.change, 'replaces')
   assert.equal(result.claims[0]?.modality, 'asserted')
+  assert.equal(result.claims[0]?.validFrom, 1_790_000_050)
+  assert.equal(result.claims[1]?.validFrom, 1_790_000_100)
   assert.deepEqual(result.claims[0]?.evidenceMessageIds, ['message-1'])
   assert.equal(result.events[0]?.timePrecision, 'day')
   assert.equal(result.events[0]?.modality, 'uncertain')

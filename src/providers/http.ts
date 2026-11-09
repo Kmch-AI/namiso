@@ -344,14 +344,14 @@ knownEntities are [name, type, aliases?]. knownAttributes are state keys already
 Type codes: p person, g group, l place, a animal, o object, r artifact, c activity, t topic, x other, s the assistant itself. The assistant is the only s. Models, tools, other agents, and AI products are r; companies and institutions are g.
 Return one JSON object with keys e, c, v.
 e: [{"n": name, "t": type, "al"?: [aliases], "d"?: description, "ev"?: [indices], "z"?: "private", "w"?: disclosure}]
-c: [{"s": subject name, "p": predicate, "a": attribute, "o": {"k": "l", "v": value} | {"k": "e", "n": name, "t"?: type}, "ev": [indices], "k"?: "one" | "many", "ch"?: change, "m"?: modality, "v"?: validFrom, "z"?: sensitivity, "w"?: disclosure, "c"?: confidence}]
+c: [{"s": subject name, "p": predicate, "a": attribute, "o": {"k": "l", "v": value} | {"k": "e", "n": name, "t"?: type}, "ev": [indices], "k"?: "one" | "many", "ch"?: change, "m"?: modality, "vf"?: validFrom, "z"?: sensitivity, "w"?: disclosure, "c"?: confidence}]
 v: [{"t": event type, "sum": summary, "ev": [indices], "at"?: occurredAt, "pr"?: precision, "m"?: modality, "who"?: [[name, role]], "z"?: sensitivity, "w"?: disclosure, "c"?: confidence, "d"?: description}]
-ev lists focus message indices that support the item; entity items use it when the mention has a clear source. Omit a field when it has its default: m asserted, c 0.8, pr unknown, z normal, w allowed. k is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit k when reusing a known attribute.
+ev lists indices into messages for the focus messages that support the item; entity items use it when the mention has a clear source. Omit a field when it has its default: m asserted, c 0.8, pr unknown, z normal, w allowed. k is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit k when reusing a known attribute.
 ch is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute; retracts when it explicitly denies a recorded value; disputes when sources disagree and the record cannot decide.
-at and v are absolute epoch seconds. Resolve every relative expression such as yesterday, next Wednesday, or 前天 against the occurredAt of the message that states it. If it cannot be resolved, omit the field; for an event, also use pr unknown or approximate.
+at and vf are absolute epoch seconds. Resolve every relative expression such as yesterday, next Wednesday, or 前天 against the occurredAt of the message that states it. If it cannot be resolved, omit the field; for an event, also use pr unknown or approximate.
 m is asserted, reported, uncertain, negated, hypothetical, or quoted. Use reported when the speaker relays someone else's statement; uncertain when the speaker is not asserting the fact.
 z is normal or private; w is allowed, alias_only, or do_not_volunteer. Mark a record private when the message presents it as confidential, such as a secret, someone else's health, family, or finances, a private message, or an explicit request not to tell someone. A request to use only an alias makes that value alias_only; the request itself is a normal record.
-Every claim and event must cite at least one focus index in ev. Do not invent facts.
+Every claim and event must cite at least one focus message by its index in messages. Do not invent facts.
 If the focus messages contain no long-term memory, return {"e": [], "c": [], "v": []}.`
 
 function parseJsonContent(content: string): unknown {
@@ -511,7 +511,7 @@ function parseCompactClaim(
   const attribute = optionalString(record, 'a')?.trim() ?? ''
   const cardinality = codeValue(record['k'], CARDINALITIES)
   const change = codeValue(record['ch'], CHANGES)
-  const validFrom = timeSeconds(record['v'])
+  const validFrom = timeSeconds(record['vf'] ?? record['v'])
   const sensitivity = sensitivityValue(record['z'])
   const disclosure = disclosureValue(record['w'])
   return {
