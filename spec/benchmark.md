@@ -155,12 +155,16 @@ A formal run can take hours. Pass `--db <file>` and `--items <file>` to make it 
 
 ### End-to-end pass count
 
-Both runs answered and judged through the local gateway with the benchmark's `grading/judge-prompt.md`. They differ in the retrieval and extraction stack.
+The first two runs answered and judged through the local gateway with the benchmark's `grading/judge-prompt.md`. They differ in the retrieval and extraction stack.
 
-| Run         | Extraction          | Embedding and rerank                                 | Passed            |
-| ----------- | ------------------- | ---------------------------------------------------- | ----------------- |
-| Offline     | rule-v2             | hash 256 dimensions, lexical reranker                | 539 / 714 (75.5%) |
-| Real models | DeepSeek V4.1 Flash | Qwen3-Embedding 0.6B 1024 dimensions, Qwen3-Reranker | 654 / 714 (91.6%) |
+| Run                               | Extraction          | Embedding and rerank                                 | Passed            |
+| --------------------------------- | ------------------- | ---------------------------------------------------- | ----------------- |
+| Offline                           | rule-v2             | hash 256 dimensions, lexical reranker                | 539 / 714 (75.5%) |
+| Real models, thinking             | DeepSeek V4.1 Flash | Qwen3-Embedding 0.6B 1024 dimensions, Qwen3-Reranker | 654 / 714 (91.6%) |
+| Real models, reasoning none (D40) | the same model      | the same                                             | 608 / 714 (85.2%) |
+| Structured-first selection (D41)  | the same model      | the same                                             | 606 / 714 (84.9%) |
+
+The 2026-11-10 runs reuse the same extraction databases. D40 set extraction, answer, and judge to reasoning effort `none`, the compact wire format, and the 50-document reranker pool. D41 changed selection to take structured records into the topK slots, keeping source candidates as evidence contributors; the pass count moved by two questions while the context's evidence share fell from 57% to 46% of characters. Both runs and their trade-offs are recorded in `docs/decisions.md`.
 
 Real-model run, 2026-11-08:
 

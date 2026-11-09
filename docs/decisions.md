@@ -364,6 +364,24 @@ The first full benchmark attempt reported 23% evidence recall. The cause was a h
 
 The formal-set latency was 10.87 to 13.29 ms p50 and 26.68 to 30.71 ms p95 across five runs. Ingest was 17.1 to 19.3 seconds for 2240 turns. These are single-process measurements, not throughput claims. No profiler run was used to name a hardware limiter, so the report does not claim one.
 
+## D41. Structured-first context selection
+
+Configuration: commit cc3b090. Selection gives the topK slots to renderable records (entity, claim, event), and up to eight ranked source-only candidates join the result as evidence contributors without rendering lines of their own. The run reuses the D40 extraction databases and the same answer and judge setup: reasoning effort `none`, compact wire format, known-facts digest off, 50-document reranker pool.
+
+Context composition over 714 items: Current Claims 1.93 → 2.68 entries, Historical Events 4.64 → 7.77, Relevant Entities 1.85 → 2.45. Evidence stays at twelve messages but its share of context characters falls from 57.3% to 46.3%. Mean estimated context tokens rise from 1173 to 1368.
+
+Retrieval: evidence recall 77.8% → 76.0%, context hit 82.5% → 80.5%. The loss is concentrated in P20 (70.9% → 62.4%). Replaying `P20-CASE-009/d00` explains it: the answering event ranked 33rd, and the baseline reached it only because MMR over a pool that contained chunks picked the April chunk. Structured-first selection fills the twelve slots with records about later readthroughs, and the evidence allocation then took up to four messages from each of them, starving the chunk candidate even though it was in the result set.
+
+Pass count: 606/714 (84.9%) against 608/714 (85.2%). By persona: P01 77/88 (+4), P14 69/82 (+4), P17 149/172 (+1), P12 71/79 (−1), P16 107/123 (0), P20 133/170 (−10). By content tag the gains are 分散的线索 +7.1pt, 时间约定 +7.0, 真实变化 +6.9, 职业 +5.9, 生日 +5.0; the losses are 敏感的事 −10.0, 偏好 −9.1, 计划假设梦转述猜测 −7.7, 用户的基本信息 −5.4, 第三方事实 −5.3. The two-question difference is within noise; the trade is episodic anchors against current-state and change records.
+
+A fix attempt gave every candidate one evidence message before any candidate took a second. It recovered P20 to 68.5% evidence recall and 77.1% context hit, but cost P01 89.8 → 85.2, P12 88.6 → 83.5, and P16 82.1 → 78.9, for a pooled 75.2%. Reserving four source slots for raw dialogue changed nothing on P12 and P20. The attempt is reverted in ee1ab06.
+
+Decision: keep structured-first selection. The pass count is a tie, and the gains land on state tracking, the layer's differentiator. P20 is the known weakness. The next step is record-anchored evidence closure: when a selected record names an event instance, pull that instance's evidence through its links or a sibling event instead of relying on raw chunk rank.
+
+Tokens: extraction 1,255,350 (1,042,215 prompt, 213,135 completion); answer 1,569,548 (1,535,587 prompt, 33,961 completion); judge 1,040,402 (887,368 prompt, 153,034 completion, including a five-call retry). Total 3,865,300. Cost at DeepSeek-V4.1-Flash prices: $0.6575 off-peak, $1.3150 peak. The baseline D40 run used 3,710,971 tokens and $0.6421, so the richer context costs 4.2% more.
+
+Verification: 108 tests pass, 1 integration test skipped.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |
