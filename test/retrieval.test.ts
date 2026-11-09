@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
+import type { ExtractionProvider } from '../src/index.ts'
+
 import { Namiso } from '../src/index.ts'
 import { AI, USER, setup } from './helpers.ts'
 
@@ -78,11 +80,18 @@ test('a small budget compresses text without dropping items', async () => {
   })
   assert.ok(context.text.length > 0)
   assert.equal(context.compressed, true)
+  const refs = new Map(
+    Object.entries(context.refs).map(([ref, value]) => [`${value.kind}:${value.id}`, ref]),
+  )
   for (const item of context.items) {
-    assert.ok(context.text.includes(item.key), `context dropped ${item.key}`)
+    const ref = refs.get(item.key)
+    assert.ok(ref !== undefined, `missing ref for ${item.key}`)
+    assert.ok(context.text.includes(`[${item.kind}:${ref}]`), `context dropped ${item.key}`)
   }
   for (const message of context.evidence) {
-    assert.ok(context.text.includes(message.id), `context dropped ${message.id}`)
+    const ref = refs.get(`message:${message.id}`)
+    assert.ok(ref !== undefined, `missing ref for message ${message.id}`)
+    assert.ok(context.text.includes(`[message:${ref}]`), `context dropped ${message.id}`)
   }
   namiso.close()
 })
@@ -181,4 +190,97 @@ test('sqlite-vec and exact backends both return candidates', async () => {
   assert.ok(exactResult.candidates.length > 0)
   assert.equal(exact.namiso.health().vectorBackend, 'exact')
   exact.namiso.close()
+})
+
+test('context uses short refs by default and full ids on request', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '我住在苏州，喜欢评弹。')
+  await drain()
+  const short = await namiso.getContext({ query: '我住在哪里？' })
+  assert.ok(Object.keys(short.refs).length > 0)
+  assert.doesNotMatch(short.text, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/)
+  const full = await namiso.getContext({ query: '我住在哪里？', idMode: 'full' })
+  assert.match(full.text, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/)
+  namiso.close()
+})
+
+test('context renders dates in the requested time zone', async () => {
+  const { namiso, conversation, drain } = await setup()
+  await namiso.ingest({
+    conversationId: conversation.id,
+    speakerId: USER,
+    role: 'user',
+    content: '我的储物柜密码是 4821。',
+    occurredAt: Date.parse('2026-04-15T16:30:00Z') / 1000,
+  })
+  await drain()
+  const shanghai = await namiso.getContext({
+    query: '我的储物柜密码是什么？',
+    timeZone: 'Asia/Shanghai',
+  })
+  assert.match(shanghai.text, /2026-04-16（周四）/)
+  const utc = await namiso.getContext({
+    query: '我的储物柜密码是什么？',
+    timeZone: 'UTC',
+  })
+  assert.match(utc.text, /2026-04-15（周三）/)
+  namiso.close()
+})
+
+test('conflicting active claims render both values without choosing', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'conflict-test',
+    async extract(input) {
+      const evidence = input.focusMessageIds[0]
+      return {
+        entities: [{ name: '用户', type: 'person', evidenceMessageIds: [evidence] }],
+        claims: [
+          {
+            subject: { name: '用户', type: 'person' },
+            predicate: '储物柜密码',
+            object: { kind: 'literal', value: '4821' },
+            modality: 'asserted',
+            confidence: 0.9,
+            evidenceMessageIds: [evidence],
+          },
+          {
+            subject: { name: '用户', type: 'person' },
+            predicate: '储物柜密码',
+            object: { kind: 'literal', value: '9137' },
+            modality: 'asserted',
+            confidence: 0.9,
+            evidenceMessageIds: [evidence],
+          },
+        ],
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '储物柜密码的事我说过两个版本。')
+  await drain()
+  const context = await namiso.getContext({ query: '储物柜密码是什么？' })
+  assert.match(context.text, /\[Unresolved Conflicts\]/)
+  assert.match(context.text, /4821/)
+  assert.match(context.text, /9137/)
+  assert.match(context.text, /不要自行选择/)
+  namiso.close()
+})
+
+test('retrieval diagnostics stay out of the model context', async () => {
+  const { namiso, say, drain } = await setup({
+    reranker: {
+      model: 'broken-reranker',
+      async rerank() {
+        throw new Error('window exceeded')
+      },
+    },
+  })
+  await say(USER, 'user', '我喜欢评弹。')
+  await drain()
+  const context = await namiso.getContext({ query: '我喜欢什么？' })
+  assert.doesNotMatch(context.text, /Reranker/)
+  assert.doesNotMatch(context.text, /window exceeded/)
+  assert.ok(context.trace.notes.some((note) => note.includes('Reranker')))
+  namiso.close()
 })

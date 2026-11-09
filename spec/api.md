@@ -148,6 +148,8 @@ await memory.getContext({
   query: "我现在使用什么模型？",
   maxTokens?: number,          // target, default 1200
   includeEvidence?: boolean,   // default true
+  idMode?: "short" | "full",  // default short
+  timeZone?: string,           // IANA zone, default process zone
   ...retrieve options
 }): Promise<MemoryContext>
 ```
@@ -162,10 +164,11 @@ await memory.getContext({
 | `tokenEstimate` | Heuristic token count                                    |
 | `compressed`    | Whether excerpts were shortened to approach `maxTokens`  |
 | `overBudget`    | Whether the shortest excerpts still exceeded `maxTokens` |
-| `uncertainties` | Conflict and uncertainty notes                           |
+| `uncertainties` | Conflict and uncertainty notes derived from records      |
+| `refs`          | Short ref to record ID map used by `text`                |
 | `trace`         | Retrieval trace                                          |
 
-`maxTokens` is a target. The builder shortens evidence and summaries until the estimate fits. It never drops an item, so a set of records larger than the target reports `overBudget` instead of losing entries.
+`maxTokens` is a target. The builder shortens evidence and summaries until the estimate fits. It never drops an item, so a set of records larger than the target reports `overBudget` instead of losing entries. `idMode: "short"` renders refs such as `[claim:c1]` and maps them through `refs`; `items` and `evidence` always keep full IDs.
 
 ## Timeline
 

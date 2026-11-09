@@ -85,15 +85,24 @@ Chosen evidence is displayed in time order. This keeps the context readable whil
 
 Sections appear in this order:
 
-1. Current claims
-2. Relevant entities
-3. Historical events
-4. Historical claims
-5. Memory relations
-6. Evidence messages
-7. Uncertainty
+1. Memory contract
+2. Current claims
+3. Relevant entities
+4. Unresolved conflicts
+5. Historical events
+6. Historical claims
+7. Memory relations
+8. Evidence messages
 
-Every item keeps its internal ID, such as `[claim:<uuid>]` or `[message:<uuid>]`, so a caller can fetch the record.
+The contract states that the sections are the retrieved record, that the answer must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened.
+
+Claims show their status and, when known, the date of their earliest evidence message. Entities show a description only when no rendered claim or event already describes them; otherwise the description is omitted or marked as an early summary. Conflicts are computed from rendered active claims with the same subject and predicate and different values. Each conflict line lists both values with dates and instructs the reader not to choose. Events are selected by retrieval rank, then displayed in time order; each carries a modality marker, and an undated event shows the date of its earliest evidence message as `时间未知（提及于 …）`. Retrieval trace notes, including reranker errors, never enter the model text.
+
+Dates are formatted in the requested IANA time zone with a weekday, such as `2026-07-01（周三）`. The default is the process time zone.
+
+Each line carries a reference such as `[claim:c1]` or `[message:m1]`. `MemoryContext.refs` maps the reference back to the record ID. `idMode: "full"` renders the raw IDs instead. `MemoryContext.items` and `MemoryContext.evidence` always keep full records and IDs.
+
+Every item keeps its internal reference, so a caller can fetch the record.
 
 The budget is a target, not a cap. `estimateTokens()` counts one per CJK character and one per four remaining characters; the heuristic is deliberately conservative.
 

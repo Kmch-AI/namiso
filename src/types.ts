@@ -286,6 +286,11 @@ export interface RetrieveResult {
   trace: RetrievalTrace
 }
 
+export interface MemoryRef {
+  kind: 'claim' | 'entity' | 'event' | 'message'
+  id: string
+}
+
 export interface MemoryContext {
   text: string
   items: MemoryCandidate[]
@@ -294,5 +299,6 @@ export interface MemoryContext {
   compressed: boolean
   overBudget: boolean
   uncertainties: string[]
+  refs: Record<string, MemoryRef>
   trace: RetrievalTrace
 }

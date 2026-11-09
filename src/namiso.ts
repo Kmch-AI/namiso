@@ -115,6 +115,8 @@ export interface RetrieveInput {
 
 export interface ContextInput extends RetrieveInput {
   maxTokens?: number
+  idMode?: 'short' | 'full'
+  timeZone?: string
 }
 
 export interface TimelineInput {
@@ -426,6 +428,7 @@ export class Namiso {
   }
 
   async getContext(input: ContextInput): Promise<MemoryContext> {
+    if (input.timeZone !== undefined) validateTimeZone(input.timeZone)
     const result = await this.retrieve({
       ...input,
       topK: input.topK ?? 12,
@@ -438,6 +441,8 @@ export class Namiso {
       candidates: result.candidates,
       trace: result.trace,
       ...(input.maxTokens === undefined ? {} : { maxTokens: input.maxTokens }),
+      ...(input.idMode === undefined ? {} : { idMode: input.idMode }),
+      ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
       includeEvidence: input.includeEvidence ?? true,
     })
   }
@@ -716,5 +721,14 @@ export class Namiso {
 
   private assertOpen(): void {
     if (this.closed) throw new ValidationError('Namiso instance is closed')
+  }
+}
+
+function validateTimeZone(timeZone: string): void {
+  try {
+    const formatter = new Intl.DateTimeFormat('en', { timeZone })
+    formatter.format(0)
+  } catch {
+    throw new ValidationError(`invalid timeZone: ${timeZone}`)
   }
 }
