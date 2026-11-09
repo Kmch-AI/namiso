@@ -272,7 +272,39 @@ The extraction request is serialized in property order, and providers that cache
 
 Both request builders now order the stable known state first (`knownEntities`, `knownAttributes`, `knownFacts`) and the per-call `focus`/`messages` last. The known state is itself capped and its order is deterministic, so consecutive batches share a longer prefix. JSON property order is the serialization order, so the change needs no format version. The response parser is order-independent.
 
-Verification: 103 tests pass, 1 integration test skipped; a test asserts the first three keys of the compact payload. The formal offline run is unchanged at 74.0% evidence recall and 78.0% context hit with p50 724 context tokens, because the offline providers do not issue HTTP requests. Whether a real provider's cache hit rate improves is unmeasured until a model service is available; the field order is a necessary condition, not a measured gain.
+Verification: 103 tests pass, 1 integration test skipped; a test asserts the first three keys of the compact payload. The formal offline run is unchanged at 74.0% evidence recall and 78.0% context hit with p50 724 context tokens, because the offline providers do not issue HTTP requests. A real-model 20-call run reports 9,600–13,952 cache-hit tokens in both wire formats, about 4–6% of prompt tokens. Both builders use the new order, so this does not isolate the reorder; it shows the endpoint caches roughly the system prompt and little of the per-call payload, so the ordering buys at most a few hundred tokens per call there. The order stays because it is behavior-neutral and a precondition for providers that cache longer prefixes.
+
+## D37. Real-model extraction A/B for the compact wire format and the known-facts digest
+
+The compact wire format and the known-facts digest were unit-tested but never compared with the earlier format on a real model. `bench/extraction-ab.ts` runs one persona's first 320 turns (640 messages, 20 consolidation batches of 32) through each arm with hash embedding, so only extraction calls the model service. The endpoint is a local OpenAI-compatible proxy (deepseek-v4.1-flash, reasoning effort low, temperature 0). The legacy arm did not change across runs 1–3, so its spread estimates run-to-run noise. Run 4 applied the validFrom and privacy fixes from this entry.
+
+| Arm               | Claims | Attributes | Events | Timed claims | Private claims | Extraction tokens |
+| ----------------- | ------ | ---------- | ------ | ------------ | -------------- | ----------------- |
+| legacy 1          | 224    | 158        | 86     | 84           | 27             | 362,762           |
+| legacy 2          | 218    | 157        | 84     | 27           | 17             | 389,335           |
+| legacy 3          | 218    | 166        | 65     | 12           | 35             | 351,087           |
+| compact 1         | 185    | 124        | 115    | 5            | 7              | 233,673           |
+| compact 2         | 164    | 91         | 112    | 6            | 11             | 250,959           |
+| compact 3         | 181    | 113        | 127    | 11           | 6              | 226,351           |
+| compact 4 (fixed) | 187    | 104        | 105    | 20           | 3              | 210,358           |
+| legacy 4 (fixed)  | 232    | 196        | 71     | 28           | 9              | 372,533           |
+| compact-facts 1   | 162    | 106        | 96     | 3            | 9              | 211,537           |
+| compact-facts 2   | 128    | 78         | 102    | 2            | 6              | 214,973           |
+| compact-facts 3   | 169    | 96         | 90     | 23           | 10             | 214,325           |
+
+Cost is the largest and most stable effect: compact uses 40–43% fewer extraction tokens, with prompt tokens down 47% and completion down 31–41%. The count differences are structural, not noise: compact extracts 15–20% fewer claims and 30–40% fewer distinct attributes, and 40–60% more events. The planned ±5% count gate is not met. The event surplus is unresolved; the raw responses show compact splitting narration into more dated events, which may be more anchors or more noise.
+
+Two defects were found and fixed. First, the compact schema reused `v` for the object value and the claim start time, and the model never emitted it: 5–11 timed claims against legacy's 12–84. Spelling out `validFrom` and stating that it is set when the message gives or implies when the value became true raised compact to 20/187 (10.7%) against legacy's 28/232 (12.1%) in the matched run. Second, the original privacy example list made the model mark ordinary family facts private: the legacy arm produced 35 private claims including the father's age, former job, and TV taste, the mother's job, and the user's sore wrist. Clarifying that only a confidential presentation counts, and that ordinary facts about family or colleagues are not private, cut legacy to 9 private claims, all genuine. Compact still misses an explicit "do not bring it up" request, so its 3 private claims are lower than legacy's 9; the gap tracks its lower claim count rather than the rule, but it remains a disclosure risk.
+
+Evidence integrity held in every arm: no claim or event lacked evidence. Dropped non-focus citations were 0–5 for compact and 0 for legacy; stating that `ev` indexes `messages` removed the drops in the final compact run.
+
+The known-facts digest used 6–14% fewer tokens than compact and 8–22% fewer claims with 14–15% fewer attributes in every run, with no quality signal. It stays off by default.
+
+Run-to-run noise is large for some fields. With the same legacy prompt and data, claims varied 2.8%, but timed claims ranged 12–84 and private claims 17–35. Future extraction A/Bs need repeated runs; one run cannot decide a prompt change.
+
+Decision: compact stays the default because the cost saving is large and consistent and the two identified semantic defects are fixed and verified. Quality parity is not proven; the next gate is an answer/judge A/B on a held-out slice with frozen prompts. `knownFacts` stays opt-in.
+
+Verification: 103 tests pass, 1 integration test skipped. The formal offline run is unchanged because the offline rule extractor never issues HTTP requests.
 
 ## Verification record
 
