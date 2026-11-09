@@ -120,6 +120,16 @@ export type ClaimCardinality = 'one' | 'many'
 
 export type ClaimChange = 'new' | 'adds' | 'replaces' | 'retracts' | 'disputes'
 
+export type MemoryModality =
+  | 'asserted'
+  | 'reported'
+  | 'uncertain'
+  | 'negated'
+  | 'hypothetical'
+  | 'quoted'
+
+export type ClaimPolarity = 'positive' | 'negative'
+
 export interface Claim {
   id: ClaimId
   memorySpaceId: MemorySpaceId
@@ -129,6 +139,8 @@ export interface Claim {
   cardinality: ClaimCardinality
   object: ClaimObject
   status: ClaimStatus
+  modality: MemoryModality
+  polarity: ClaimPolarity
   validFrom: number | null
   validUntil: number | null
   confidence: number
@@ -146,6 +158,7 @@ export interface Event {
   occurredAt: number | null
   timePrecision: TimePrecision
   status: EventStatus
+  modality: MemoryModality
   confidence: number
   createdAt: number
   updatedAt: number

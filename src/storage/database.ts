@@ -7,9 +7,13 @@ import {
   CLAIM_ATTRIBUTE_COLUMN_SQL,
   CLAIM_ATTRIBUTE_INDEX_SQL,
   CLAIM_CARDINALITY_COLUMN_SQL,
+  CLAIM_MODALITY_COLUMN_SQL,
+  CLAIM_POLARITY_COLUMN_SQL,
   ENTITY_TYPE_MIGRATION_SQL,
+  EVENT_MODALITY_COLUMN_SQL,
   MESSAGE_CONSOLIDATION_INDEX_SQL,
   MESSAGE_CONSOLIDATION_MIGRATION_SQL,
+  MODALITY_BACKFILL_SQL,
   SCHEMA_SQL,
   SCHEMA_VERSION,
   SELF_TYPE_MIGRATION_SQL,
@@ -61,6 +65,18 @@ export class Database {
         this.raw.exec(CLAIM_CARDINALITY_COLUMN_SQL)
       }
       this.raw.exec(CLAIM_ATTRIBUTE_BACKFILL_SQL)
+    }
+    if (version < 6) {
+      if (!this.hasColumn('claims', 'modality')) {
+        this.raw.exec(CLAIM_MODALITY_COLUMN_SQL)
+      }
+      if (!this.hasColumn('claims', 'polarity')) {
+        this.raw.exec(CLAIM_POLARITY_COLUMN_SQL)
+      }
+      if (!this.hasColumn('events', 'modality')) {
+        this.raw.exec(EVENT_MODALITY_COLUMN_SQL)
+      }
+      this.raw.exec(MODALITY_BACKFILL_SQL)
     }
     this.raw.exec(CLAIM_ATTRIBUTE_INDEX_SQL)
     if (version < SCHEMA_VERSION) {

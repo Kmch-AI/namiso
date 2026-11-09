@@ -178,6 +178,14 @@ Schema version 5 adds the columns and the registry, and backfills `attribute` fr
 
 Verification: 61 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
 
+## D27. Modality, polarity, and attribution
+
+Extraction previously dropped every non-asserted claim, so a denial or a plan vanished while an assistant restatement could become a world fact. The linker now stores modality and polarity. A user-grounded negation becomes an asserted negative fact and retracts the matching positive value. Uncertain, hypothetical, quoted, and reported claims are stored and rendered in `[Unconfirmed]`. An asserted claim backed only by assistant messages, about a subject other than the assistant, is stored as quoted; a self-subject claim with a literal object keeps its asserted modality.
+
+Schema version 6 adds `claims.modality`, `claims.polarity`, and `events.modality`, and backfills them from the existing metadata. Legacy negated rows become asserted negative facts. The context reads event modality from the column and marks planned, quoted, and uncertain events.
+
+Verification: 64 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

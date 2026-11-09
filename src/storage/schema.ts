@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 export const ENTITY_TYPE_MIGRATION_SQL = `
 UPDATE entities
@@ -60,6 +60,22 @@ UPDATE claims SET attribute = lower(trim(predicate)) WHERE attribute IS NULL;
 export const CLAIM_ATTRIBUTE_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_claims_attribute
 ON claims(memory_space_id, subject_id, attribute, status);
+`
+
+export const CLAIM_MODALITY_COLUMN_SQL =
+  "ALTER TABLE claims ADD COLUMN modality TEXT NOT NULL DEFAULT 'asserted'"
+
+export const CLAIM_POLARITY_COLUMN_SQL =
+  "ALTER TABLE claims ADD COLUMN polarity TEXT NOT NULL DEFAULT 'positive'"
+
+export const EVENT_MODALITY_COLUMN_SQL =
+  "ALTER TABLE events ADD COLUMN modality TEXT NOT NULL DEFAULT 'asserted'"
+
+export const MODALITY_BACKFILL_SQL = `
+UPDATE claims SET modality = COALESCE(json_extract(metadata, '$.modality'), modality);
+UPDATE claims SET polarity = 'negative' WHERE modality = 'negated';
+UPDATE claims SET modality = 'asserted' WHERE modality = 'negated';
+UPDATE events SET modality = COALESCE(json_extract(metadata, '$.modality'), modality);
 `
 
 export const SCHEMA_SQL = `
@@ -163,6 +179,8 @@ CREATE TABLE IF NOT EXISTS claims (
   object_value TEXT,
   object_entity_id TEXT,
   status TEXT NOT NULL DEFAULT 'active',
+  modality TEXT NOT NULL DEFAULT 'asserted',
+  polarity TEXT NOT NULL DEFAULT 'positive',
   valid_from INTEGER,
   valid_until INTEGER,
   confidence REAL NOT NULL DEFAULT 1.0,
@@ -198,6 +216,7 @@ CREATE TABLE IF NOT EXISTS events (
   occurred_at INTEGER,
   time_precision TEXT NOT NULL DEFAULT 'unknown',
   status TEXT NOT NULL DEFAULT 'active',
+  modality TEXT NOT NULL DEFAULT 'asserted',
   confidence REAL NOT NULL DEFAULT 1.0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,

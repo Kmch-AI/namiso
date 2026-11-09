@@ -242,8 +242,8 @@ attribute is a short stable key reused across mentions. predicate is the human-r
 cardinality is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit it when reusing a known attribute.
 change is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute. Use retracts when it explicitly denies the recorded value. Use disputes when sources disagree and the record cannot decide.
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
-modality is asserted, uncertain, negated, hypothetical, or quoted.
-Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts. Use uncertain when the speaker is not asserting the fact.
+modality is asserted, reported, uncertain, negated, hypothetical, or quoted. Use reported when the speaker relays someone else's statement. Use uncertain when the speaker is not asserting the fact.
+Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts.
 If the focus messages contain no long-term memory, return {entities: [], claims: [], events: []}.`
 
 function parseJsonContent(content: string): unknown {
@@ -309,6 +309,7 @@ function parseEntity(
 
 const MODALITIES: readonly ExtractionModality[] = [
   'asserted',
+  'reported',
   'uncertain',
   'negated',
   'hypothetical',

@@ -88,14 +88,17 @@ Sections appear in this order:
 
 1. Memory contract
 2. Current claims
-3. Relevant entities
-4. Unresolved conflicts
-5. Historical events
-6. Historical claims
-7. Memory relations
-8. Evidence messages
+3. Unconfirmed claims
+4. Relevant entities
+5. Unresolved conflicts
+6. Historical events
+7. Historical claims
+8. Memory relations
+9. Evidence messages
 
 The contract states that the sections are the retrieved record, that the answer must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened.
+
+Current claims are asserted claims. A negative fact renders with `≠` before the object. Claims with uncertain, hypothetical, quoted, or reported modality render in the unconfirmed section with their modality label instead of `当前有效`. Conflicts are computed only from asserted positive claims.
 
 Claims show their status and, when known, the date of their earliest evidence message. Entities show a description only when no rendered claim or event already describes them; otherwise the description is omitted or marked as an early summary. Conflicts are computed from rendered active claims with the same subject and predicate and different values. Each conflict line lists both values with dates and instructs the reader not to choose. Events are selected by retrieval rank, then displayed in time order; each carries a modality marker, and an undated event shows the date of its earliest evidence message as `时间未知（提及于 …）`. Retrieval trace notes, including reranker errors, never enter the model text.
 

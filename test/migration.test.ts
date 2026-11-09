@@ -209,16 +209,27 @@ test('schema migration backfills claim attributes and cardinality', () => {
       INSERT INTO entities VALUES ('entity', 'space', 'person', '用户', NULL, 1, 1, NULL);
       INSERT INTO claims VALUES (
         'claim', 'space', 'entity', ' 居住地 ', 'literal', '苏州', NULL, 'active',
-        NULL, NULL, 1, 1, 1, NULL
+        NULL, NULL, 1, 1, 1, '{"modality":"uncertain"}'
+      );
+      INSERT INTO claims VALUES (
+        'claim-negated', 'space', 'entity', 'status', 'literal', '在职', NULL, 'active',
+        NULL, NULL, 1, 1, 1, '{"modality":"negated"}'
       );
       PRAGMA user_version = 4;
     `)
     raw.close()
 
     db = new Database(databasePath)
-    const row = db.get("SELECT attribute, cardinality FROM claims WHERE id = 'claim'")
+    const row = db.get(
+      "SELECT attribute, cardinality, modality, polarity FROM claims WHERE id = 'claim'",
+    )
     assert.equal(row?.['attribute'], '居住地')
     assert.equal(row?.['cardinality'], 'many')
+    assert.equal(row?.['modality'], 'uncertain')
+    assert.equal(row?.['polarity'], 'positive')
+    const negated = db.get("SELECT modality, polarity FROM claims WHERE id = 'claim-negated'")
+    assert.equal(negated?.['modality'], 'asserted')
+    assert.equal(negated?.['polarity'], 'negative')
     assert.equal(readNumber(db.get('PRAGMA user_version'), 'user_version'), SCHEMA_VERSION)
   } finally {
     db?.close()

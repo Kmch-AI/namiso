@@ -6,12 +6,15 @@ import type {
   ClaimCardinality,
   ClaimChange,
   ClaimObject,
+  ClaimPolarity,
   ClaimStatus,
   Entity,
   EntityId,
   Event,
+  MemoryModality,
   MemorySpaceId,
   MessageId,
+  MessageRole,
 } from '../types.ts'
 
 import { nowSeconds } from '../ids.ts'
@@ -60,10 +63,13 @@ export class MemoryLinker {
   applyClaim(
     spaceId: MemorySpaceId,
     input: ClaimStateInput,
-    options: { extractorVersion: string; evidenceIds: readonly MessageId[] },
+    options: {
+      extractorVersion: string
+      evidenceIds: readonly MessageId[]
+      evidenceRoles?: readonly MessageRole[]
+    },
   ): ClaimWriteResult | null {
     const { extracted, attribute, cardinality, change } = input
-    if (extracted.modality !== 'asserted') return null
     const subject = this.resolver.resolve({
       spaceId,
       name: extracted.subject.name,
@@ -84,16 +90,37 @@ export class MemoryLinker {
             value: extracted.object.kind === 'literal' ? extracted.object.value : '',
           }
         : { kind: 'entity', entityId: objectEntity.id }
+    const self = this.resolver.self(spaceId)
+    const assistantOnly =
+      options.evidenceRoles !== undefined &&
+      options.evidenceRoles.length > 0 &&
+      options.evidenceRoles.every((role) => role === 'assistant')
+    const subjectIsSelf = self !== null && subject.id === self.id
+    let modality: MemoryModality = extracted.modality
+    if (
+      assistantOnly &&
+      !(subjectIsSelf && objectEntity === null) &&
+      (modality === 'asserted' || modality === 'negated')
+    ) {
+      modality = 'quoted'
+    }
+    const polarity: ClaimPolarity = modality === 'negated' ? 'negative' : 'positive'
+    const storedModality: MemoryModality = polarity === 'negative' ? 'asserted' : modality
     const metadata = {
       extractorVersion: options.extractorVersion,
       evidenceMessageIds: options.evidenceIds,
-      modality: extracted.modality,
+      modality: storedModality,
+      sourceModality: extracted.modality,
+      polarity,
       attribute,
       cardinality,
       change,
     }
     const active = listClaimsBySubject(this.db, spaceId, subject.id).filter(
       (claim) => claim.attribute === attribute,
+    )
+    const current = active.filter(
+      (claim) => claim.modality === 'asserted' && claim.polarity === 'positive',
     )
     const assertedAt = extracted.validFrom ?? nowSeconds()
     const insert = (status?: ClaimStatus, validUntil?: number): Claim =>
@@ -104,6 +131,8 @@ export class MemoryLinker {
         attribute,
         cardinality,
         object,
+        modality: storedModality,
+        polarity,
         confidence: extracted.confidence,
         ...(status === undefined ? {} : { status }),
         ...(extracted.validFrom === undefined ? {} : { validFrom: extracted.validFrom }),
@@ -111,15 +140,39 @@ export class MemoryLinker {
         metadata,
       })
 
-    if (change !== 'retracts') {
+    if (storedModality !== 'asserted') {
       const same = active.find((claim) => sameObject(claim.object, object))
+      if (same !== undefined) {
+        return { claim: same, created: false, superseded: [], subject, objectEntity }
+      }
+      const claim = insert()
+      return { claim, created: true, superseded: [], subject, objectEntity }
+    }
+
+    if (polarity === 'negative') {
+      const sameNegative = active.find(
+        (claim) => claim.polarity === 'negative' && sameObject(claim.object, object),
+      )
+      if (sameNegative !== undefined) {
+        return { claim: sameNegative, created: false, superseded: [], subject, objectEntity }
+      }
+      const matching = current.filter((claim) => sameObject(claim.object, object))
+      for (const claim of matching) {
+        setClaimStatus(this.db, claim.id, 'retracted', assertedAt)
+      }
+      const claim = insert()
+      return { claim, created: true, superseded: matching, subject, objectEntity }
+    }
+
+    if (change !== 'retracts') {
+      const same = current.find((claim) => sameObject(claim.object, object))
       if (same !== undefined) {
         return { claim: same, created: false, superseded: [], subject, objectEntity }
       }
     }
 
     if (change === 'retracts') {
-      const matching = active.filter((claim) => sameObject(claim.object, object))
+      const matching = current.filter((claim) => sameObject(claim.object, object))
       const first = matching[0]
       if (first !== undefined) {
         for (const claim of matching) {
@@ -150,7 +203,7 @@ export class MemoryLinker {
     }
 
     const targets =
-      cardinality === 'one' ? active : active.filter((claim) => sameObject(claim.object, object))
+      cardinality === 'one' ? current : current.filter((claim) => sameObject(claim.object, object))
     if (change === 'new' && cardinality === 'one' && targets.length > 0) {
       const newer = targets.filter((claim) => (claim.validFrom ?? claim.createdAt) > assertedAt)
       if (newer.length === targets.length) {
@@ -211,6 +264,7 @@ export class MemoryLinker {
       ...(extracted.description === undefined ? {} : { description: extracted.description }),
       ...(extracted.occurredAt === undefined ? {} : { occurredAt: extracted.occurredAt }),
       timePrecision: extracted.timePrecision ?? 'unknown',
+      modality: extracted.modality,
       confidence: extracted.confidence,
       metadata: {
         extractorVersion: options.extractorVersion,

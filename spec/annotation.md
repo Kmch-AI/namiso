@@ -33,7 +33,7 @@ The provider returns:
 - claims: subject, predicate, optional attribute, cardinality, and change verb, object, modality, confidence, evidence message IDs;
 - events: type, summary, participants, optional time, precision, modality, confidence, evidence message IDs.
 
-`attribute` is a short stable key. `predicate` stays the human-readable label. `cardinality` is `one` or `many`; when omitted, the pipeline uses the legacy one-valued predicate set or defaults to `many`. `change` is `new`, `adds`, `replaces`, `retracts`, or `disputes`; when omitted, it is `new`.
+`modality` is `asserted`, `reported`, `uncertain`, `negated`, `hypothetical`, or `quoted`. A negated claim is stored as a current negative fact; the other non-asserted modalities are stored and rendered as unconfirmed. An asserted claim whose evidence is assistant-only and whose subject is not the assistant becomes `quoted`.
 
 Modality is `asserted`, `uncertain`, `negated`, `hypothetical`, or `quoted`. Only `asserted` claims become active. Uncertain statements can still produce events, with the modality stored in metadata.
 
@@ -88,7 +88,9 @@ The pipeline normalizes the claim attribute, resolves its cardinality from the p
 | `retracts` with a matching object                                 | Mark the matching active claims `retracted`                            |
 | `retracts` with no matching object                                | Insert a `retracted` claim so the recorded denial is not lost          |
 | `disputes`                                                        | Insert the claim alongside the current value; the context renders both |
-| Uncertain, negated, hypothetical, or quoted claim                 | Not written as an active claim                                         |
+| Negated claim with user evidence                                  | Retract the matching positive value; store an active negative fact     |
+| Uncertain, hypothetical, quoted, or reported claim                | Store it; never supersede; the context renders it as unconfirmed       |
+| Asserted claim with assistant-only evidence, subject not self     | Store it as quoted                                                     |
 | Provider retry                                                    | Reuse existing rows; no duplicate claims                               |
 
 Attribute keys are normalized by `normalizeAttribute()`: NFKC, trimmed, lowercase ASCII, collapsed whitespace, and stripped wrapping punctuation. An empty result falls back to the normalized predicate. The registry keeps the first declared cardinality for a key; it never upgrades a `many` attribute to `one`. Predicate remains the display label and the indexed text.

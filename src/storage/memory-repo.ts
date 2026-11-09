@@ -3,6 +3,7 @@ import type {
   Claim,
   ClaimCardinality,
   ClaimObject,
+  ClaimPolarity,
   ClaimStatus,
   Entity,
   EntityAlias,
@@ -14,6 +15,7 @@ import type {
   EventStatus,
   EvidenceId,
   MemoryLink,
+  MemoryModality,
   MemorySpaceId,
   MessageId,
   Relation,
@@ -237,6 +239,8 @@ export interface InsertClaimInput {
   cardinality: ClaimCardinality
   object: ClaimObject
   status?: ClaimStatus
+  modality?: MemoryModality
+  polarity?: ClaimPolarity
   validFrom?: number
   validUntil?: number
   confidence?: number
@@ -248,12 +252,14 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
   const id = asClaimId(crypto.randomUUID())
   const timestamp = input.createdAt ?? nowSeconds()
   const status = input.status ?? 'active'
+  const modality = input.modality ?? 'asserted'
+  const polarity = input.polarity ?? 'positive'
   db.run(
     `INSERT INTO claims (
       id, memory_space_id, subject_id, predicate, attribute, cardinality, object_type,
-      object_value, object_entity_id, status, valid_from, valid_until, confidence, created_at,
-      updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      object_value, object_entity_id, status, modality, polarity, valid_from, valid_until,
+      confidence, created_at, updated_at, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.subjectId,
@@ -264,6 +270,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     input.object.kind === 'literal' ? input.object.value : null,
     input.object.kind === 'entity' ? input.object.entityId : null,
     status,
+    modality,
+    polarity,
     input.validFrom ?? null,
     input.validUntil ?? null,
     input.confidence ?? 1,
@@ -280,6 +288,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     cardinality: input.cardinality,
     object: input.object,
     status,
+    modality,
+    polarity,
     validFrom: input.validFrom ?? null,
     validUntil: input.validUntil ?? null,
     confidence: input.confidence ?? 1,
@@ -383,6 +393,7 @@ export interface InsertEventInput {
   occurredAt?: number
   timePrecision?: TimePrecision
   status?: EventStatus
+  modality?: MemoryModality
   confidence?: number
   metadata?: Record<string, unknown>
   createdAt?: number
@@ -393,11 +404,12 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
   const timestamp = input.createdAt ?? nowSeconds()
   const timePrecision = input.timePrecision ?? 'unknown'
   const status = input.status ?? 'active'
+  const modality = input.modality ?? 'asserted'
   db.run(
     `INSERT INTO events (
       id, memory_space_id, type, summary, description, occurred_at, time_precision,
-      status, confidence, created_at, updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      status, modality, confidence, created_at, updated_at, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.type,
@@ -406,6 +418,7 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     input.occurredAt ?? null,
     timePrecision,
     status,
+    modality,
     input.confidence ?? 1,
     timestamp,
     timestamp,
@@ -420,6 +433,7 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     occurredAt: input.occurredAt ?? null,
     timePrecision,
     status,
+    modality,
     confidence: input.confidence ?? 1,
     createdAt: timestamp,
     updatedAt: timestamp,

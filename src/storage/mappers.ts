@@ -17,11 +17,13 @@ import {
   type Chunk,
   type Claim,
   type ClaimObject,
+  type ClaimPolarity,
   type Conversation,
   type Entity,
   type Event,
   type Job,
   type MemoryLink,
+  type MemoryModality,
   type MemorySpace,
   type Message,
   type Workspace,
@@ -40,6 +42,15 @@ const ROLES = ['user', 'assistant', 'system', 'tool'] as const
 const CLAIM_STATUSES = ['active', 'superseded', 'disputed', 'retracted', 'invalid'] as const
 const EVENT_STATUSES = ['active', 'retracted', 'invalid'] as const
 const TIME_PRECISIONS = ['exact', 'day', 'month', 'approximate', 'unknown'] as const
+const MODALITIES = [
+  'asserted',
+  'reported',
+  'uncertain',
+  'negated',
+  'hypothetical',
+  'quoted',
+] as const
+const POLARITIES = ['positive', 'negative'] as const
 const RELATIONS = [
   'supersedes',
   'updates',
@@ -128,6 +139,8 @@ export function mapClaim(row: Row): Claim {
     cardinality: textOrNull(row, 'cardinality') === 'one' ? 'one' : 'many',
     object,
     status: oneOf(row, 'status', CLAIM_STATUSES),
+    modality: modalityOf(row),
+    polarity: polarityOf(row),
     validFrom: numberOrNull(row, 'valid_from'),
     validUntil: numberOrNull(row, 'valid_until'),
     confidence: readNumber(row, 'confidence'),
@@ -147,11 +160,35 @@ export function mapEvent(row: Row): Event {
     occurredAt: numberOrNull(row, 'occurred_at'),
     timePrecision: oneOf(row, 'time_precision', TIME_PRECISIONS),
     status: oneOf(row, 'status', EVENT_STATUSES),
+    modality: modalityOf(row),
     confidence: readNumber(row, 'confidence'),
     createdAt: readNumber(row, 'created_at'),
     updatedAt: readNumber(row, 'updated_at'),
     metadata: jsonOrNull(row, 'metadata'),
   }
+}
+
+function modalityOf(row: Row): MemoryModality {
+  const value = textOrNull(row, 'modality')
+  if (value !== null && (MODALITIES as readonly string[]).includes(value)) {
+    return value as MemoryModality
+  }
+  const metadata = jsonOrNull(row, 'metadata')
+  const fromMetadata = metadata?.['modality']
+  if (
+    typeof fromMetadata === 'string' &&
+    (MODALITIES as readonly string[]).includes(fromMetadata)
+  ) {
+    return fromMetadata as MemoryModality
+  }
+  return 'asserted'
+}
+
+function polarityOf(row: Row): ClaimPolarity {
+  const value = textOrNull(row, 'polarity')
+  return value !== null && (POLARITIES as readonly string[]).includes(value)
+    ? (value as ClaimPolarity)
+    : 'positive'
 }
 
 export function mapMemoryLink(row: Row): MemoryLink {

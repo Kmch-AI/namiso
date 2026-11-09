@@ -3,6 +3,7 @@ import type {
   Claim,
   MemoryCandidate,
   MemoryContext,
+  MemoryModality,
   MemoryRef,
   MemorySpaceId,
   Message,
@@ -91,7 +92,13 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
   }
   const entities = input.candidates.filter((candidate) => candidate.kind === 'entity')
   const claims = input.candidates.filter((candidate) => candidate.kind === 'claim')
-  const activeClaims = claims.filter((candidate) => candidate.status === 'active')
+  const activeClaims = claims.filter(
+    (candidate) => candidate.status === 'active' && claimModalityOf(candidate) === 'asserted',
+  )
+  const unconfirmedClaims = claims.filter((candidate) => {
+    const modality = claimModalityOf(candidate)
+    return candidate.status === 'active' && modality !== null && modality !== 'asserted'
+  })
   const historicalClaims = claims.filter((candidate) => candidate.status !== 'active')
   const events = input.candidates
     .filter((candidate) => candidate.kind === 'event')
@@ -111,6 +118,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     maxTokens,
     query: input.query,
     activeClaims,
+    unconfirmedClaims,
     entities,
     events,
     historicalClaims,
@@ -125,7 +133,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
 
   return {
     text: text.text,
-    items: [...activeClaims, ...entities, ...events, ...historicalClaims],
+    items: [...activeClaims, ...unconfirmedClaims, ...entities, ...events, ...historicalClaims],
     evidence,
     tokenEstimate: estimateTokens(text.text),
     compressed: text.compressed,
@@ -140,6 +148,7 @@ interface SectionsInput {
   maxTokens: number
   query: string
   activeClaims: readonly MemoryCandidate[]
+  unconfirmedClaims: readonly MemoryCandidate[]
   entities: readonly MemoryCandidate[]
   events: readonly MemoryCandidate[]
   historicalClaims: readonly MemoryCandidate[]
@@ -215,6 +224,12 @@ function renderSections(
     input.activeClaims.map((candidate) => claimLine(candidate, detail, input.state, input.dates)),
   )
   addSection(
+    '[Unconfirmed]',
+    input.unconfirmedClaims.map((candidate) =>
+      claimLine(candidate, detail, input.state, input.dates, 'unconfirmed'),
+    ),
+  )
+  addSection(
     '[Relevant Entities]',
     input.entities.map((candidate) => entityLine(candidate, detail, input.state, input.described)),
   )
@@ -246,6 +261,7 @@ function claimLine(
   detail: DetailLevel,
   state: RenderState,
   dates: DateLookup,
+  section: 'current' | 'history' | 'unconfirmed' = 'current',
 ): string {
   if (candidate.record.kind !== 'claim') return ''
   const { claim, subject, objectEntity } = candidate.record
@@ -253,12 +269,14 @@ function claimLine(
     claim.object.kind === 'literal'
       ? truncate(claim.object.value, detail.literal)
       : (objectEntity?.name ?? '未知主体')
+  const negative = claim.polarity === 'negative' ? '≠ ' : ''
   const date = dates.claims.get(claim.id) ?? null
+  const recorded = date === null ? '' : `，记录于 ${formatDate(date, state.timeZone)}`
   const status =
-    date === null
-      ? statusLabel(claim.status)
-      : `${statusLabel(claim.status)}，记录于 ${formatDate(date, state.timeZone)}`
-  return `- [claim:${refOf(state, 'claim', claim.id)}] ${subject.name} ${claim.predicate} ${object}（${status}）`
+    section === 'unconfirmed'
+      ? `${MODALITY_LABELS[claim.modality] ?? '未确认'}${recorded}`
+      : `${statusLabel(claim.status)}${recorded}`
+  return `- [claim:${refOf(state, 'claim', claim.id)}] ${subject.name} ${claim.predicate} ${negative}${object}（${status}）`
 }
 
 function entityLine(
@@ -296,11 +314,9 @@ function eventLine(
         ? '时间未知'
         : `时间未知（提及于 ${formatDate(mentioned, state.timeZone)}）`
       : formatDate(event.occurredAt, state.timeZone)
-  const modality = event.metadata?.['modality']
+  const modality = event.modality
   const qualifier =
-    typeof modality === 'string' && MODALITY_LABELS[modality] !== undefined
-      ? `（${MODALITY_LABELS[modality]}）`
-      : ''
+    MODALITY_LABELS[modality] === undefined ? '' : `（${MODALITY_LABELS[modality]}）`
   const people = participants.map((item) => `${item.entity.name}（${item.role}）`).join('、')
   return `- [event:${refOf(state, 'event', event.id)}] ${date} ${event.type}${qualifier}：${excerpt(event.summary, tokens, detail.summary)}${
     people.length > 0 ? `；参与者：${people}` : ''
@@ -386,7 +402,13 @@ function collectConflicts(
   for (const candidate of claims) {
     if (candidate.record.kind !== 'claim') continue
     const { claim, subject, objectEntity } = candidate.record
-    if (claim.status !== 'active') continue
+    if (
+      claim.status !== 'active' ||
+      claim.modality !== 'asserted' ||
+      claim.polarity !== 'positive'
+    ) {
+      continue
+    }
     const value =
       claim.object.kind === 'literal' ? claim.object.value.trim() : (objectEntity?.name ?? '')
     if (value.length === 0) continue
@@ -414,6 +436,10 @@ function collectConflicts(
   return lines.slice(0, 8)
 }
 
+function claimModalityOf(candidate: MemoryCandidate): MemoryModality | null {
+  return candidate.record.kind === 'claim' ? candidate.record.claim.modality : null
+}
+
 function collectUncertainEvents(
   events: readonly MemoryCandidate[],
   dates: DateLookup,
@@ -423,7 +449,7 @@ function collectUncertainEvents(
   for (const candidate of events) {
     if (candidate.record.kind !== 'event') continue
     const { event } = candidate.record
-    if (event.metadata?.['modality'] !== 'uncertain') continue
+    if (event.modality !== 'uncertain') continue
     const date = dates.events.get(event.id) ?? null
     lines.push(
       `- ${date === null ? '时间未知' : formatDate(date, timeZone)} 事件来自不确定陈述：${event.summary}`,

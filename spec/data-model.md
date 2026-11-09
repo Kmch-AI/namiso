@@ -71,9 +71,13 @@ One-valued attributes hold one current value. A later different value supersedes
 
 Schema version 5 adds `claims.attribute` and `claims.cardinality`, backfills the attribute from the normalized predicate, and creates the `attributes` table. Existing claims default to `many`, so an upgrade does not change which values are current.
 
+Each claim also stores a `modality` and a `polarity`. Modalities are `asserted`, `reported`, `uncertain`, `negated`, `hypothetical`, and `quoted`. A negated claim is stored with modality `asserted` and polarity `negative`, so it remains a current negative fact such as "does not use X". An asserted claim whose evidence is assistant-only and whose subject is not the assistant itself is stored as `quoted`; a self-subject claim with a literal object stays asserted. Only asserted positive claims participate in supersession and conflict grouping. Unconfirmed claims render in a separate section.
+
+Schema version 6 adds the modality and polarity columns and backfills them from the existing metadata. Legacy `negated` rows become asserted negative facts.
+
 ## Event state
 
-Events are historical. A state change adds a new event and a `supersedes` link to the previous event. The old event stays `active` because the event did happen. `superseded` is a claim status, not an event status. Event status is `active`, `retracted`, or `invalid`.
+Events are historical. A state change adds a new event and a `supersedes` link to the previous event. The old event stays `active` because the event did happen. `superseded` is a claim status, not an event status. Event status is `active`, `retracted`, or `invalid`. Each event stores its modality; the context marks planned, quoted, and uncertain events instead of presenting them as occurred facts.
 
 `time_precision` is `exact`, `day`, `month`, `approximate`, or `unknown`. The rule extractor uses `day` for message time and `approximate` for relative phrases such as `上周`. It never presents a guessed time as exact.
 

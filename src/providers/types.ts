@@ -3,6 +3,7 @@ import type {
   ClaimChange,
   EntityId,
   EntityKind,
+  MemoryModality,
   MemorySpaceId,
   MessageId,
   MessageRole,
@@ -31,7 +32,7 @@ export interface RerankerProvider {
   rerank(input: RerankInput): Promise<RerankScore[]>
 }
 
-export type ExtractionModality = 'asserted' | 'uncertain' | 'negated' | 'hypothetical' | 'quoted'
+export type ExtractionModality = MemoryModality
 
 export interface ExtractionMessage {
   id: MessageId

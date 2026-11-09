@@ -175,6 +175,10 @@ export class AnnotationPipeline {
           cardinality: declared,
         })
         const change: ClaimChange = claim.change ?? 'new'
+        const evidenceRoles = evidenceIds.flatMap((id) => {
+          const message = validEvidence.get(id)
+          return message === undefined ? [] : [message.role]
+        })
         const result = this.linker.applyClaim(
           spaceId,
           {
@@ -186,6 +190,7 @@ export class AnnotationPipeline {
           {
             extractorVersion: this.extractor.version,
             evidenceIds,
+            evidenceRoles,
           },
         )
         if (result === null) continue
