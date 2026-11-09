@@ -314,6 +314,16 @@ The estimator now uses 0.7 per CJK character, 1.0 per CJK punctuation mark, 0.8 
 
 Verification: 105 tests pass, 1 integration test skipped. The formal offline run stays at 74.0% evidence recall and 78.0% context hit, with p50 725 (was 724). 119 of 714 rendered contexts changed, with mean characters up 2.6%, because most contexts are below the target and only near-budget contexts are recompressed. The estimator is tied to the configured tokenizer; recalibrate when the answer model changes. The 1600 target is unchanged.
 
+## D39. Rerank the whole candidate pool
+
+The HTTP reranker hardening capped the request at 25 documents while the retriever's rerank pool defaults to 50. A candidate outside the cap is not reranked and keeps only its 0.3 × normalized RRF share, while a reranked candidate adds 0.7 × its reranker score. A relevant candidate at RRF rank 26–50 can therefore never outrank a reranked irrelevant one, even when its fused rank is best.
+
+The real-model full run exposed this: P16 evidence recall was 13% and P01 33%. Replaying one missed P16 item with the stored database showed unrelated chunks and a generic claim in the top results with the 25-document cap, and the correct sister-stress claims, phone-call events, and entity at the top with 50 documents. The excerpt length was not the cause: 25 documents at 240 or 2,000 characters ranked equally badly.
+
+`HttpRerankerProvider` now defaults `maxDocuments` to 50, the default pool size. A provider configured with a smaller cap still has this failure mode; the spec states that the cap must cover the whole pool. A test asserts the default sends 50 of 60 documents.
+
+Verification: 106 tests pass, 1 integration test skipped. Rerunning the same real-model databases with the fix raised evidence recall from 50% to 86% on P12, from 20% to 72% on P14, from 33% to 90% on P01, from 13% to 81% on P16, and from 18% to 75% on P17, with context hit following the same path. The combined 714-item run reaches 77.8% evidence recall and 82.5% context hit. The formal offline run is unaffected because it uses the lexical reranker.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
