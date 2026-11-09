@@ -356,7 +356,11 @@ export class Retriever {
             .slice(0, rerankCount)
             .map((candidate) => `${candidate.title}\n${candidate.text}`),
         })
-        scores = new Map(reranked.map((item) => [item.index, item.score]))
+        if (isDegenerate(reranked)) {
+          notes.push('Reranker 分数无区分度，保留 RRF 排序。')
+        } else {
+          scores = new Map(reranked.map((item) => [item.index, item.score]))
+        }
       } catch (error) {
         notes.push(
           `Reranker 不可用，保留 RRF 排序：${error instanceof Error ? error.message : String(error)}`,
@@ -491,4 +495,16 @@ function allowedKinds(
 
 function isExpandableKind(kind: string): kind is 'entity' | 'claim' | 'event' {
   return kind === 'entity' || kind === 'claim' || kind === 'event'
+}
+
+function isDegenerate(scores: readonly { score: number }[]): boolean {
+  if (scores.length < 2) return true
+  let min = Infinity
+  let max = -Infinity
+  for (const item of scores) {
+    if (!Number.isFinite(item.score)) return true
+    min = Math.min(min, item.score)
+    max = Math.max(max, item.score)
+  }
+  return max <= 1e-9 || max - min <= 1e-9
 }

@@ -46,7 +46,7 @@ The top 50 fused candidates form the ranking pool. The first `rerankPool` of the
 0.7 × relevance + 0.3 × normalized RRF
 ```
 
-If the reranker throws, retrieval keeps the RRF order and adds a note to the trace. If it returns fewer scores than documents, missing scores fall back to normalized RRF.
+If the reranker throws, retrieval keeps the RRF order and adds a note to the trace. If it returns fewer scores than documents, missing scores fall back to normalized RRF. If every returned score lies within 1e-9 of the others, the scores carry no ranking information; retrieval keeps the RRF order and notes the degenerate result in the trace.
 
 The reranker judges relevance only. It does not decide whether a claim is current or an event is uncertain.
 

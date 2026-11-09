@@ -605,6 +605,38 @@ test('compact requests drop message ids and are smaller than legacy requests', a
   assert.ok(JSON.stringify(compactBody).length < JSON.stringify(legacyBody).length * 0.65)
 })
 
+test('HTTP reranker caps documents and excerpt length', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const capture: typeof fetch = async (input, init) => {
+    if (typeof init?.body === 'string') {
+      bodies.push(JSON.parse(init.body) as Record<string, unknown>)
+    }
+    return rerankFetch(input, init)
+  }
+  const reranker = new HttpRerankerProvider({
+    endpoint: 'https://example.test/rerank',
+    model: 'test-rerank',
+    maxDocuments: 2,
+    maxDocumentChars: 40,
+    fetch: capture,
+  })
+  const scores = await reranker.rerank({
+    query: '储物柜密码',
+    documents: [
+      `${'无关内容'.repeat(40)}储物柜密码是 4821。${'更多内容'.repeat(40)}`,
+      '第二份文档，同样很长，需要被截断。'.repeat(20),
+      '第三份文档不会被发送。',
+    ],
+  })
+  assert.equal(scores.length, 2)
+  const sent = bodies[0]?.['documents'] as string[]
+  assert.equal(sent.length, 2)
+  for (const document of sent) {
+    assert.ok(document.length <= 42, `document of ${document.length} chars was not capped`)
+  }
+  assert.match(sent[0] ?? '', /储物柜密码/)
+})
+
 test('HTTP extraction tolerates fenced JSON', async () => {
   const provider = new HttpExtractionProvider({
     endpoint: 'https://example.test/chat',

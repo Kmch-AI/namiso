@@ -72,7 +72,7 @@ interface RerankerProvider {
 
 `LexicalReranker` scores token overlap and gives a small bonus to a document that contains all query tokens in order. It is deterministic and offline.
 
-`HttpRerankerProvider` posts `{ model, query, documents }`. It accepts `{ scores: number[] }`, `{ results: [{ index, score }] }`, or `{ data: [{ index, relevance_score }] }`. The response must contain one score per document.
+`HttpRerankerProvider` posts `{ model, query, documents }`. It accepts `{ scores: number[] }`, `{ results: [{ index, score }] }`, or `{ data: [{ index, relevance_score }] }`. The response must contain no more scores than documents; fewer is allowed, and missing scores fall back to normalized RRF. The provider sends at most `maxDocuments` (default 25) documents, each cut to a query-centered excerpt of at most `maxDocumentChars` (default 240), so a small reranker context window does not fail the request.
 
 The engine expects scores on a comparable scale. The final ranking uses 0.7 × reranker score + 0.3 × normalized RRF. A cross-encoder that returns logits should normalize its scores before returning them.
 
@@ -84,7 +84,7 @@ The engine expects scores on a comparable scale. The final ranking uses 0.7 × r
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`, `NAMISO_EXTRACTION_REASONING_EFFORT`, `NAMISO_EXTRACTION_WIRE_FORMAT` |
 | Embedding  | `NAMISO_EMBEDDING_URL`, `NAMISO_EMBEDDING_MODEL`, `NAMISO_EMBEDDING_DIMENSIONS`, `NAMISO_EMBEDDING_API_KEY`, `NAMISO_EMBEDDING_VERSION`, `NAMISO_EMBEDDING_BATCH_SIZE`              |
-| Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`                                                                                                                 |
+| Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`, `NAMISO_RERANK_MAX_DOCUMENTS`, `NAMISO_RERANK_MAX_DOCUMENT_CHARS`                                              |
 | Shared     | `NAMISO_MODEL_TIMEOUT_MS`                                                                                                                                                           |
 
 An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset. `NAMISO_EXTRACTION_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, or `high`. `NAMISO_EXTRACTION_WIRE_FORMAT` accepts `compact` or `legacy`.

@@ -28,9 +28,9 @@ import type {
   RerankScore,
 } from './types.ts'
 
-import { ProviderError } from '../errors.ts'
+import { ProviderError, ValidationError } from '../errors.ts'
 import { asMessageId } from '../ids.ts'
-import { normalizeName } from '../text.ts'
+import { excerpt, normalizeName, segment } from '../text.ts'
 import { ENTITY_KINDS } from '../types.ts'
 import {
   asArray,
@@ -789,30 +789,53 @@ function clamp(value: number): number {
 
 export interface HttpRerankerOptions extends HttpBaseOptions {
   model: string
+  maxDocuments?: number
+  maxDocumentChars?: number
 }
 
 export class HttpRerankerProvider implements RerankerProvider {
   readonly model: string
   private readonly options: HttpRerankerOptions
+  private readonly maxDocuments: number
+  private readonly maxDocumentChars: number
 
   constructor(options: HttpRerankerOptions) {
     this.options = options
     this.model = options.model
+    this.maxDocuments = positiveInteger(options.maxDocuments, 25, 'maxDocuments')
+    this.maxDocumentChars = positiveInteger(options.maxDocumentChars, 240, 'maxDocumentChars')
   }
 
   async rerank(input: RerankInput): Promise<RerankScore[]> {
+    const queryTokens = new Set(segment(input.query))
+    const documents = input.documents
+      .slice(0, this.maxDocuments)
+      .map((document) => excerpt(document, queryTokens, this.maxDocumentChars))
     const payload = await postJson(
       this.options.endpoint,
-      { model: this.model, query: input.query, documents: input.documents },
+      { model: this.model, query: input.query, documents },
       this.options,
     )
-    return parseRerankScores(payload, input.documents.length)
+    return parseRerankScores(payload, documents.length)
   }
+}
+
+function positiveInteger(value: number | undefined, fallback: number, name: string): number {
+  if (value === undefined) return fallback
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ValidationError(`reranker ${name} must be a positive integer`)
+  }
+  return value
 }
 
 function parseRerankScores(payload: unknown, expected: number): RerankScore[] {
   const root = asRecord(payload, 'rerank response')
   if (Array.isArray(root['scores'])) {
+    if (root['scores'].length > expected) {
+      throw new ProviderError(
+        `reranker returned ${root['scores'].length} scores for ${expected} documents`,
+      )
+    }
     return root['scores'].map((value, index) => ({
       index,
       score: typeof value === 'number' ? value : 0,
@@ -829,7 +852,7 @@ function parseRerankScores(payload: unknown, expected: number): RerankScore[] {
       score: numberField(record, 'score', numberField(record, 'relevance_score', 0)),
     }
   })
-  if (scores.length !== expected) {
+  if (scores.length > expected) {
     throw new ProviderError(`reranker returned ${scores.length} scores for ${expected} documents`)
   }
   return scores

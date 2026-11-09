@@ -330,6 +330,34 @@ test('structured retrieval ranks relevant claims above newer unrelated ones', as
   namiso.close()
 })
 
+test('degenerate reranker scores keep the RRF order', async () => {
+  const { namiso, say, drain } = await setup({
+    reranker: {
+      model: 'flat-reranker',
+      async rerank(input) {
+        return input.documents.map((_, index) => ({ index, score: 0 }))
+      },
+    },
+  })
+  await say(USER, 'user', '我是一名设计师。')
+  await say(USER, 'user', '我在使用 TTS-A。')
+  await say(USER, 'user', '我决定重新开始使用 IndexTTS2 了。')
+  await drain()
+  const withRerank = await namiso.retrieve({ query: '我现在使用什么模型？', topK: 5 })
+  const withoutRerank = await namiso.retrieve({
+    query: '我现在使用什么模型？',
+    topK: 5,
+    rerank: false,
+  })
+  assert.ok(withRerank.trace.notes.some((note) => note.includes('无区分度')))
+  assert.equal(withRerank.candidates[0]?.key, withoutRerank.candidates[0]?.key)
+  assert.deepEqual(
+    withRerank.candidates.map((candidate) => candidate.key),
+    withoutRerank.candidates.map((candidate) => candidate.key),
+  )
+  namiso.close()
+})
+
 test('linked claim evidence includes a follow-up with no query overlap', async () => {
   const extraction: ExtractionProvider = {
     version: 'closure-test',

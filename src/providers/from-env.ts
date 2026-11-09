@@ -61,11 +61,15 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
 
   const reranker = readEndpoint(env, 'NAMISO_RERANK', timeoutMs)
   if (reranker !== undefined) {
+    const maxDocuments = optionalPositiveInteger(env, 'NAMISO_RERANK_MAX_DOCUMENTS')
+    const maxDocumentChars = optionalPositiveInteger(env, 'NAMISO_RERANK_MAX_DOCUMENT_CHARS')
     result.reranker = new HttpRerankerProvider({
       endpoint: reranker.endpoint,
       model: reranker.model,
       ...(reranker.apiKey === undefined ? {} : { apiKey: reranker.apiKey }),
       ...(reranker.timeoutMs === undefined ? {} : { timeoutMs: reranker.timeoutMs }),
+      ...(maxDocuments === undefined ? {} : { maxDocuments }),
+      ...(maxDocumentChars === undefined ? {} : { maxDocumentChars }),
     })
   }
 
