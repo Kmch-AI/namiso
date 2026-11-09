@@ -630,6 +630,27 @@ test('compact requests drop message ids and are smaller than legacy requests', a
   assert.ok(JSON.stringify(compactBody).length < JSON.stringify(legacyBody).length * 0.65)
 })
 
+test('HTTP reranker sends the full fifty-document pool by default', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const capture: typeof fetch = async (input, init) => {
+    if (typeof init?.body === 'string') {
+      bodies.push(JSON.parse(init.body) as Record<string, unknown>)
+    }
+    return rerankFetch(input, init)
+  }
+  const reranker = new HttpRerankerProvider({
+    endpoint: 'https://example.test/rerank',
+    model: 'test-rerank',
+    fetch: capture,
+  })
+  await reranker.rerank({
+    query: 'q',
+    documents: Array.from({ length: 60 }, (_, index) => `document ${index}`),
+  })
+  const sent = bodies[0]?.['documents'] as string[]
+  assert.equal(sent.length, 50)
+})
+
 test('HTTP reranker caps documents and excerpt length', async () => {
   const bodies: Array<Record<string, unknown>> = []
   const capture: typeof fetch = async (input, init) => {

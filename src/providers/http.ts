@@ -802,7 +802,7 @@ export class HttpRerankerProvider implements RerankerProvider {
   constructor(options: HttpRerankerOptions) {
     this.options = options
     this.model = options.model
-    this.maxDocuments = positiveInteger(options.maxDocuments, 25, 'maxDocuments')
+    this.maxDocuments = positiveInteger(options.maxDocuments, 50, 'maxDocuments')
     this.maxDocumentChars = positiveInteger(options.maxDocumentChars, 240, 'maxDocumentChars')
   }
 
