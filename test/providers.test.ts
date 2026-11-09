@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
-import type { ExtractionUsage } from '../src/index.ts'
+import type { ExtractionInput, ExtractionMessage, ExtractionUsage } from '../src/index.ts'
 
-import { asMemorySpaceId, asMessageId } from '../src/ids.ts'
+import { asEntityId, asMemorySpaceId, asMessageId } from '../src/ids.ts'
 import {
   HttpEmbeddingProvider,
   HttpExtractionProvider,
@@ -115,6 +115,109 @@ const timeValueFetch: typeof fetch = async () =>
     }),
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
+
+const compactFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              e: [{ n: '阿桐', t: 'p', d: '驻唱歌手', z: 'private' }],
+              c: [
+                {
+                  s: '阿桐',
+                  p: '住在',
+                  a: '居住地',
+                  o: { k: 'l', v: '苏州' },
+                  ev: [0],
+                  k: 'one',
+                  ch: 'replaces',
+                },
+              ],
+              v: [
+                {
+                  t: 'meeting',
+                  sum: '见面',
+                  at: 1_790_000_060,
+                  pr: 'day',
+                  who: [['阿桐', 'actor']],
+                  m: 'uncertain',
+                  ev: [0],
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
+const compactEvidenceFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              e: [],
+              c: [
+                { s: '用户A', p: '甲', o: { k: 'l', v: '一' }, ev: [0] },
+                { s: '用户A', p: '乙', o: { k: 'l', v: '二' }, ev: [1] },
+                { s: '用户A', p: '丙', o: { k: 'l', v: '三' } },
+              ],
+              v: [],
+            }),
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
+function extractionMessage(
+  id: string,
+  role: 'user' | 'assistant',
+  content: string,
+  occurredAt: number,
+  messageIndex: number,
+): ExtractionMessage {
+  return {
+    id: asMessageId(id),
+    role,
+    speakerId: '用户A',
+    speakerName: '用户A',
+    content,
+    occurredAt,
+    messageIndex,
+  }
+}
+
+function wireInput(): ExtractionInput {
+  const messages = Array.from({ length: 16 }, (_, index) =>
+    extractionMessage(
+      `0b8f6e3a-0000-4000-8000-0000000000${String(index).padStart(2, '0')}`,
+      index % 2 === 0 ? 'user' : 'assistant',
+      `第${index + 1}条消息，这里有一些实际内容用于估算。`,
+      1_790_000_000 + index * 60,
+      index,
+    ),
+  )
+  const focus = messages[15]
+  assert.ok(focus !== undefined)
+  return {
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [focus.id],
+    messages,
+    knownEntities: Array.from({ length: 20 }, (_, index) => ({
+      id: asEntityId(`entity-${index}`),
+      name: `人物${index}`,
+      type: 'person' as const,
+      aliases: [`别名${index}`, `昵称${index}`],
+    })),
+  }
+}
 
 const rerankFetch: typeof fetch = async () =>
   new Response(
@@ -394,6 +497,108 @@ test('HTTP extraction stores times as seconds and drops unresolved times', async
   assert.equal(result.events[1]?.occurredAt, undefined)
 })
 
+test('compact extraction parses short keys and type codes', async () => {
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: compactFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [extractionMessage('message-1', 'user', '阿桐住在苏州。', 1_790_000_000, 0)],
+    knownEntities: [],
+  })
+  assert.equal(result.entities[0]?.name, '阿桐')
+  assert.equal(result.entities[0]?.type, 'person')
+  assert.equal(result.entities[0]?.description, '驻唱歌手')
+  assert.equal(result.entities[0]?.sensitivity, 'private')
+  assert.equal(result.claims[0]?.subject.type, 'person')
+  assert.equal(result.claims[0]?.attribute, '居住地')
+  assert.equal(result.claims[0]?.cardinality, 'one')
+  assert.equal(result.claims[0]?.change, 'replaces')
+  assert.equal(result.claims[0]?.modality, 'asserted')
+  assert.deepEqual(result.claims[0]?.evidenceMessageIds, ['message-1'])
+  assert.equal(result.events[0]?.timePrecision, 'day')
+  assert.equal(result.events[0]?.modality, 'uncertain')
+  assert.deepEqual(result.events[0]?.participants, [
+    { name: '阿桐', type: 'person', role: 'actor' },
+  ])
+  assert.deepEqual(result.diagnostics, { evidenceFallbacks: 0, evidenceDropped: 0 })
+})
+
+test('compact evidence never points at a context message', async () => {
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: compactEvidenceFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-focus')],
+    messages: [
+      extractionMessage('message-context', 'user', '上下文', 1_790_000_000, 0),
+      extractionMessage('message-focus', 'user', '焦点', 1_790_000_060, 1),
+    ],
+    knownEntities: [],
+  })
+  assert.deepEqual(result.claims[0]?.evidenceMessageIds, [])
+  assert.deepEqual(result.claims[1]?.evidenceMessageIds, ['message-focus'])
+  assert.deepEqual(result.claims[2]?.evidenceMessageIds, ['message-focus'])
+  assert.deepEqual(result.diagnostics, { evidenceFallbacks: 1, evidenceDropped: 1 })
+})
+
+test('compact requests drop message ids and are smaller than legacy requests', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const capture: typeof fetch = async (input, init) => {
+    if (typeof init?.body === 'string') {
+      bodies.push(JSON.parse(init.body) as Record<string, unknown>)
+    }
+    return extractionFetch(input, init)
+  }
+  const input = wireInput()
+  const compact = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: capture,
+  })
+  await compact.extract(input)
+  const legacy = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    wireFormat: 'legacy',
+    fetch: capture,
+  })
+  await legacy.extract(input)
+
+  const compactMessages = bodies[0]?.['messages'] as Array<{ content: string }>
+  const compactUser = compactMessages[1]
+  assert.ok(compactUser !== undefined)
+  const compactPayload = JSON.parse(compactUser.content) as Record<string, unknown>
+  assert.deepEqual(compactPayload['focus'], [15])
+  const messageTuples = compactPayload['messages'] as unknown[][]
+  const entityTuples = compactPayload['knownEntities'] as unknown[][]
+  assert.deepEqual(messageTuples[15], [
+    'a',
+    '用户A',
+    '第16条消息，这里有一些实际内容用于估算。',
+    1_790_000_900,
+  ])
+  assert.deepEqual(entityTuples[0], ['人物0', 'p', ['别名0', '昵称0']])
+  assert.equal(JSON.stringify(compactPayload).includes('0b8f6e3a'), false)
+
+  const legacyMessages = bodies[1]?.['messages'] as Array<{ content: string }>
+  const legacyUser = legacyMessages[1]
+  assert.ok(legacyUser !== undefined)
+  const legacyPayload = JSON.parse(legacyUser.content) as Record<string, unknown>
+  assert.deepEqual(legacyPayload['focusMessageIds'], ['0b8f6e3a-0000-4000-8000-000000000015'])
+
+  const compactBody = bodies[0]
+  const legacyBody = bodies[1]
+  assert.ok(compactBody !== undefined && legacyBody !== undefined)
+  assert.ok(JSON.stringify(compactBody).length < JSON.stringify(legacyBody).length * 0.65)
+})
+
 test('HTTP extraction tolerates fenced JSON', async () => {
   const provider = new HttpExtractionProvider({
     endpoint: 'https://example.test/chat',
@@ -497,6 +702,15 @@ test('provider environment parsing is all-or-nothing', () => {
         NAMISO_EXTRACTION_URL: 'https://example.test/chat',
         NAMISO_EXTRACTION_MODEL: 'test-chat',
         NAMISO_EXTRACTION_REASONING_EFFORT: 'extreme',
+      }),
+    (error: unknown) => error instanceof ValidationError,
+  )
+  assert.throws(
+    () =>
+      providersFromEnv({
+        NAMISO_EXTRACTION_URL: 'https://example.test/chat',
+        NAMISO_EXTRACTION_MODEL: 'test-chat',
+        NAMISO_EXTRACTION_WIRE_FORMAT: 'binary',
       }),
     (error: unknown) => error instanceof ValidationError,
   )

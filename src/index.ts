@@ -34,11 +34,13 @@ export type {
 } from './providers/http.ts'
 export type {
   EmbeddingProvider,
+  ExtractionDiagnostics,
   ExtractionInput,
   ExtractionMessage,
   ExtractionProvider,
   ExtractionResult,
   ExtractionUsage,
+  ExtractionWireFormat,
   KnownEntity,
   ReasoningEffort,
   RerankerProvider,

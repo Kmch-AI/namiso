@@ -27,10 +27,13 @@ Claim `validFrom` and event `occurredAt` are absolute epoch seconds. The prompt 
 
 The prompt marks a record private only when the message presents it as confidential, such as a secret, another person's health, family, or finances, a private message, or an explicit request not to tell someone. A request to use only an alias marks that value `alias_only`; the request itself stays a normal record. The engine applies no topic-word list of its own.
 
+The provider defaults to the compact wire format. The request sends `focus` as message indices, `messages` as `[role, speaker, content, occurredAt]` tuples without IDs, and `knownEntities` as `[name, type, aliases?]` tuples. Role codes are `u`, `a`, `s`, and `t`; entity type codes are `p`, `g`, `l`, `a`, `o`, `r`, `c`, `t`, `x`, and `s`. The response uses `e`, `c`, and `v` with short keys, per-item `ev` indices, and omitted defaults. An `ev` index resolves only against a focus message: an absent list falls back to the first focus message, and a list that points only at context messages is dropped, so a claim never attaches to a context message. `ExtractionResult.diagnostics` reports both counts. `wireFormat: "legacy"` sends the earlier object shapes and prompt. The parser accepts both response shapes regardless of the request format.
+
 Options:
 
 | Option            | Sends              | Notes                                                                  |
 | ----------------- | ------------------ | ---------------------------------------------------------------------- |
+| `wireFormat`      | not sent           | `compact` (default) or `legacy`                                        |
 | `reasoningEffort` | `reasoning_effort` | `none`, `minimal`, `low`, `medium`, or `high`; endpoint support varies |
 | `onUsage`         | not sent           | Called as `(usage, total)` after each response that includes usage     |
 
@@ -77,14 +80,14 @@ The engine expects scores on a comparable scale. The final ranking uses 0.7 × r
 
 `providersFromEnv()` maps environment variables to HTTP providers. It returns an empty object when no provider is configured, so `Namiso.open()` keeps the offline defaults.
 
-| Prefix     | Variables                                                                                                                                                              |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`, `NAMISO_EXTRACTION_REASONING_EFFORT`                     |
-| Embedding  | `NAMISO_EMBEDDING_URL`, `NAMISO_EMBEDDING_MODEL`, `NAMISO_EMBEDDING_DIMENSIONS`, `NAMISO_EMBEDDING_API_KEY`, `NAMISO_EMBEDDING_VERSION`, `NAMISO_EMBEDDING_BATCH_SIZE` |
-| Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`                                                                                                    |
-| Shared     | `NAMISO_MODEL_TIMEOUT_MS`                                                                                                                                              |
+| Prefix     | Variables                                                                                                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`, `NAMISO_EXTRACTION_REASONING_EFFORT`, `NAMISO_EXTRACTION_WIRE_FORMAT` |
+| Embedding  | `NAMISO_EMBEDDING_URL`, `NAMISO_EMBEDDING_MODEL`, `NAMISO_EMBEDDING_DIMENSIONS`, `NAMISO_EMBEDDING_API_KEY`, `NAMISO_EMBEDDING_VERSION`, `NAMISO_EMBEDDING_BATCH_SIZE`              |
+| Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`                                                                                                                 |
+| Shared     | `NAMISO_MODEL_TIMEOUT_MS`                                                                                                                                                           |
 
-An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset. `NAMISO_EXTRACTION_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, or `high`.
+An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset. `NAMISO_EXTRACTION_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, or `high`. `NAMISO_EXTRACTION_WIRE_FORMAT` accepts `compact` or `legacy`.
 
 Where the code connects:
 

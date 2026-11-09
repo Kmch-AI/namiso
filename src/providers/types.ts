@@ -36,6 +36,13 @@ export interface RerankerProvider {
 
 export type ExtractionModality = MemoryModality
 
+export type ExtractionWireFormat = 'compact' | 'legacy'
+
+export interface ExtractionDiagnostics {
+  evidenceFallbacks: number
+  evidenceDropped: number
+}
+
 export interface ExtractionMessage {
   id: MessageId
   role: MessageRole
@@ -120,6 +127,7 @@ export interface ExtractionResult {
   entities: readonly ExtractedEntity[]
   claims: readonly ExtractedClaim[]
   events: readonly ExtractedEvent[]
+  diagnostics?: ExtractionDiagnostics
 }
 
 export interface ExtractionUsage {

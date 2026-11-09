@@ -208,6 +208,16 @@ No provider payload is redacted. The extractor must see its source message, and 
 
 Verification: 71 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717. The offline stack uses rule extraction, which emits no restrictions, so these metrics check for regressions, not the privacy effect.
 
+## D30. Compact extraction wire
+
+Extraction output was 70.5% of consolidation cost, and every claim and event repeated a 36-character evidence UUID. The extraction user payload was 70.8% message JSON, and only 30.1% of it was message content.
+
+`HttpExtractionProvider` now defaults to a compact wire. The request sends focus indices, `[role, speaker, content, occurredAt]` message tuples without IDs, and `[name, type, aliases?]` known entities without IDs. The response uses `e`, `c`, and `v`, short keys, type codes, per-item evidence indices, and omitted defaults. The parser accepts both response shapes, so a model that answers in the old shape still parses. Evidence indices resolve only against focus messages: an absent list falls back to the first focus message, and a context-only list is dropped, so a claim never attaches to a context message. `diagnostics` counts both. `wireFormat: "legacy"` keeps the old prompt and body for an A/B.
+
+On a 16-message, 20-entity fixture the compact request body is 54% of the legacy body. That is a fixture measurement, not a production saving. The offline stack uses rule extraction, so it cannot measure this change; a real-model A/B remains the gate.
+
+Verification: 74 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

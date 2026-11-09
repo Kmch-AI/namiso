@@ -1,6 +1,7 @@
 import type {
   EmbeddingProvider,
   ExtractionProvider,
+  ExtractionWireFormat,
   ReasoningEffort,
   RerankerProvider,
 } from './types.ts'
@@ -31,6 +32,7 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
   const extraction = readEndpoint(env, 'NAMISO_EXTRACTION', timeoutMs)
   if (extraction !== undefined) {
     const reasoningEffort = optionalReasoningEffort(env, 'NAMISO_EXTRACTION_REASONING_EFFORT')
+    const wireFormat = optionalWireFormat(env, 'NAMISO_EXTRACTION_WIRE_FORMAT')
     result.extraction = new HttpExtractionProvider({
       endpoint: extraction.endpoint,
       model: extraction.model,
@@ -38,6 +40,7 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
       ...(extraction.version === undefined ? {} : { version: extraction.version }),
       ...(extraction.timeoutMs === undefined ? {} : { timeoutMs: extraction.timeoutMs }),
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      ...(wireFormat === undefined ? {} : { wireFormat }),
     })
   }
 
@@ -126,4 +129,18 @@ function optionalReasoningEffort(
     throw new ValidationError(`${key} must be one of ${REASONING_EFFORTS.join(', ')}`)
   }
   return raw as ReasoningEffort
+}
+
+const WIRE_FORMATS: readonly ExtractionWireFormat[] = ['compact', 'legacy']
+
+function optionalWireFormat(
+  env: ProviderEnvironment,
+  key: string,
+): ExtractionWireFormat | undefined {
+  const raw = clean(env[key])
+  if (raw === undefined) return undefined
+  if (!(WIRE_FORMATS as readonly string[]).includes(raw)) {
+    throw new ValidationError(`${key} must be one of ${WIRE_FORMATS.join(', ')}`)
+  }
+  return raw as ExtractionWireFormat
 }
