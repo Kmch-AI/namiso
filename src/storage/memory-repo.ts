@@ -14,8 +14,10 @@ import type {
   EventParticipant,
   EventStatus,
   EvidenceId,
+  MemoryDisclosure,
   MemoryLink,
   MemoryModality,
+  MemorySensitivity,
   MemorySpaceId,
   MessageId,
   Relation,
@@ -41,6 +43,8 @@ export interface InsertEntityInput {
   name: string
   type: EntityKind
   description?: string
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   metadata?: Record<string, unknown>
   createdAt?: number
 }
@@ -48,15 +52,20 @@ export interface InsertEntityInput {
 export function insertEntity(db: Database, input: InsertEntityInput): Entity {
   const id = asEntityId(crypto.randomUUID())
   const timestamp = input.createdAt ?? nowSeconds()
+  const sensitivity = input.sensitivity ?? 'normal'
+  const disclosure = input.disclosure ?? 'allowed'
   db.run(
     `INSERT INTO entities (
-      id, memory_space_id, type, name, description, created_at, updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, memory_space_id, type, name, description, sensitivity, disclosure,
+      created_at, updated_at, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.type,
     input.name,
     input.description ?? null,
+    sensitivity,
+    disclosure,
     timestamp,
     timestamp,
     input.metadata === undefined ? null : JSON.stringify(input.metadata),
@@ -67,6 +76,8 @@ export function insertEntity(db: Database, input: InsertEntityInput): Entity {
     type: input.type,
     name: input.name,
     description: input.description ?? null,
+    sensitivity,
+    disclosure,
     createdAt: timestamp,
     updatedAt: timestamp,
     metadata: input.metadata ?? null,
@@ -158,6 +169,8 @@ export function updateEntity(
     description?: string
     name?: string
     type?: EntityKind
+    sensitivity?: MemorySensitivity
+    disclosure?: MemoryDisclosure
     metadata?: Record<string, unknown> | null
   },
 ): void {
@@ -166,11 +179,13 @@ export function updateEntity(
   const metadata = patch.metadata === undefined ? current.metadata : patch.metadata
   db.run(
     `UPDATE entities
-     SET name = ?, type = ?, description = ?, metadata = ?, updated_at = ?
+     SET name = ?, type = ?, description = ?, sensitivity = ?, disclosure = ?, metadata = ?, updated_at = ?
      WHERE id = ?`,
     patch.name ?? current.name,
     patch.type ?? current.type,
     patch.description ?? current.description,
+    patch.sensitivity ?? current.sensitivity,
+    patch.disclosure ?? current.disclosure,
     metadata === null ? null : JSON.stringify(metadata),
     nowSeconds(),
     entityId,
@@ -241,6 +256,8 @@ export interface InsertClaimInput {
   status?: ClaimStatus
   modality?: MemoryModality
   polarity?: ClaimPolarity
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   validFrom?: number
   validUntil?: number
   confidence?: number
@@ -254,12 +271,14 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
   const status = input.status ?? 'active'
   const modality = input.modality ?? 'asserted'
   const polarity = input.polarity ?? 'positive'
+  const sensitivity = input.sensitivity ?? 'normal'
+  const disclosure = input.disclosure ?? 'allowed'
   db.run(
     `INSERT INTO claims (
       id, memory_space_id, subject_id, predicate, attribute, cardinality, object_type,
-      object_value, object_entity_id, status, modality, polarity, valid_from, valid_until,
-      confidence, created_at, updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      object_value, object_entity_id, status, modality, polarity, sensitivity, disclosure,
+      valid_from, valid_until, confidence, created_at, updated_at, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.subjectId,
@@ -272,6 +291,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     status,
     modality,
     polarity,
+    sensitivity,
+    disclosure,
     input.validFrom ?? null,
     input.validUntil ?? null,
     input.confidence ?? 1,
@@ -290,6 +311,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     status,
     modality,
     polarity,
+    sensitivity,
+    disclosure,
     validFrom: input.validFrom ?? null,
     validUntil: input.validUntil ?? null,
     confidence: input.confidence ?? 1,
@@ -385,6 +408,21 @@ export function setClaimStatus(
   )
 }
 
+export function setClaimRestriction(
+  db: Database,
+  claimId: string,
+  sensitivity: MemorySensitivity,
+  disclosure: MemoryDisclosure,
+): void {
+  db.run(
+    'UPDATE claims SET sensitivity = ?, disclosure = ?, updated_at = ? WHERE id = ?',
+    sensitivity,
+    disclosure,
+    nowSeconds(),
+    claimId,
+  )
+}
+
 export interface InsertEventInput {
   spaceId: MemorySpaceId
   type: string
@@ -394,6 +432,8 @@ export interface InsertEventInput {
   timePrecision?: TimePrecision
   status?: EventStatus
   modality?: MemoryModality
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   confidence?: number
   metadata?: Record<string, unknown>
   createdAt?: number
@@ -405,11 +445,13 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
   const timePrecision = input.timePrecision ?? 'unknown'
   const status = input.status ?? 'active'
   const modality = input.modality ?? 'asserted'
+  const sensitivity = input.sensitivity ?? 'normal'
+  const disclosure = input.disclosure ?? 'allowed'
   db.run(
     `INSERT INTO events (
       id, memory_space_id, type, summary, description, occurred_at, time_precision,
-      status, modality, confidence, created_at, updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      status, modality, sensitivity, disclosure, confidence, created_at, updated_at, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.type,
@@ -419,6 +461,8 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     timePrecision,
     status,
     modality,
+    sensitivity,
+    disclosure,
     input.confidence ?? 1,
     timestamp,
     timestamp,
@@ -434,6 +478,8 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     timePrecision,
     status,
     modality,
+    sensitivity,
+    disclosure,
     confidence: input.confidence ?? 1,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -444,6 +490,21 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
 export function getEvent(db: Database, eventId: EventId): Event | null {
   const row = db.get('SELECT * FROM events WHERE id = ?', eventId)
   return row === undefined ? null : mapEvent(row)
+}
+
+export function setEventRestriction(
+  db: Database,
+  eventId: EventId,
+  sensitivity: MemorySensitivity,
+  disclosure: MemoryDisclosure,
+): void {
+  db.run(
+    'UPDATE events SET sensitivity = ?, disclosure = ?, updated_at = ? WHERE id = ?',
+    sensitivity,
+    disclosure,
+    nowSeconds(),
+    eventId,
+  )
 }
 
 export function findEventBySignature(

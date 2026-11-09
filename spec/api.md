@@ -170,6 +170,8 @@ await memory.getContext({
 
 `maxTokens` is a target. The builder shortens evidence and summaries until the estimate fits. It never drops an item, so a set of records larger than the target reports `overBudget` instead of losing entries. `idMode: "short"` renders refs such as `[claim:c1]` and maps them through `refs`; `items` and `evidence` always keep full IDs.
 
+Claims, events, and entities carry `sensitivity` and `disclosure`. A restricted record renders in the private section of `text`; `items` returns the full record with both fields.
+
 ## Timeline
 
 ```ts

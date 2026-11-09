@@ -1,4 +1,11 @@
-import type { ClaimCardinality, ClaimChange, MessageId, TimePrecision } from '../types.ts'
+import type {
+  ClaimCardinality,
+  ClaimChange,
+  MemoryDisclosure,
+  MemorySensitivity,
+  MessageId,
+  TimePrecision,
+} from '../types.ts'
 import type {
   EmbeddingProvider,
   ExtractedClaim,
@@ -242,15 +249,16 @@ focusMessageIds lists the messages to extract from. The other messages are conte
 knownEntities are for resolving names and aliases only. Do not output an entity unless a focus message mentions it.
 knownAttributes lists state keys already used in this memory space. Reuse an existing key when the meaning matches.
 Return one JSON object with keys entities, claims, events.
-entities: [{name, type, aliases?, description?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
+entities: [{name, type, aliases?, description?, sensitivity?, disclosure?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
 The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
-claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, validFrom?, modality, confidence, evidenceMessageIds}].
+claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, validFrom?, modality, confidence, sensitivity?, disclosure?, evidenceMessageIds}].
 attribute is a short stable key reused across mentions. predicate is the human-readable label.
 cardinality is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit it when reusing a known attribute.
 change is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute. Use retracts when it explicitly denies the recorded value. Use disputes when sources disagree and the record cannot decide.
-events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, evidenceMessageIds}].
+events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, sensitivity?, disclosure?, evidenceMessageIds}].
 occurredAt and validFrom are absolute epoch seconds. Resolve every relative expression such as yesterday, next Wednesday, or 前天 against the occurredAt of the message that states it. If it cannot be resolved, omit the field; for an event, also use timePrecision unknown or approximate.
 modality is asserted, reported, uncertain, negated, hypothetical, or quoted. Use reported when the speaker relays someone else's statement. Use uncertain when the speaker is not asserting the fact.
+sensitivity is normal or private; disclosure is allowed, alias_only, or do_not_volunteer. Mark a record private when the message presents it as confidential, such as a secret, someone else's health, family, or finances, a private message, or an explicit request not to tell someone. A request to use only an alias makes that value alias_only; the request itself is a normal record.
 Every claim and event must cite at least one focus message id in evidenceMessageIds. Do not invent facts.
 If the focus messages contain no long-term memory, return {entities: [], claims: [], events: []}.`
 
@@ -305,12 +313,16 @@ function parseEntity(
   if (name.length === 0) return null
   const aliases = optionalStringArray(record, 'aliases')
   const description = optionalString(record, 'description')
+  const sensitivity = parseSensitivity(record)
+  const disclosure = parseDisclosure(record)
   const entities: ExtractedEntity = {
     name,
     type: entityTypeField(record, 'type'),
     evidenceMessageIds: [focusMessageIds[0]],
     ...(aliases === undefined ? {} : { aliases }),
     ...(description === undefined ? {} : { description }),
+    ...(sensitivity === undefined ? {} : { sensitivity }),
+    ...(disclosure === undefined ? {} : { disclosure }),
   }
   return entities
 }
@@ -326,6 +338,8 @@ const MODALITIES: readonly ExtractionModality[] = [
 
 const CARDINALITIES: readonly ClaimCardinality[] = ['one', 'many']
 const CHANGES: readonly ClaimChange[] = ['new', 'adds', 'replaces', 'retracts', 'disputes']
+const SENSITIVITIES: readonly MemorySensitivity[] = ['normal', 'private']
+const DISCLOSURES: readonly MemoryDisclosure[] = ['allowed', 'alias_only', 'do_not_volunteer']
 
 function parseModality(record: Record<string, unknown>): ExtractionModality {
   const value = record['modality']
@@ -333,6 +347,20 @@ function parseModality(record: Record<string, unknown>): ExtractionModality {
     return value as ExtractionModality
   }
   return 'asserted'
+}
+
+function parseSensitivity(record: Record<string, unknown>): MemorySensitivity | undefined {
+  const value = record['sensitivity']
+  return typeof value === 'string' && (SENSITIVITIES as readonly string[]).includes(value)
+    ? (value as MemorySensitivity)
+    : undefined
+}
+
+function parseDisclosure(record: Record<string, unknown>): MemoryDisclosure | undefined {
+  const value = record['disclosure']
+  return typeof value === 'string' && (DISCLOSURES as readonly string[]).includes(value)
+    ? (value as MemoryDisclosure)
+    : undefined
 }
 
 function parseClaim(
@@ -356,6 +384,8 @@ function parseClaim(
   if (parsedObject.kind === 'literal' && parsedObject.value.length === 0) return null
   if (parsedObject.kind === 'entity' && parsedObject.name.length === 0) return null
   const validFrom = timeSeconds(record['validFrom'])
+  const sensitivity = parseSensitivity(record)
+  const disclosure = parseDisclosure(record)
   const attribute = typeof record['attribute'] === 'string' ? record['attribute'].trim() : ''
   const cardinality =
     typeof record['cardinality'] === 'string' &&
@@ -375,6 +405,8 @@ function parseClaim(
     confidence: clamp(numberField(record, 'confidence', 0.8)),
     evidenceMessageIds: evidenceIds(record, focusMessageIds),
     ...(validFrom === undefined ? {} : { validFrom }),
+    ...(sensitivity === undefined ? {} : { sensitivity }),
+    ...(disclosure === undefined ? {} : { disclosure }),
     ...(attribute.length === 0 ? {} : { attribute }),
     ...(cardinality === undefined ? {} : { cardinality }),
     ...(change === undefined ? {} : { change }),
@@ -410,6 +442,8 @@ function parseEvent(
       })
     : []
   const occurredAt = timeSeconds(record['occurredAt'])
+  const sensitivity = parseSensitivity(record)
+  const disclosure = parseDisclosure(record)
   const precision = record['timePrecision']
   const timePrecision =
     typeof precision === 'string' && (PRECISIONS as readonly string[]).includes(precision)
@@ -425,6 +459,8 @@ function parseEvent(
     evidenceMessageIds: evidenceIds(record, focusMessageIds),
     timePrecision,
     ...(occurredAt === undefined ? {} : { occurredAt }),
+    ...(sensitivity === undefined ? {} : { sensitivity }),
+    ...(disclosure === undefined ? {} : { disclosure }),
     ...(description === undefined ? {} : { description }),
   }
 }

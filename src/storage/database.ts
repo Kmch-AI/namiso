@@ -7,10 +7,16 @@ import {
   CLAIM_ATTRIBUTE_COLUMN_SQL,
   CLAIM_ATTRIBUTE_INDEX_SQL,
   CLAIM_CARDINALITY_COLUMN_SQL,
+  CLAIM_DISCLOSURE_COLUMN_SQL,
   CLAIM_MODALITY_COLUMN_SQL,
   CLAIM_POLARITY_COLUMN_SQL,
+  CLAIM_SENSITIVITY_COLUMN_SQL,
+  ENTITY_DISCLOSURE_COLUMN_SQL,
+  ENTITY_SENSITIVITY_COLUMN_SQL,
   ENTITY_TYPE_MIGRATION_SQL,
+  EVENT_DISCLOSURE_COLUMN_SQL,
   EVENT_MODALITY_COLUMN_SQL,
+  EVENT_SENSITIVITY_COLUMN_SQL,
   MESSAGE_CONSOLIDATION_INDEX_SQL,
   MESSAGE_CONSOLIDATION_MIGRATION_SQL,
   MODALITY_BACKFILL_SQL,
@@ -77,6 +83,26 @@ export class Database {
         this.raw.exec(EVENT_MODALITY_COLUMN_SQL)
       }
       this.raw.exec(MODALITY_BACKFILL_SQL)
+    }
+    if (version < 7) {
+      if (!this.hasColumn('entities', 'sensitivity')) {
+        this.raw.exec(ENTITY_SENSITIVITY_COLUMN_SQL)
+      }
+      if (!this.hasColumn('entities', 'disclosure')) {
+        this.raw.exec(ENTITY_DISCLOSURE_COLUMN_SQL)
+      }
+      if (!this.hasColumn('claims', 'sensitivity')) {
+        this.raw.exec(CLAIM_SENSITIVITY_COLUMN_SQL)
+      }
+      if (!this.hasColumn('claims', 'disclosure')) {
+        this.raw.exec(CLAIM_DISCLOSURE_COLUMN_SQL)
+      }
+      if (!this.hasColumn('events', 'sensitivity')) {
+        this.raw.exec(EVENT_SENSITIVITY_COLUMN_SQL)
+      }
+      if (!this.hasColumn('events', 'disclosure')) {
+        this.raw.exec(EVENT_DISCLOSURE_COLUMN_SQL)
+      }
     }
     this.raw.exec(CLAIM_ATTRIBUTE_INDEX_SQL)
     if (version < SCHEMA_VERSION) {

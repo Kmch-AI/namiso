@@ -3,6 +3,8 @@ import type {
   ExtractionMessage,
   ExtractionProvider,
   ExtractionResult,
+  ExtractedClaim,
+  ExtractedEvent,
   KnownAttribute,
 } from '../providers/types.ts'
 import type { Database } from '../storage/database.ts'
@@ -31,9 +33,12 @@ import {
   getOrCreateEvidence,
   linkMemoryEvidence,
   listEventParticipants,
+  setClaimRestriction,
+  setEventRestriction,
 } from '../storage/memory-repo.ts'
 import { normalizeAttribute } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
+import { mergeRestriction, restrictionOf } from './restriction.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
 const KNOWN_ATTRIBUTE_LIMIT = 24
@@ -146,6 +151,8 @@ export class AnnotationPipeline {
           type: entity.type,
           ...(entity.description === undefined ? {} : { description: entity.description }),
           ...(entity.aliases === undefined ? {} : { aliases: entity.aliases }),
+          ...(entity.sensitivity === undefined ? {} : { sensitivity: entity.sensitivity }),
+          ...(entity.disclosure === undefined ? {} : { disclosure: entity.disclosure }),
           sourceMessageId,
         })
         entityIds.add(resolved.id)
@@ -194,6 +201,7 @@ export class AnnotationPipeline {
           },
         )
         if (result === null) continue
+        this.upgradeClaimRestriction(result.claim, claim)
         entityIds.add(result.subject.id)
         if (result.objectEntity !== null) entityIds.add(result.objectEntity.id)
         claimIds.add(result.claim.id)
@@ -219,6 +227,7 @@ export class AnnotationPipeline {
           extractorVersion: this.extractor.version,
           evidenceIds,
         })
+        this.upgradeEventRestriction(result.event, event)
         eventIds.add(result.event.id)
         for (const participant of result.participants) entityIds.add(participant.entity.id)
         this.attachEventEvidence(spaceId, result.event, evidenceIds, validEvidence)
@@ -244,6 +253,18 @@ export class AnnotationPipeline {
 
     await this.indexer.sync(spaceId, this.indexItems(spaceId, entityIds, claimIds, eventIds))
     markMessagesConsolidated(this.db, focusIds)
+  }
+
+  private upgradeClaimRestriction(stored: Claim, extracted: ExtractedClaim): void {
+    const merged = mergeRestriction(restrictionOf(stored), restrictionOf(extracted))
+    if (merged === null) return
+    setClaimRestriction(this.db, stored.id, merged.sensitivity, merged.disclosure)
+  }
+
+  private upgradeEventRestriction(stored: Event, extracted: ExtractedEvent): void {
+    const merged = mergeRestriction(restrictionOf(stored), restrictionOf(extracted))
+    if (merged === null) return
+    setEventRestriction(this.db, stored.id, merged.sensitivity, merged.disclosure)
   }
 
   private knownAttributes(spaceId: MemorySpaceId, texts: readonly string[]): KnownAttribute[] {

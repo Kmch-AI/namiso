@@ -4,6 +4,8 @@ import type {
   Entity,
   EntityId,
   EntityKind,
+  MemoryDisclosure,
+  MemorySensitivity,
   MemorySpaceId,
   MessageId,
   SelfIdentity,
@@ -22,6 +24,7 @@ import {
   updateEntity,
 } from '../storage/memory-repo.ts'
 import { normalizeName } from '../text.ts'
+import { mergeRestriction, restrictionOf } from './restriction.ts'
 
 export interface ResolveEntityInput {
   spaceId: MemorySpaceId
@@ -29,6 +32,8 @@ export interface ResolveEntityInput {
   type: EntityKind
   description?: string
   aliases?: readonly string[]
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   sourceMessageId?: MessageId
 }
 
@@ -74,6 +79,8 @@ export class EntityResolver {
       name,
       type,
       ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.sensitivity === undefined ? {} : { sensitivity: input.sensitivity }),
+      ...(input.disclosure === undefined ? {} : { disclosure: input.disclosure }),
     })
     this.addAliases(entity, input.aliases, input.sourceMessageId, name)
     return entity
@@ -210,6 +217,11 @@ export class EntityResolver {
       entity.description === null
     ) {
       updateEntity(this.db, entity.id, { description: input.description })
+    }
+    const merged = mergeRestriction(restrictionOf(entity), restrictionOf(input))
+    if (merged !== null) {
+      updateEntity(this.db, entity.id, merged)
+      Object.assign(entity, merged)
     }
     this.addAliases(entity, input.aliases, input.sourceMessageId, name)
   }

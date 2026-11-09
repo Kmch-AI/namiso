@@ -88,16 +88,24 @@ const timeValueFetch: typeof fetch = async () =>
                   predicate: '生日',
                   object: { kind: 'literal', value: '3月2日' },
                   validFrom: 1_790_000_000_000,
+                  sensitivity: 'private',
+                  disclosure: 'alias_only',
                 },
                 {
                   subject: { name: '用户A', type: 'person' },
                   predicate: '年龄',
                   object: { kind: 'literal', value: '30' },
                   validFrom: -1,
+                  sensitivity: 'secret',
                 },
               ],
               events: [
-                { type: 'meeting', summary: '见面', occurredAt: 1_790_000_060_500 },
+                {
+                  type: 'meeting',
+                  summary: '见面',
+                  occurredAt: 1_790_000_060_500,
+                  disclosure: 'do_not_volunteer',
+                },
                 { type: 'meeting', summary: '旧事', occurredAt: '2026-03-02' },
               ],
             }),
@@ -377,8 +385,12 @@ test('HTTP extraction stores times as seconds and drops unresolved times', async
     knownEntities: [],
   })
   assert.equal(result.claims[0]?.validFrom, 1_790_000_000)
+  assert.equal(result.claims[0]?.sensitivity, 'private')
+  assert.equal(result.claims[0]?.disclosure, 'alias_only')
   assert.equal(result.claims[1]?.validFrom, undefined)
+  assert.equal(result.claims[1]?.sensitivity, undefined)
   assert.equal(result.events[0]?.occurredAt, 1_790_000_060)
+  assert.equal(result.events[0]?.disclosure, 'do_not_volunteer')
   assert.equal(result.events[1]?.occurredAt, undefined)
 })
 

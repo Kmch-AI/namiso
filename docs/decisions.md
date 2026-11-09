@@ -194,6 +194,20 @@ Claims now carry `validFrom`, and both `validFrom` and event `occurredAt` are ab
 
 Verification: 66 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
 
+## D29. Sensitivity, disclosure, and a private section
+
+The real-model review found four inappropriate-disclosure failures. Three of the four had the anchor in context: the value rendered as an ordinary entity description or evidence line, so the answer model repeated it in a public blurb.
+
+Claims, events, and entities now carry `sensitivity` (`normal` or `private`) and `disclosure` (`allowed`, `alias_only`, or `do_not_volunteer`). Extraction supplies both; the pipeline defaults a private record to `do_not_volunteer` and only upgrades restriction, never downgrades it. Schema version 7 adds the columns.
+
+The context moves restricted records to a `[Private]` section whose first line says to quote them only when the question asks directly. A private entity description leaves the public entity line. Evidence that supports a restricted claim or event is marked `私密原文`. Values and evidence stay in the context, so a direct question can still be answered and the evidence invariant is unchanged. Conflicts and uncertainty notes use public records only, because a conflict line would expose both private values.
+
+Sensitivity comes from the extraction field. The engine has no topic-word list and no persona-, question-, or phrase-specific rule.
+
+No provider payload is redacted. The extractor must see its source message, and the embedding text must stay retrievable; the answering context is the only surface that can restate a value to a user.
+
+Verification: 71 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717. The offline stack uses rule extraction, which emits no restrictions, so these metrics check for regressions, not the privacy effect.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

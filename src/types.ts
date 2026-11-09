@@ -99,6 +99,8 @@ export interface Entity {
   type: EntityKind
   name: string
   description: string | null
+  sensitivity: MemorySensitivity
+  disclosure: MemoryDisclosure
   createdAt: number
   updatedAt: number
   metadata: Record<string, unknown> | null
@@ -130,6 +132,10 @@ export type MemoryModality =
 
 export type ClaimPolarity = 'positive' | 'negative'
 
+export type MemorySensitivity = 'normal' | 'private'
+
+export type MemoryDisclosure = 'allowed' | 'alias_only' | 'do_not_volunteer'
+
 export interface Claim {
   id: ClaimId
   memorySpaceId: MemorySpaceId
@@ -141,6 +147,8 @@ export interface Claim {
   status: ClaimStatus
   modality: MemoryModality
   polarity: ClaimPolarity
+  sensitivity: MemorySensitivity
+  disclosure: MemoryDisclosure
   validFrom: number | null
   validUntil: number | null
   confidence: number
@@ -159,6 +167,8 @@ export interface Event {
   timePrecision: TimePrecision
   status: EventStatus
   modality: MemoryModality
+  sensitivity: MemorySensitivity
+  disclosure: MemoryDisclosure
   confidence: number
   createdAt: number
   updatedAt: number

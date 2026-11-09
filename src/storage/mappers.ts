@@ -22,8 +22,10 @@ import {
   type Entity,
   type Event,
   type Job,
+  type MemoryDisclosure,
   type MemoryLink,
   type MemoryModality,
+  type MemorySensitivity,
   type MemorySpace,
   type Message,
   type Workspace,
@@ -51,6 +53,8 @@ const MODALITIES = [
   'quoted',
 ] as const
 const POLARITIES = ['positive', 'negative'] as const
+const SENSITIVITIES = ['normal', 'private'] as const
+const DISCLOSURES = ['allowed', 'alias_only', 'do_not_volunteer'] as const
 const RELATIONS = [
   'supersedes',
   'updates',
@@ -118,6 +122,8 @@ export function mapEntity(row: Row): Entity {
     type: oneOf(row, 'type', ENTITY_KINDS),
     name: text(row, 'name'),
     description: textOrNull(row, 'description'),
+    sensitivity: sensitivityOf(row),
+    disclosure: disclosureOf(row),
     createdAt: readNumber(row, 'created_at'),
     updatedAt: readNumber(row, 'updated_at'),
     metadata: jsonOrNull(row, 'metadata'),
@@ -141,6 +147,8 @@ export function mapClaim(row: Row): Claim {
     status: oneOf(row, 'status', CLAIM_STATUSES),
     modality: modalityOf(row),
     polarity: polarityOf(row),
+    sensitivity: sensitivityOf(row),
+    disclosure: disclosureOf(row),
     validFrom: numberOrNull(row, 'valid_from'),
     validUntil: numberOrNull(row, 'valid_until'),
     confidence: readNumber(row, 'confidence'),
@@ -161,6 +169,8 @@ export function mapEvent(row: Row): Event {
     timePrecision: oneOf(row, 'time_precision', TIME_PRECISIONS),
     status: oneOf(row, 'status', EVENT_STATUSES),
     modality: modalityOf(row),
+    sensitivity: sensitivityOf(row),
+    disclosure: disclosureOf(row),
     confidence: readNumber(row, 'confidence'),
     createdAt: readNumber(row, 'created_at'),
     updatedAt: readNumber(row, 'updated_at'),
@@ -189,6 +199,20 @@ function polarityOf(row: Row): ClaimPolarity {
   return value !== null && (POLARITIES as readonly string[]).includes(value)
     ? (value as ClaimPolarity)
     : 'positive'
+}
+
+function sensitivityOf(row: Row): MemorySensitivity {
+  const value = textOrNull(row, 'sensitivity')
+  return value !== null && (SENSITIVITIES as readonly string[]).includes(value)
+    ? (value as MemorySensitivity)
+    : 'normal'
+}
+
+function disclosureOf(row: Row): MemoryDisclosure {
+  const value = textOrNull(row, 'disclosure')
+  return value !== null && (DISCLOSURES as readonly string[]).includes(value)
+    ? (value as MemoryDisclosure)
+    : 'allowed'
 }
 
 export function mapMemoryLink(row: Row): MemoryLink {

@@ -81,6 +81,14 @@ Events are historical. A state change adds a new event and a `supersedes` link t
 
 `time_precision` is `exact`, `day`, `month`, `approximate`, or `unknown`. The rule extractor uses `day` for message time and `approximate` for relative phrases such as `上周`. It never presents a guessed time as exact.
 
+## Sensitivity and disclosure
+
+`entities`, `claims`, and `events` store `sensitivity` (`normal` or `private`) and `disclosure` (`allowed`, `alias_only`, or `do_not_volunteer`). Both default to `normal` and `allowed`. A private record defaults to `do_not_volunteer` when the provider omits disclosure.
+
+The fields are a rendering boundary, not a deletion policy. The record keeps its value and its evidence; the context moves it to the private section. Sensitivity only moves upward: a restatement can make a record private, but a later normal restatement never makes it public again. Disclosure follows the same rule toward the more restrictive value.
+
+Schema version 7 adds the columns. Existing rows become normal and allowed, so an upgrade changes no content.
+
 ## Time model
 
 Every message stores `occurred_at`, the logical time of the conversation, and `created_at`, the wall-clock time the engine wrote it. Claims and events use `occurred_at` values from their source messages. `valid_from` and `valid_until` describe when a claim was true, not when the row was written.

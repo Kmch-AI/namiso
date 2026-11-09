@@ -230,6 +230,14 @@ test('schema migration backfills claim attributes and cardinality', () => {
     const negated = db.get("SELECT modality, polarity FROM claims WHERE id = 'claim-negated'")
     assert.equal(negated?.['modality'], 'asserted')
     assert.equal(negated?.['polarity'], 'negative')
+    const claimRestriction = db.get("SELECT sensitivity, disclosure FROM claims WHERE id = 'claim'")
+    assert.equal(claimRestriction?.['sensitivity'], 'normal')
+    assert.equal(claimRestriction?.['disclosure'], 'allowed')
+    const entityRestriction = db.get(
+      "SELECT sensitivity, disclosure FROM entities WHERE id = 'entity'",
+    )
+    assert.equal(entityRestriction?.['sensitivity'], 'normal')
+    assert.equal(entityRestriction?.['disclosure'], 'allowed')
     assert.equal(readNumber(db.get('PRAGMA user_version'), 'user_version'), SCHEMA_VERSION)
   } finally {
     db?.close()

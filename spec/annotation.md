@@ -29,9 +29,11 @@ Known entities are filtered before the call. The self entity is always included 
 
 The provider returns:
 
-- entities: name, type, optional aliases and description;
-- claims: subject, predicate, optional attribute, cardinality, and change verb, object, modality, confidence, evidence message IDs;
-- events: type, summary, participants, optional time, precision, modality, confidence, evidence message IDs.
+- entities: name, type, optional aliases, description, sensitivity, and disclosure;
+- claims: subject, predicate, optional attribute, cardinality, and change verb, object, modality, confidence, optional sensitivity and disclosure, evidence message IDs;
+- events: type, summary, participants, optional time, precision, modality, confidence, optional sensitivity and disclosure, evidence message IDs.
+
+`sensitivity` is `normal` or `private`; `disclosure` is `allowed`, `alias_only`, or `do_not_volunteer`. The pipeline stores both on entities, claims, and events. A private record without an explicit disclosure becomes `do_not_volunteer`. Restriction only moves upward: a later private or more restrictive extraction upgrades the stored row, and a later normal restatement never downgrades it.
 
 `modality` is `asserted`, `reported`, `uncertain`, `negated`, `hypothetical`, or `quoted`. A negated claim is stored as a current negative fact; the other non-asserted modalities are stored and rendered as unconfirmed. An asserted claim whose evidence is assistant-only and whose subject is not the assistant becomes `quoted`.
 
@@ -72,7 +74,7 @@ Resolution order in `EntityResolver`:
 4. Speaker ID stored in entity metadata.
 5. Create a new entity. If the requested type is `self`, create it as `artifact` instead.
 
-Aliases are unique per space. Two similar names are never merged by string similarity alone. A caller can add aliases with `ensureSelf()` or `ensureEntity()`.
+Aliases are unique per space. Two similar names are never merged by string similarity alone. A caller can add aliases with `ensureSelf()` or `ensureEntity()`. An extracted entity carries its sensitivity and disclosure through resolution; an existing entity upgrades when a later extraction is more restrictive.
 
 ## Claim linking
 

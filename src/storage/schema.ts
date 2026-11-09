@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 export const ENTITY_TYPE_MIGRATION_SQL = `
 UPDATE entities
@@ -78,6 +78,24 @@ UPDATE claims SET modality = 'asserted' WHERE modality = 'negated';
 UPDATE events SET modality = COALESCE(json_extract(metadata, '$.modality'), modality);
 `
 
+export const ENTITY_SENSITIVITY_COLUMN_SQL =
+  "ALTER TABLE entities ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'normal'"
+
+export const ENTITY_DISCLOSURE_COLUMN_SQL =
+  "ALTER TABLE entities ADD COLUMN disclosure TEXT NOT NULL DEFAULT 'allowed'"
+
+export const CLAIM_SENSITIVITY_COLUMN_SQL =
+  "ALTER TABLE claims ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'normal'"
+
+export const CLAIM_DISCLOSURE_COLUMN_SQL =
+  "ALTER TABLE claims ADD COLUMN disclosure TEXT NOT NULL DEFAULT 'allowed'"
+
+export const EVENT_SENSITIVITY_COLUMN_SQL =
+  "ALTER TABLE events ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'normal'"
+
+export const EVENT_DISCLOSURE_COLUMN_SQL =
+  "ALTER TABLE events ADD COLUMN disclosure TEXT NOT NULL DEFAULT 'allowed'"
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
   key TEXT PRIMARY KEY,
@@ -142,6 +160,8 @@ CREATE TABLE IF NOT EXISTS entities (
   type TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
+  sensitivity TEXT NOT NULL DEFAULT 'normal',
+  disclosure TEXT NOT NULL DEFAULT 'allowed',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   metadata TEXT,
@@ -181,6 +201,8 @@ CREATE TABLE IF NOT EXISTS claims (
   status TEXT NOT NULL DEFAULT 'active',
   modality TEXT NOT NULL DEFAULT 'asserted',
   polarity TEXT NOT NULL DEFAULT 'positive',
+  sensitivity TEXT NOT NULL DEFAULT 'normal',
+  disclosure TEXT NOT NULL DEFAULT 'allowed',
   valid_from INTEGER,
   valid_until INTEGER,
   confidence REAL NOT NULL DEFAULT 1.0,
@@ -217,6 +239,8 @@ CREATE TABLE IF NOT EXISTS events (
   time_precision TEXT NOT NULL DEFAULT 'unknown',
   status TEXT NOT NULL DEFAULT 'active',
   modality TEXT NOT NULL DEFAULT 'asserted',
+  sensitivity TEXT NOT NULL DEFAULT 'normal',
+  disclosure TEXT NOT NULL DEFAULT 'allowed',
   confidence REAL NOT NULL DEFAULT 1.0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,

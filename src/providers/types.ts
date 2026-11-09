@@ -3,7 +3,9 @@ import type {
   ClaimChange,
   EntityId,
   EntityKind,
+  MemoryDisclosure,
   MemoryModality,
+  MemorySensitivity,
   MemorySpaceId,
   MessageId,
   MessageRole,
@@ -70,6 +72,8 @@ export interface ExtractedEntity {
   type: EntityKind
   aliases?: readonly string[]
   description?: string
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   evidenceMessageIds: readonly MessageId[]
 }
 
@@ -87,6 +91,8 @@ export interface ExtractedClaim {
   modality: ExtractionModality
   confidence: number
   validFrom?: number
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   evidenceMessageIds: readonly MessageId[]
 }
 
@@ -105,6 +111,8 @@ export interface ExtractedEvent {
   participants: readonly ExtractedParticipant[]
   modality: ExtractionModality
   confidence: number
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
   evidenceMessageIds: readonly MessageId[]
 }
 

@@ -1,16 +1,20 @@
+import type { Restriction } from '../annotation/restriction.ts'
 import type { Database } from '../storage/database.ts'
 import type {
   Claim,
   MemoryCandidate,
   MemoryContext,
+  MemoryDisclosure,
   MemoryModality,
   MemoryRef,
+  MemorySensitivity,
   MemorySpaceId,
   Message,
   MessageId,
   RetrievalTrace,
 } from '../types.ts'
 
+import { isRestricted, restrictionOf } from '../annotation/restriction.ts'
 import { asMessageId } from '../ids.ts'
 import { getMessagesByIds, listMessages } from '../storage/conversation-repo.ts'
 import { estimateTokens, excerpt, segment, truncate } from '../text.ts'
@@ -97,18 +101,28 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
   }
   const entities = input.candidates.filter((candidate) => candidate.kind === 'entity')
   const claims = input.candidates.filter((candidate) => candidate.kind === 'claim')
-  const activeClaims = claims.filter(
+  const publicClaims = claims.filter((candidate) => !isRestricted(candidateRestriction(candidate)))
+  const privateClaims = claims
+    .filter((candidate) => isRestricted(candidateRestriction(candidate)))
+    .toSorted(comparePrivateClaims)
+  const activeClaims = publicClaims.filter(
     (candidate) => candidate.status === 'active' && claimModalityOf(candidate) === 'asserted',
   )
-  const unconfirmedClaims = claims.filter((candidate) => {
+  const unconfirmedClaims = publicClaims.filter((candidate) => {
     const modality = claimModalityOf(candidate)
     return candidate.status === 'active' && modality !== null && modality !== 'asserted'
   })
-  const historicalClaims = claims.filter((candidate) => candidate.status !== 'active')
-  const events = input.candidates
-    .filter((candidate) => candidate.kind === 'event')
+  const historicalClaims = publicClaims.filter((candidate) => candidate.status !== 'active')
+  const events = input.candidates.filter((candidate) => candidate.kind === 'event')
+  const publicEvents = events
+    .filter((candidate) => !isRestricted(candidateRestriction(candidate)))
     .slice(0, MAX_EVENTS)
     .toSorted(compareEvents)
+  const privateEvents = events
+    .filter((candidate) => isRestricted(candidateRestriction(candidate)))
+    .slice(0, MAX_EVENTS)
+    .toSorted(compareEvents)
+  const restrictedEvidenceIds = collectRestrictedEvidenceIds(claims, events)
   const relations = collectRelations(input.candidates, state)
   const evidence =
     input.includeEvidence === false
@@ -117,18 +131,21 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
   const dates = collectDates(db, input.candidates)
   const described = describedEntities(input.candidates)
   const conflicts = collectConflicts(activeClaims, dates, state.timeZone)
-  const uncertainEvents = collectUncertainEvents(events, dates, state.timeZone)
+  const uncertainEvents = collectUncertainEvents(publicEvents, dates, state.timeZone)
 
   const text = assemble({
     maxTokens,
     query: input.query,
     activeClaims,
     unconfirmedClaims,
+    privateClaims,
+    privateEvents,
     entities,
-    events,
+    events: publicEvents,
     historicalClaims,
     relations,
     evidence,
+    restrictedEvidenceIds,
     conflicts,
     uncertainEvents,
     dates,
@@ -138,7 +155,15 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
 
   return {
     text: text.text,
-    items: [...activeClaims, ...unconfirmedClaims, ...entities, ...events, ...historicalClaims],
+    items: [
+      ...activeClaims,
+      ...unconfirmedClaims,
+      ...entities,
+      ...publicEvents,
+      ...historicalClaims,
+      ...privateClaims,
+      ...privateEvents,
+    ],
     evidence,
     tokenEstimate: estimateTokens(text.text),
     compressed: text.compressed,
@@ -154,11 +179,14 @@ interface SectionsInput {
   query: string
   activeClaims: readonly MemoryCandidate[]
   unconfirmedClaims: readonly MemoryCandidate[]
+  privateClaims: readonly MemoryCandidate[]
+  privateEvents: readonly MemoryCandidate[]
   entities: readonly MemoryCandidate[]
   events: readonly MemoryCandidate[]
   historicalClaims: readonly MemoryCandidate[]
   relations: readonly string[]
   evidence: readonly Message[]
+  restrictedEvidenceIds: ReadonlySet<MessageId>
   conflicts: readonly string[]
   uncertainEvents: readonly string[]
   dates: DateLookup
@@ -251,11 +279,26 @@ function renderSections(
     ),
   )
   addSection('[Memory Relations]', input.relations.slice(0, MAX_RELATIONS))
+  const privateLines = [
+    ...input.privateClaims.map((candidate) =>
+      claimLine(candidate, detail, input.state, input.dates, 'private'),
+    ),
+    ...input.privateEvents.map((candidate) =>
+      eventLine(candidate, detail, tokens, input.state, input.dates, 'private'),
+    ),
+    ...privateEntityLines(input.entities, detail, input.state),
+  ]
+  addSection(
+    '[Private]',
+    privateLines.length === 0 ? [] : ['仅在问题直接询问时引用，不要主动复述。', ...privateLines],
+  )
   addSection(
     '[Evidence]',
     input.evidence
       .slice(0, MAX_EVIDENCE)
-      .map((message) => evidenceLine(message, detail, tokens, input.state)),
+      .map((message) =>
+        evidenceLine(message, detail, tokens, input.state, input.restrictedEvidenceIds),
+      ),
   )
   const text = blocks.join('\n\n')
   return { text, cost: estimateTokens(text) }
@@ -266,7 +309,7 @@ function claimLine(
   detail: DetailLevel,
   state: RenderState,
   dates: DateLookup,
-  section: 'current' | 'history' | 'unconfirmed' = 'current',
+  section: 'current' | 'history' | 'unconfirmed' | 'private' = 'current',
 ): string {
   if (candidate.record.kind !== 'claim') return ''
   const { claim, subject, objectEntity } = candidate.record
@@ -280,10 +323,12 @@ function claimLine(
     date === null
       ? ''
       : `，${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, state.timeZone)}`
+  const privacy =
+    section === 'private' ? `${privacyLabel(claim.sensitivity, claim.disclosure)}，` : ''
   const status =
-    section === 'unconfirmed'
-      ? `${MODALITY_LABELS[claim.modality] ?? '未确认'}${recorded}`
-      : `${statusLabel(claim.status)}${recorded}`
+    section === 'unconfirmed' || (section === 'private' && claim.modality !== 'asserted')
+      ? `${privacy}${MODALITY_LABELS[claim.modality] ?? '未确认'}${recorded}`
+      : `${privacy}${statusLabel(claim.status)}${recorded}`
   return `- [claim:${refOf(state, 'claim', claim.id)}] ${subject.name} ${claim.predicate} ${negative}${object}（${status}）`
 }
 
@@ -296,7 +341,11 @@ function entityLine(
   if (candidate.record.kind !== 'entity') return ''
   const { entity, aliases } = candidate.record
   const details: string[] = []
-  if (entity.description !== null && !described.has(entity.id)) {
+  if (
+    entity.description !== null &&
+    !isRestricted(restrictionOf(entity)) &&
+    !described.has(entity.id)
+  ) {
     details.push(`${truncate(entity.description, detail.description)}（早期摘要，可能过时）`)
   }
   if (aliases.length > 0) {
@@ -312,6 +361,7 @@ function eventLine(
   tokens: ReadonlySet<string>,
   state: RenderState,
   dates: DateLookup,
+  section: 'history' | 'private' = 'history',
 ): string {
   if (candidate.record.kind !== 'event') return ''
   const { event, participants } = candidate.record
@@ -325,10 +375,42 @@ function eventLine(
   const modality = event.modality
   const qualifier =
     MODALITY_LABELS[modality] === undefined ? '' : `（${MODALITY_LABELS[modality]}）`
+  const privacy =
+    section === 'private' ? `${privacyLabel(event.sensitivity, event.disclosure)}，` : ''
   const people = participants.map((item) => `${item.entity.name}（${item.role}）`).join('、')
-  return `- [event:${refOf(state, 'event', event.id)}] ${date} ${event.type}${qualifier}：${excerpt(event.summary, tokens, detail.summary)}${
+  return `- [event:${refOf(state, 'event', event.id)}] ${privacy}${date} ${event.type}${qualifier}：${excerpt(event.summary, tokens, detail.summary)}${
     people.length > 0 ? `；参与者：${people}` : ''
   }`
+}
+
+function privateEntityLines(
+  entities: readonly MemoryCandidate[],
+  detail: DetailLevel,
+  state: RenderState,
+): string[] {
+  return entities.flatMap((candidate) => {
+    if (candidate.record.kind !== 'entity') return []
+    const { entity, aliases } = candidate.record
+    if (!isRestricted(restrictionOf(entity))) return []
+    const details: string[] = []
+    if (entity.description !== null) {
+      details.push(truncate(entity.description, detail.description))
+    }
+    if (aliases.length > 0) {
+      details.push(truncate(`别名：${aliases.join('、')}`, detail.description))
+    }
+    const suffix = details.length > 0 ? `：${details.join('；')}` : ''
+    if (suffix.length === 0) return []
+    return [
+      `- [entity:${refOf(state, 'entity', entity.id)}] ${privacyLabel(entity.sensitivity, entity.disclosure)}${suffix}`,
+    ]
+  })
+}
+
+function privacyLabel(sensitivity: MemorySensitivity, disclosure: MemoryDisclosure): string {
+  if (disclosure === 'alias_only') return '仅用别名'
+  if (disclosure === 'do_not_volunteer') return sensitivity === 'private' ? '私密' : '不主动提及'
+  return '私密'
 }
 
 function evidenceLine(
@@ -336,9 +418,11 @@ function evidenceLine(
   detail: DetailLevel,
   tokens: ReadonlySet<string>,
   state: RenderState,
+  restrictedIds: ReadonlySet<MessageId>,
 ): string {
   const date = formatDate(message.occurredAt, state.timeZone)
-  return `- [message:${refOf(state, 'message', message.id)}] ${date} ${message.speakerId}：${excerpt(message.content, tokens, detail.evidence)}`
+  const marker = restrictedIds.has(message.id) ? '私密原文 ' : ''
+  return `- [message:${refOf(state, 'message', message.id)}] ${date} ${marker}${message.speakerId}：${excerpt(message.content, tokens, detail.evidence)}`
 }
 
 function refOf(state: RenderState, kind: MemoryRef['kind'], id: string): string {
@@ -394,6 +478,7 @@ function claimDate(at: number | null, fromValidFrom: boolean): ClaimDate | null 
 function describedEntities(candidates: readonly MemoryCandidate[]): Set<string> {
   const described = new Set<string>()
   for (const candidate of candidates) {
+    if (isRestricted(candidateRestriction(candidate))) continue
     if (candidate.record.kind === 'claim') {
       described.add(candidate.record.claim.subjectId)
       if (candidate.record.claim.object.kind === 'entity') {
@@ -458,6 +543,42 @@ function collectConflicts(
 
 function claimModalityOf(candidate: MemoryCandidate): MemoryModality | null {
   return candidate.record.kind === 'claim' ? candidate.record.claim.modality : null
+}
+
+function candidateRestriction(candidate: MemoryCandidate): Restriction {
+  switch (candidate.record.kind) {
+    case 'claim':
+      return restrictionOf(candidate.record.claim)
+    case 'event':
+      return restrictionOf(candidate.record.event)
+    case 'entity':
+      return restrictionOf(candidate.record.entity)
+    default:
+      return { sensitivity: 'normal', disclosure: 'allowed' }
+  }
+}
+
+function collectRestrictedEvidenceIds(
+  claims: readonly MemoryCandidate[],
+  events: readonly MemoryCandidate[],
+): Set<MessageId> {
+  const ids = new Set<MessageId>()
+  for (const candidate of [...claims, ...events]) {
+    if (!isRestricted(candidateRestriction(candidate))) continue
+    for (const id of candidate.evidenceMessageIds) ids.add(id)
+  }
+  return ids
+}
+
+function comparePrivateClaims(left: MemoryCandidate, right: MemoryCandidate): number {
+  return privateClaimRank(left) - privateClaimRank(right)
+}
+
+function privateClaimRank(candidate: MemoryCandidate): number {
+  if (candidate.record.kind !== 'claim') return 3
+  const claim = candidate.record.claim
+  if (claim.status !== 'active') return 2
+  return claim.modality === 'asserted' ? 0 : 1
 }
 
 function collectUncertainEvents(

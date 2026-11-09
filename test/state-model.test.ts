@@ -6,7 +6,9 @@ import type {
   Claim,
   ClaimCardinality,
   ClaimChange,
+  MemoryDisclosure,
   MemoryModality,
+  MemorySensitivity,
   MessageId,
 } from '../src/types.ts'
 
@@ -21,6 +23,8 @@ interface ClaimSpec {
   value: string
   modality?: MemoryModality
   validFrom?: number
+  sensitivity?: MemorySensitivity
+  disclosure?: MemoryDisclosure
 }
 
 function claimProvider(make: (content: string, id: MessageId) => ClaimSpec): ExtractionProvider {
@@ -44,6 +48,8 @@ function claimProvider(make: (content: string, id: MessageId) => ClaimSpec): Ext
             confidence: 0.9,
             evidenceMessageIds: [id],
             ...(spec.validFrom === undefined ? {} : { validFrom: spec.validFrom }),
+            ...(spec.sensitivity === undefined ? {} : { sensitivity: spec.sensitivity }),
+            ...(spec.disclosure === undefined ? {} : { disclosure: spec.disclosure }),
           },
         ],
         events: [],
@@ -261,6 +267,137 @@ test('a claim date comes from validFrom rather than the evidence date', async ()
   const context = await namiso.getContext({ query: '我住在哪里？', timeZone: 'UTC' })
   assert.match(context.text, /始于 2026-03-02（周一）/)
   assert.doesNotMatch(context.text, /始于 2026-09-/)
+  namiso.close()
+})
+
+test('private claims render only in the private section and mark their evidence', async () => {
+  const extraction = claimProvider(() => ({
+    predicate: '住址',
+    attribute: '住址',
+    cardinality: 'one',
+    change: 'replaces',
+    value: '上海',
+    sensitivity: 'private',
+  }))
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '我住在上海，这事别告诉别人。')
+  await drain()
+  const details = namiso.getEntityDetails('用户')
+  assert.ok(details !== null)
+  assert.equal(details.claims[0]?.sensitivity, 'private')
+  assert.equal(details.claims[0]?.disclosure, 'do_not_volunteer')
+  const context = await namiso.getContext({ query: '我住在哪里？' })
+  assert.equal(context.text.includes('[Current Claims]'), false)
+  assert.match(context.text, /\[Private\]/)
+  assert.match(context.text, /私密，当前有效/)
+  assert.match(context.text, /私密原文/)
+  namiso.close()
+})
+
+test('a private entity description stays out of the public entity line', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'privacy-entity',
+    async extract(input) {
+      const id = input.focusMessageIds[0]
+      return {
+        entities: [
+          {
+            name: '阿桐',
+            type: 'person',
+            description: '家里不知道她晚上唱歌',
+            sensitivity: 'private',
+            disclosure: 'do_not_volunteer',
+            evidenceMessageIds: [id],
+          },
+        ],
+        claims: [],
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '阿桐在我们店里驻唱，家里不知道她晚上唱歌，介绍她时只用艺名。')
+  await drain()
+  const context = await namiso.getContext({ query: '阿桐是谁？' })
+  const privateIndex = context.text.indexOf('[Private]')
+  const descriptionIndex = context.text.indexOf('家里不知道')
+  assert.ok(privateIndex !== -1 && descriptionIndex > privateIndex)
+  const publicEntities = context.text.slice(
+    context.text.indexOf('[Relevant Entities]'),
+    privateIndex,
+  )
+  assert.equal(publicEntities.includes('家里不知道'), false)
+  namiso.close()
+})
+
+test('alias-only records carry the alias marker', async () => {
+  const extraction = claimProvider(() => ({
+    predicate: '称呼',
+    attribute: '称呼',
+    cardinality: 'one',
+    change: 'replaces',
+    value: '艺名阿桐',
+    disclosure: 'alias_only',
+  }))
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '介绍她的时候只用艺名阿桐。')
+  await drain()
+  const context = await namiso.getContext({ query: '阿桐的称呼是什么？' })
+  assert.match(context.text, /仅用别名/)
+  namiso.close()
+})
+
+test('privacy upgrades on restatement and never downgrades', async () => {
+  const extraction = claimProvider((content) => ({
+    predicate: '项目',
+    attribute: '项目',
+    cardinality: 'one',
+    change: 'replaces',
+    value: '项目A',
+    ...(content === '保密' ? { sensitivity: 'private' as const } : {}),
+  }))
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '普通')
+  await drain()
+  assert.equal(namiso.getEntityDetails('用户')?.claims[0]?.sensitivity, 'normal')
+  await say(USER, 'user', '保密')
+  await drain()
+  assert.equal(namiso.getEntityDetails('用户')?.claims[0]?.sensitivity, 'private')
+  await say(USER, 'user', '普通')
+  await drain()
+  assert.equal(namiso.getEntityDetails('用户')?.claims[0]?.sensitivity, 'private')
+  namiso.close()
+})
+
+test('private events render in the private section', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'privacy-event',
+    async extract(input) {
+      const id = input.focusMessageIds[0]
+      return {
+        entities: [],
+        claims: [],
+        events: [
+          {
+            type: 'meeting',
+            summary: '和医生谈检查结果',
+            participants: [],
+            modality: 'asserted',
+            confidence: 0.9,
+            sensitivity: 'private',
+            evidenceMessageIds: [id],
+          },
+        ],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '昨天和医生谈了检查结果，先别告诉家里。')
+  await drain()
+  const context = await namiso.getContext({ query: '发生过什么和医生有关的事？' })
+  assert.match(context.text, /\[Private\]/)
+  assert.match(context.text, /私密，/)
+  assert.match(context.text, /私密原文/)
   namiso.close()
 })
 

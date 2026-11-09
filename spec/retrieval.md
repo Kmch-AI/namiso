@@ -91,14 +91,18 @@ Sections appear in this order:
 3. Unconfirmed claims
 4. Relevant entities
 5. Unresolved conflicts
-6. Historical events
-7. Historical claims
-8. Memory relations
-9. Evidence messages
+6. Uncertain events
+7. Historical events
+8. Historical claims
+9. Memory relations
+10. Private records
+11. Evidence messages
 
 The contract states that the sections are the retrieved record, that the answer must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened.
 
 Current claims are asserted claims. A negative fact renders with `≠` before the object. Claims with uncertain, hypothetical, quoted, or reported modality render in the unconfirmed section with their modality label instead of `当前有效`. Conflicts are computed only from asserted positive claims.
+
+A record with `sensitivity = private` or `disclosure` other than `allowed` renders in the private section instead of its normal section, with a marker: `私密`, `仅用别名`, or `不主动提及`. The section states that its records are quoted only when the question directly asks. The value stays visible, so a direct question can still be answered. A private entity description never appears in the public entity line; it renders in the private section. Evidence lines whose message supports a private claim or event carry `私密原文`. Conflicts and uncertain-event notes are computed only from public records, because rendering both sides of a private conflict would expose it.
 
 Claims show their status and, when known, the date the value became true: the claim's `validFrom` renders as `始于`, and the earliest evidence message renders as `记录于` when `validFrom` is absent. Entities show a description only when no rendered claim or event already describes them; otherwise the description is omitted or marked as an early summary. Conflicts are computed from rendered active claims with the same subject and predicate and different values. Each conflict line lists both values with dates and instructs the reader not to choose. Events are selected by retrieval rank, then displayed in time order; each carries a modality marker, and an undated event shows the date of its earliest evidence message as `时间未知（提及于 …）`. Retrieval trace notes, including reranker errors, never enter the model text.
 
