@@ -51,6 +51,46 @@ test('current-state queries use structured claims ahead of raw chunks', async ()
   assert.match(context.text, /IndexTTS2/)
 })
 
+test('topK slots go to renderable records when enough exist', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '我是一名设计师。')
+  await say(USER, 'user', '我在使用 TTS-A。')
+  await say(USER, 'user', '我决定重新开始使用 IndexTTS2 了。')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '我现在使用什么模型？',
+    topK: 3,
+    includeRelations: false,
+    rerank: false,
+  })
+  const renderable = result.candidates.filter(
+    (candidate) =>
+      candidate.kind === 'entity' || candidate.kind === 'claim' || candidate.kind === 'event',
+  )
+  assert.equal(renderable.length, 3)
+  namiso.close()
+})
+
+test('source-only candidates fill topK when no structured record exists', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '今天天气不错。')
+  await say(USER, 'user', '外面在下雨。')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '天气怎么样？',
+    topK: 2,
+    includeRelations: false,
+    rerank: false,
+  })
+  assert.equal(result.candidates.length, 2)
+  assert.ok(
+    result.candidates.some(
+      (candidate) => candidate.kind === 'chunk' || candidate.kind === 'message',
+    ),
+  )
+  namiso.close()
+})
+
 test('time range filters structured events', async () => {
   const { namiso, say, drain } = await setup()
   await say(USER, 'user', '我换成了 TTS-A。')

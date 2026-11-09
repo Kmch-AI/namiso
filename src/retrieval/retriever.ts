@@ -59,6 +59,7 @@ interface ChannelResult {
 
 const RRF_K = 60
 const CANDIDATES_PER_CHANNEL = 80
+const SOURCE_EVIDENCE_POOL = 8
 const RERANK_POOL_LIMIT = 50
 const TIME_BOOST = 0.1
 const FTS_STAGE_MIN = 3
@@ -143,17 +144,29 @@ export class Retriever {
       Math.min(options.rerankPool ?? RERANK_POOL_LIMIT, RERANK_POOL_LIMIT),
     )
     const ranked = await this.rank(query, validated.candidates, rerank, rerankPool, notes, windows)
-    const coverage = selectWithCoverage(ranked, {
+    const renderable = ranked.filter((candidate) => isRenderableKind(candidate.kind))
+    const sourceOnly = ranked.filter((candidate) => !isRenderableKind(candidate.kind))
+    const coverage = selectWithCoverage(renderable, {
       topK,
       facets: analysis.facets,
       entityIds: mentioned.coverageIds,
     })
-    const selected = coverage.selected
+    const selected = [...coverage.selected]
+    if (selected.length < topK) {
+      selected.push(...sourceOnly.slice(0, topK - selected.length))
+      notes.push('可渲染记录不足，已用原始对话补足 topK。')
+    }
+    const sources =
+      options.includeRelations === false ? [] : sourceOnly.slice(0, SOURCE_EVIDENCE_POOL)
     const expansion =
       options.includeRelations === false
         ? { items: [], count: 0 }
-        : this.expand(options.memorySpaceId, selected, options.includeEvidence === true)
-    const resultCandidates = [...selected, ...expansion.items].toSorted(
+        : this.expand(options.memorySpaceId, selected, options.includeEvidence === true, sources)
+    const merged = new Map<string, MemoryCandidate>()
+    for (const candidate of [...selected, ...expansion.items, ...sources]) {
+      if (!merged.has(candidate.key)) merged.set(candidate.key, candidate)
+    }
+    const resultCandidates = [...merged.values()].toSorted(
       (left, right) => right.score - left.score,
     )
     const trace: RetrievalTrace = {
@@ -481,6 +494,7 @@ export class Retriever {
     spaceId: MemorySpaceId,
     selected: readonly MemoryCandidate[],
     includeEvidence: boolean,
+    sourcePool: readonly MemoryCandidate[] = [],
   ): { items: MemoryCandidate[]; count: number } {
     const seen = new Set(selected.map((candidate) => candidate.key))
     const extras = new Map<string, MemoryCandidate>()
@@ -524,7 +538,7 @@ export class Retriever {
     }
     if (includeEvidence) {
       const evidenceIds = new Set<string>()
-      for (const candidate of selected) {
+      for (const candidate of [...selected, ...sourcePool]) {
         for (const id of candidate.evidenceMessageIds) evidenceIds.add(id)
       }
       const messages = getMessagesByIds(this.db, [...evidenceIds].slice(0, 20).map(asMessageId))
@@ -601,6 +615,10 @@ function allowedKinds(
     }
   }
   return kinds
+}
+
+function isRenderableKind(kind: CandidateRecord['kind']): boolean {
+  return kind === 'entity' || kind === 'claim' || kind === 'event'
 }
 
 function isExpandableKind(kind: string): kind is 'entity' | 'claim' | 'event' {

@@ -62,14 +62,16 @@ The reranker judges relevance only. It does not decide whether a claim is curren
 
 ## Selection
 
-The ranked pool feeds coverage selection, which returns `min(topK, pool length)` items:
+Selection runs over the renderable candidates (entity, claim, and event) first. Conversation chunks and message candidates are source-only: they never render as lines of their own, so they cannot occupy a visible slot while a structured record is available. The source-only pool still contributes evidence messages, up to the first eight ranked entries.
+
+The renderable pool feeds coverage selection, which returns `min(topK, pool length)` items:
 
 1. Take rank 1.
 2. For each facet, keep the highest-ranked unpicked candidate that shares at least half the facet's tokens and scores at least 0.25 × the top score. If a selected candidate already covers the facet, no slot is used.
 3. For each explicitly named entity, do the same with a candidate whose structured record names it.
 4. Fill the remaining slots with `0.7 × score − 0.3 × max Jaccard(tokens, selected)`.
 
-Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
+If fewer renderable candidates exist than `topK`, the remaining slots fill from the ranked source-only pool and the trace notes it. Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
 
 ## Validation
 
