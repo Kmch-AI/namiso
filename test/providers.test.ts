@@ -576,6 +576,11 @@ test('compact requests drop message ids and are smaller than legacy requests', a
   const compactUser = compactMessages[1]
   assert.ok(compactUser !== undefined)
   const compactPayload = JSON.parse(compactUser.content) as Record<string, unknown>
+  assert.deepEqual(Object.keys(compactPayload).slice(0, 3), [
+    'knownEntities',
+    'knownAttributes',
+    'knownFacts',
+  ])
   assert.deepEqual(compactPayload['focus'], [15])
   const messageTuples = compactPayload['messages'] as unknown[][]
   const entityTuples = compactPayload['knownEntities'] as unknown[][]

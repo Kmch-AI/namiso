@@ -281,13 +281,13 @@ const ENTITY_TYPE_BY_CODE = new Map(
 
 function legacyRequest(input: ExtractionInput): Record<string, unknown> {
   return {
-    focusMessageIds: input.focusMessageIds,
-    messages: input.messages,
     knownEntities: input.knownEntities,
     knownAttributes: input.knownAttributes ?? [],
     ...(input.knownFacts === undefined || input.knownFacts.length === 0
       ? {}
       : { knownFacts: input.knownFacts }),
+    focusMessageIds: input.focusMessageIds,
+    messages: input.messages,
   }
 }
 
@@ -298,13 +298,6 @@ function compactRequest(input: ExtractionInput): Record<string, unknown> {
     return index === undefined ? [] : [index]
   })
   return {
-    focus,
-    messages: input.messages.map((message) => [
-      ROLE_CODES[message.role],
-      message.speakerName,
-      message.content,
-      message.occurredAt,
-    ]),
     knownEntities: input.knownEntities.map((entity) =>
       entity.aliases.length === 0
         ? [entity.name, ENTITY_TYPE_CODES[entity.type]]
@@ -316,6 +309,13 @@ function compactRequest(input: ExtractionInput): Record<string, unknown> {
       : {
           knownFacts: input.knownFacts.map((fact) => [fact.subject, fact.attribute, fact.value]),
         }),
+    focus,
+    messages: input.messages.map((message) => [
+      ROLE_CODES[message.role],
+      message.speakerName,
+      message.content,
+      message.occurredAt,
+    ]),
   }
 }
 

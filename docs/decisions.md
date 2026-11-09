@@ -266,6 +266,14 @@ An adversarial review of the Phase 3 diff confirmed these defects. A month quali
 
 Verification: 103 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 724 and ingest 26.3s.
 
+## D36. Stable request prefix for extraction prompts
+
+The extraction request is serialized in property order, and providers that cache prompt prefixes (such as OpenAI-compatible prompt caching) can only reuse a prefix that matches byte for byte. The per-call `focus` and `messages` came first, so every request diverged at the first field and no prefix could be reused across batches.
+
+Both request builders now order the stable known state first (`knownEntities`, `knownAttributes`, `knownFacts`) and the per-call `focus`/`messages` last. The known state is itself capped and its order is deterministic, so consecutive batches share a longer prefix. JSON property order is the serialization order, so the change needs no format version. The response parser is order-independent.
+
+Verification: 103 tests pass, 1 integration test skipped; a test asserts the first three keys of the compact payload. The formal offline run is unchanged at 74.0% evidence recall and 78.0% context hit with p50 724 context tokens, because the offline providers do not issue HTTP requests. Whether a real provider's cache hit rate improves is unmeasured until a model service is available; the field order is a necessary condition, not a measured gain.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
