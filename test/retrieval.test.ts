@@ -329,3 +329,35 @@ test('structured retrieval ranks relevant claims above newer unrelated ones', as
   assert.ok(sql?.topKeys.includes(matching.key), 'the relevant claim should rank first in SQL')
   namiso.close()
 })
+
+test('linked claim evidence includes a follow-up with no query overlap', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'closure-test',
+    async extract(input) {
+      return {
+        entities: [{ name: USER, type: 'person', evidenceMessageIds: [input.focusMessageIds[0]] }],
+        claims: [
+          {
+            subject: { name: USER, type: 'person' },
+            predicate: '储物柜密码',
+            object: { kind: 'literal', value: '4821' },
+            modality: 'asserted',
+            confidence: 0.9,
+            evidenceMessageIds: [...input.focusMessageIds],
+          },
+        ],
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '我的储物柜密码是 4821。')
+  await say(USER, 'user', '嗯，就是这个。')
+  await drain()
+  const context = await namiso.getContext({ query: '我的储物柜密码是什么？' })
+  assert.ok(
+    context.evidence.some((message) => message.content.includes('就是这个')),
+    'a linked follow-up should stay in evidence even without query overlap',
+  )
+  namiso.close()
+})

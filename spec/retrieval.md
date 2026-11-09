@@ -74,10 +74,11 @@ Expansion can add superseded claims to a current-query result. That is intention
 
 ## Evidence selection
 
-The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in two passes:
+The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in three passes:
 
-1. For each candidate in rank order, choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to two.
-2. Fill remaining slots with the highest-ranked messages that had no overlap.
+1. For each candidate in rank order, choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, and linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short.
+2. Add the messages adjacent to each chosen message when slots remain.
+3. Fill remaining slots with the highest-ranked messages that had no overlap.
 
 Chosen evidence is displayed in time order. This keeps the context readable while preserving the message that answers the query.
 

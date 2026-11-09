@@ -11,7 +11,7 @@ import type {
 } from '../types.ts'
 
 import { asMessageId } from '../ids.ts'
-import { getMessagesByIds } from '../storage/conversation-repo.ts'
+import { getMessagesByIds, listMessages } from '../storage/conversation-repo.ts'
 import { estimateTokens, excerpt, segment, truncate } from '../text.ts'
 
 export interface BuildContextInput {
@@ -480,7 +480,8 @@ function collectEvidence(
   const byId = new Map(messages.map((message) => [message.id, message]))
   const queryTokens = new Set(segment(query))
   const prepared = candidates.map((candidate) => {
-    const perCandidateLimit = candidate.kind === 'chunk' ? 3 : 2
+    const perCandidateLimit = candidate.kind === 'chunk' ? 3 : 4
+    const linked = candidate.kind === 'claim' || candidate.kind === 'event'
     const candidateMessages = candidate.evidenceMessageIds
       .flatMap((id) => {
         const message = byId.get(asMessageId(id))
@@ -491,7 +492,7 @@ function collectEvidence(
         if (left.score !== right.score) return right.score - left.score
         return right.message.occurredAt - left.message.occurredAt
       })
-    return { messages: candidateMessages, perCandidateLimit }
+    return { messages: candidateMessages, perCandidateLimit, linked }
   })
   const chosen: Message[] = []
   const seen = new Set<string>()
@@ -500,7 +501,7 @@ function collectEvidence(
       if (chosen.length >= MAX_EVIDENCE) return
       let added = 0
       for (const entry of item.messages) {
-        if (onlyMatching && entry.score === 0) continue
+        if (onlyMatching && entry.score === 0 && !item.linked) continue
         if (added >= item.perCandidateLimit || chosen.length >= MAX_EVIDENCE) break
         if (seen.has(entry.message.id)) continue
         seen.add(entry.message.id)
@@ -510,6 +511,24 @@ function collectEvidence(
     }
   }
   take(true)
+  const initial = chosen.slice()
+  for (const message of initial) {
+    if (chosen.length >= MAX_EVIDENCE) break
+    for (const index of [message.messageIndex - 1, message.messageIndex + 1]) {
+      if (chosen.length >= MAX_EVIDENCE) break
+      if (index < 0) continue
+      const neighbor = listMessages(db, {
+        memorySpaceId: spaceId,
+        conversationId: message.conversationId,
+        fromIndex: index,
+        toIndex: index,
+        limit: 1,
+      })[0]
+      if (neighbor === undefined || seen.has(neighbor.id)) continue
+      seen.add(neighbor.id)
+      chosen.push(neighbor)
+    }
+  }
   take(false)
   return chosen.toSorted((left, right) => left.occurredAt - right.occurredAt)
 }
