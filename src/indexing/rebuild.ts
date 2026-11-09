@@ -12,7 +12,7 @@ import {
   listEventParticipants,
   listEvents,
 } from '../storage/memory-repo.ts'
-import { listDocuments } from '../storage/search-repo.ts'
+import { clearFts, listDocuments } from '../storage/search-repo.ts'
 import { claimDocumentText, entityDocumentText, eventDocumentText } from './documents.ts'
 
 export async function rebuildIndexes(
@@ -27,8 +27,7 @@ export async function rebuildIndexes(
     for (const document of documents) {
       vectors.remove(document.id)
     }
-    db.run('DELETE FROM fts_documents WHERE memory_space_id = ?', spaceId)
-    db.run('DELETE FROM fts_ngrams WHERE memory_space_id = ?', spaceId)
+    clearFts(db, spaceId)
     db.run('DELETE FROM embedding_documents WHERE memory_space_id = ?', spaceId)
   })
 

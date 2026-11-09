@@ -108,16 +108,17 @@ Chosen evidence is displayed in time order. This keeps the context readable whil
 Sections appear in this order:
 
 1. Memory contract
-2. Current claims
-3. Unconfirmed claims
-4. Relevant entities
-5. Unresolved conflicts
-6. Uncertain events
-7. Historical events
-8. Historical claims
-9. Memory relations
-10. Private records
-11. Evidence messages
+2. Query time, when a bounded expression resolved
+3. Current claims
+4. Unconfirmed claims
+5. Relevant entities
+6. Unresolved conflicts
+7. Uncertain events
+8. Historical events
+9. Historical claims
+10. Memory relations
+11. Private records
+12. Evidence messages
 
 The contract states that the sections are the retrieved record, that the answer must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened.
 

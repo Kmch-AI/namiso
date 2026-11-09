@@ -27,7 +27,8 @@ export function selectWithCoverage(
   ranked: readonly MemoryCandidate[],
   input: CoverageInput,
 ): CoverageResult {
-  const limit = Math.min(input.topK, ranked.length)
+  const requested = Number.isFinite(input.topK) ? Math.floor(input.topK) : 1
+  const limit = Math.min(Math.max(1, requested), ranked.length)
   if (limit <= 0) {
     return {
       selected: [],

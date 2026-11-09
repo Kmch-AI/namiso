@@ -54,10 +54,30 @@ export interface UpsertDocumentInput {
 export interface UpsertDocumentResult {
   document: EmbeddingDocument
   needsEmbedding: boolean
+  removedIds: DocumentId[]
 }
 
 export function upsertDocument(db: Database, input: UpsertDocumentInput): UpsertDocumentResult {
   const contentHash = hashText(input.content)
+  const removedIds = db
+    .all(
+      `SELECT id FROM embedding_documents
+       WHERE source_type = ? AND source_id = ? AND model_name <> ?`,
+      input.sourceType,
+      input.sourceId,
+      input.modelName,
+    )
+    .map((row) => asDocumentId(text(row, 'id')))
+  for (const id of removedIds) {
+    deleteFtsDocument(db, id)
+  }
+  db.run(
+    `DELETE FROM embedding_documents
+     WHERE source_type = ? AND source_id = ? AND model_name <> ?`,
+    input.sourceType,
+    input.sourceId,
+    input.modelName,
+  )
   const existingRow = db.get(
     `SELECT * FROM embedding_documents
      WHERE source_type = ? AND source_id = ? AND model_name = ?`,
@@ -67,20 +87,13 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
   )
   if (existingRow !== undefined) {
     const existing = mapDocument(existingRow)
-    db.run(
-      `DELETE FROM embedding_documents
-       WHERE source_type = ? AND source_id = ? AND model_name <> ?`,
-      input.sourceType,
-      input.sourceId,
-      input.modelName,
-    )
     const upToDate =
       existing.contentHash === contentHash &&
       existing.modelVersion === input.modelVersion &&
       existing.dimensions === input.dimensions &&
       existing.vector !== null
     if (upToDate) {
-      return { document: existing, needsEmbedding: false }
+      return { document: existing, needsEmbedding: false, removedIds }
     }
     db.run(
       `UPDATE embedding_documents
@@ -106,6 +119,7 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
         updatedAt: input.now,
       },
       needsEmbedding: true,
+      removedIds,
     }
   }
   const id = asDocumentId(crypto.randomUUID())
@@ -142,6 +156,7 @@ export function upsertDocument(db: Database, input: UpsertDocumentInput): Upsert
       updatedAt: input.now,
     },
     needsEmbedding: true,
+    removedIds,
   }
 }
 
@@ -248,6 +263,11 @@ export function deleteFtsDocument(db: Database, documentId: DocumentId): void {
   db.run('DELETE FROM fts_ngrams WHERE document_key = ?', documentId)
 }
 
+export function clearFts(db: Database, spaceId: MemorySpaceId): void {
+  db.run('DELETE FROM fts_documents WHERE memory_space_id = ?', spaceId)
+  db.run('DELETE FROM fts_ngrams WHERE memory_space_id = ?', spaceId)
+}
+
 export interface FtsHit {
   documentId: DocumentId
   sourceId: string
@@ -260,8 +280,9 @@ export function searchFts(
   spaceId: MemorySpaceId,
   query: string,
   limit: number,
+  kinds?: readonly MemorySourceType[],
 ): FtsHit[] {
-  return searchFtsTable(db, 'fts_documents', toFtsQuery(query), spaceId, limit)
+  return searchFtsTable(db, 'fts_documents', toFtsQuery(query), spaceId, limit, kinds)
 }
 
 export function searchFtsNgrams(
@@ -269,8 +290,9 @@ export function searchFtsNgrams(
   spaceId: MemorySpaceId,
   query: string,
   limit: number,
+  kinds?: readonly MemorySourceType[],
 ): FtsHit[] {
-  return searchFtsTable(db, 'fts_ngrams', toNgramQuery(query), spaceId, limit)
+  return searchFtsTable(db, 'fts_ngrams', toNgramQuery(query), spaceId, limit, kinds)
 }
 
 function searchFtsTable(
@@ -279,16 +301,20 @@ function searchFtsTable(
   ftsQuery: string,
   spaceId: MemorySpaceId,
   limit: number,
+  kinds: readonly MemorySourceType[] | undefined,
 ): FtsHit[] {
   if (ftsQuery.length === 0) return []
+  if (kinds?.length === 0) return []
+  const kindClause = kinds === undefined ? '' : ` AND kind IN (${kinds.map(() => '?').join(', ')})`
   return db
     .all(
       `SELECT document_key, source_id, kind, bm25(${table}) AS rank
        FROM ${table}
-       WHERE ${table} MATCH ? AND memory_space_id = ?
+       WHERE ${table} MATCH ? AND memory_space_id = ?${kindClause}
        ORDER BY rank ASC LIMIT ?`,
       ftsQuery,
       spaceId,
+      ...(kinds ?? []),
       limit,
     )
     .map((row) => ({

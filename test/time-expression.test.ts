@@ -79,11 +79,50 @@ test('open ranges and memory-free queries produce no window', () => {
   assert.deepEqual(resolve('我的储物柜密码是什么'), [])
 })
 
+test('qualified months use the stated year and bare months are past-biased', () => {
+  const nextMarch = first('明年3月有什么计划')
+  assert.equal(iso(nextMarch.from), '2027-02-28T16:00:00.000Z')
+  assert.equal(iso(nextMarch.to), '2027-03-31T16:00:00.000Z')
+  const lastMarch = first('去年3月做了什么')
+  assert.equal(iso(lastMarch.from), '2025-02-28T16:00:00.000Z')
+  const november = Date.parse('2026-11-09T12:00:00+08:00') / 1000
+  const december = resolveTimeExpressions('12月', november, ZONE)[0]
+  assert.ok(december !== undefined)
+  assert.equal(iso(december.from), '2025-11-30T16:00:00.000Z')
+})
+
+test('a leap day falls back to the most recent year that has one', () => {
+  const now = Date.parse('2028-01-15T12:00:00+08:00') / 1000
+  const [window] = resolveTimeExpressions('2月29日做了什么', now, ZONE)
+  assert.ok(window !== undefined)
+  assert.equal(iso(window.from), '2024-02-28T16:00:00.000Z')
+  assert.equal(iso(window.to), '2024-02-29T16:00:00.000Z')
+})
+
+test('day and week bounds follow the zone across DST', () => {
+  const now = Date.parse('2026-03-08T17:00:00Z') / 1000
+  const [today] = resolveTimeExpressions('今天做了什么', now, 'America/New_York')
+  assert.ok(today !== undefined)
+  assert.equal(iso(today.from), '2026-03-08T05:00:00.000Z')
+  assert.equal(iso(today.to), '2026-03-09T04:00:00.000Z')
+  const weekNow = Date.parse('2026-03-10T16:00:00Z') / 1000
+  const [lastWeek] = resolveTimeExpressions('上周', weekNow, 'America/New_York')
+  assert.ok(lastWeek !== undefined)
+  assert.equal(iso(lastWeek.from), '2026-03-02T05:00:00.000Z')
+  assert.equal(iso(lastWeek.to), '2026-03-09T04:00:00.000Z')
+})
+
+test('multi-word english phrases and intra-day qualifiers resolve', () => {
+  assert.equal(iso(first('the day before yesterday').from), '2026-04-13T16:00:00.000Z')
+  assert.equal(iso(first('the day after tomorrow').from), '2026-04-17T16:00:00.000Z')
+  assert.equal(iso(first('today before work').from), '2026-04-15T16:00:00.000Z')
+})
+
 test('multiple expressions are returned in source order', () => {
-  const windows = resolve('上个月去了苏州，这个月去了杭州')
+  const windows = resolve('这个月去了杭州，上个月去了苏州')
   assert.equal(windows.length, 2)
-  assert.equal(windows[0]?.text, '上个月')
-  assert.equal(windows[1]?.text, '这个月')
+  assert.equal(windows[0]?.text, '这个月')
+  assert.equal(windows[1]?.text, '上个月')
 })
 
 test('the day boundary follows the requested zone', () => {

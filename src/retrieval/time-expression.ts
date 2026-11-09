@@ -12,8 +12,6 @@ interface CivilTime extends Civil {
   second: number
 }
 
-const DAY_SECONDS = 86_400
-
 const WEEKDAYS: Record<string, number> = {
   一: 1,
   二: 2,
@@ -48,13 +46,13 @@ const CHINESE_DIGITS: Record<string, number> = {
   九: 9,
 }
 
-const OPEN_BEFORE = /(?:之前|以前|以前|之前|以来|before|until|since)\s*$/i
-const OPEN_AFTER = /^\s*(?:之前|以前|之后|以后|以来|after|before|since)/i
+const OPEN_BEFORE = /(?:之前|以前|以来|before|until|since)\s*$/i
+const OPEN_AFTER = /^\s*(?:之前|以前|之后|以后|以来)/i
 
 export function resolveTimeExpressions(query: string, now: number, timeZone: string): TimeWindow[] {
   const text = query.normalize('NFKC')
   const nowCivil = civilOf(now, timeZone)
-  const matches: TimeWindow[] = []
+  const matches: Array<{ start: number; window: TimeWindow }> = []
   const consumed: Array<[number, number]> = []
 
   const free = (start: number, end: number): boolean =>
@@ -68,8 +66,8 @@ export function resolveTimeExpressions(query: string, now: number, timeZone: str
       if (!free(index, end)) continue
       consumed.push([index, end])
       if (isOpenRange(text, index, end)) continue
-      const expression = build(match)
-      if (expression !== null) matches.push(expression)
+      const window = build(match)
+      if (window !== null) matches.push({ start: index, window })
     }
   }
 
@@ -96,29 +94,37 @@ export function resolveTimeExpressions(query: string, now: number, timeZone: str
     const civil = pastCivil(nowCivil, Number(match[1]), Number(match[2]))
     return civil === null ? null : dayExpression(match[0], civil, true, timeZone)
   })
+  take(/(今年|本年|去年|明年)(\d{1,2})月/g, (match) => {
+    const month = Number(match[2])
+    if (month < 1 || month > 12) return null
+    const shift = match[1] === '去年' ? -1 : match[1] === '明年' ? 1 : 0
+    return monthExpression(match[0], { year: nowCivil.year + shift, month }, false, timeZone)
+  })
   take(/(\d{1,2})月/g, (match) => {
     const month = Number(match[1])
-    return month >= 1 && month <= 12
-      ? monthExpression(match[0], { year: nowCivil.year, month }, true, timeZone)
-      : null
+    if (month < 1 || month > 12) return null
+    const year = month > nowCivil.month ? nowCivil.year - 1 : nowCivil.year
+    return monthExpression(match[0], { year, month }, true, timeZone)
   })
   take(/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\d)/g, (match) => {
     const civil = pastCivil(nowCivil, Number(match[1]), Number(match[2]))
     return civil === null ? null : dayExpression(match[0], civil, true, timeZone)
   })
+  take(/the day before yesterday/gi, (match) =>
+    dayExpression(match[0], addDays(nowCivil, -2), false, timeZone),
+  )
+  take(/the day after tomorrow/gi, (match) =>
+    dayExpression(match[0], addDays(nowCivil, 2), false, timeZone),
+  )
   take(/今天|今日|今晚|今早|today/gi, (match) => dayExpression(match[0], nowCivil, false, timeZone))
   take(/昨天|昨日|昨晚|yesterday/gi, (match) =>
     dayExpression(match[0], addDays(nowCivil, -1), false, timeZone),
   )
-  take(/前天|the day before yesterday/gi, (match) =>
-    dayExpression(match[0], addDays(nowCivil, -2), false, timeZone),
-  )
+  take(/前天/gi, (match) => dayExpression(match[0], addDays(nowCivil, -2), false, timeZone))
   take(/明天|明日|明晚|tomorrow/gi, (match) =>
     dayExpression(match[0], addDays(nowCivil, 1), false, timeZone),
   )
-  take(/后天|the day after tomorrow/gi, (match) =>
-    dayExpression(match[0], addDays(nowCivil, 2), false, timeZone),
-  )
+  take(/后天/gi, (match) => dayExpression(match[0], addDays(nowCivil, 2), false, timeZone))
   take(/(上|下|这|本)?(?:个)?(?:周|星期|礼拜)([一二三四五六日天])/g, (match) => {
     const weekday = WEEKDAYS[match[2] ?? '']
     if (weekday === undefined) return null
@@ -171,7 +177,7 @@ export function resolveTimeExpressions(query: string, now: number, timeZone: str
   take(/(?:上周|上个星期|last week)/gi, (match) => weekExpression(match[0], nowCivil, -1, timeZone))
   take(/(?:下周|下个星期|next week)/gi, (match) => weekExpression(match[0], nowCivil, 1, timeZone))
 
-  return matches.toSorted((left, right) => left.from - right.from)
+  return matches.toSorted((left, right) => left.start - right.start).map((item) => item.window)
 }
 
 function isOpenRange(text: string, start: number, end: number): boolean {
@@ -197,9 +203,10 @@ function civilFrom(
 function pastCivil(now: Civil, month: number, day: number): Civil | null {
   if (!Number.isInteger(month) || month < 1 || month > 12) return null
   if (!Number.isInteger(day) || day < 1 || day > daysInMonth(now.year, month)) return null
-  const candidateCivil = { year: now.year, month, day }
-  if (compareCivil(candidateCivil, now) > 0) return { year: now.year - 1, month, day }
-  return candidateCivil
+  let year = now.year
+  if (compareCivil({ year, month, day }, now) > 0) year -= 1
+  while (year >= 1900 && day > daysInMonth(year, month)) year -= 1
+  return year < 1900 ? null : { year, month, day }
 }
 
 function compareCivil(left: Civil, right: Civil): number {
@@ -216,7 +223,7 @@ function dayExpression(
   return {
     text,
     from,
-    to: from + DAY_SECONDS,
+    to: zonedEpoch(addDays(civil, 1), timeZone),
     granularity: 'day',
     approximate,
   }
@@ -256,11 +263,10 @@ function yearExpression(
 
 function weekExpression(text: string, now: Civil, offset: number, timeZone: string): TimeWindow {
   const start = addDays(now, -isoWeekday(now) + 1 + offset * 7)
-  const from = zonedEpoch(start, timeZone)
   return {
     text,
-    from,
-    to: from + 7 * DAY_SECONDS,
+    from: zonedEpoch(start, timeZone),
+    to: zonedEpoch(addDays(start, 7), timeZone),
     granularity: 'week',
     approximate: false,
   }

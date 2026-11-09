@@ -6,6 +6,7 @@ import type {
   CandidateRecord,
   Entity,
   MemoryCandidate,
+  MemorySourceType,
   MemorySpaceId,
   QueryAspect,
   RetrievalChannel,
@@ -24,7 +25,7 @@ import {
   listRecentEvents,
 } from '../storage/memory-repo.ts'
 import { getDocument, searchFts, searchFtsNgrams } from '../storage/search-repo.ts'
-import { segment } from '../text.ts'
+import { segment, toNgramQuery } from '../text.ts'
 import {
   candidateFromSource,
   claimCandidate,
@@ -133,7 +134,7 @@ export class Retriever {
       ...(analysis.facets.length === 0 ? [] : [{ channel: 'facet' as const, items: facetItems }]),
     ]
     const fused = this.fuse(channelResults)
-    const validated = this.validate(fused, parsed, options.timeRange)
+    const validated = this.validate(fused, parsed, analysis.aspects, options.timeRange)
     notes.push(...validated.notes)
     const topK = Math.max(1, Math.min(options.topK ?? 10, 50))
     const rerank = options.rerank !== false
@@ -226,8 +227,8 @@ export class Retriever {
     const includeInactive =
       parsed.wantsHistory || aspects.includes('change') || !parsed.wantsCurrent
     const wantsEvents =
-      parsed.intent === 'event' ||
-      parsed.intent === 'history' ||
+      aspects.includes('event_time') ||
+      aspects.includes('history') ||
       aspects.includes('change') ||
       windows.length > 0
     const entityIds = mentioned.map((entity) => entity.id)
@@ -282,18 +283,17 @@ export class Retriever {
   ): MemoryCandidate[] {
     const word = this.ftsHits(spaceId, query, allowed)
     if (word.length >= FTS_STAGE_MIN) return word
+    if (toNgramQuery(query).length === 0) return word
+    notes.push('FTS 词级命中不足，已尝试 CJK 二元组检索。')
     const seen = new Set(word.map((item) => item.key))
     const merged = [...word]
-    for (const hit of searchFtsNgrams(this.db, spaceId, query, 30)) {
+    for (const hit of searchFtsNgrams(this.db, spaceId, query, 30, ftsKinds(allowed))) {
       if (merged.length >= CANDIDATES_PER_CHANNEL) break
       const item = candidateFromSource(this.db, spaceId, hit.kind, hit.sourceId)
       if (item === null || seen.has(item.key) || !allowed.has(item.kind)) continue
       item.score = hit.score
       seen.add(item.key)
       merged.push(item)
-    }
-    if (merged.length > word.length) {
-      notes.push('FTS 词级命中不足，已补充 CJK 二元组检索。')
     }
     return merged
   }
@@ -304,7 +304,7 @@ export class Retriever {
     allowed: ReadonlySet<CandidateRecord['kind']>,
   ): MemoryCandidate[] {
     const items = new Map<string, MemoryCandidate>()
-    for (const hit of searchFts(this.db, spaceId, query, 30)) {
+    for (const hit of searchFts(this.db, spaceId, query, 30, ftsKinds(allowed))) {
       const item = candidateFromSource(this.db, spaceId, hit.kind, hit.sourceId)
       if (item === null || items.has(item.key) || !allowed.has(item.kind)) continue
       item.score = hit.score
@@ -344,6 +344,7 @@ export class Retriever {
     }
     return [...best.values()]
       .toSorted((left, right) => left.rank - right.rank)
+      .slice(0, CANDIDATES_PER_CHANNEL)
       .map((entry) => entry.item)
   }
 
@@ -383,12 +384,19 @@ export class Retriever {
   private validate(
     candidates: readonly MemoryCandidate[],
     parsed: ParsedQuery,
+    aspects: readonly QueryAspect[],
     timeRange: RetrievalTimeRange | undefined,
   ): { candidates: MemoryCandidate[]; notes: string[] } {
     const notes: string[] = []
     const kept: MemoryCandidate[] = []
+    const keepInactive = aspects.includes('change')
     for (const candidate of candidates) {
-      if (parsed.wantsCurrent && candidate.kind === 'claim' && candidate.status !== 'active') {
+      if (
+        parsed.wantsCurrent &&
+        !keepInactive &&
+        candidate.kind === 'claim' &&
+        candidate.status !== 'active'
+      ) {
         continue
       }
       if (
@@ -597,6 +605,12 @@ function allowedKinds(
 
 function isExpandableKind(kind: string): kind is 'entity' | 'claim' | 'event' {
   return kind === 'entity' || kind === 'claim' || kind === 'event'
+}
+
+const FTS_SOURCE_TYPES: readonly MemorySourceType[] = ['chunk', 'entity', 'claim', 'event']
+
+function ftsKinds(allowed: ReadonlySet<CandidateRecord['kind']>): MemorySourceType[] {
+  return FTS_SOURCE_TYPES.filter((kind) => allowed.has(kind))
 }
 
 function isDegenerate(scores: readonly { score: number }[]): boolean {

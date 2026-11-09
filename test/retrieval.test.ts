@@ -428,6 +428,21 @@ test('now rejects invalid epoch values', async () => {
   namiso.close()
 })
 
+test('a change query keeps the superseded claim', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '我在使用 TTS-A。')
+  await say(USER, 'user', '我决定重新开始使用 IndexTTS2 了。')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '我现在用的模型变了吗？',
+    rerank: false,
+    includeRelations: false,
+  })
+  assert.ok(result.trace.aspects?.includes('change'))
+  assert.ok(result.candidates.some((item) => item.kind === 'claim' && item.status === 'superseded'))
+  namiso.close()
+})
+
 test('coverage selection keeps one slot per facet and respects topK', async () => {
   const { namiso, say, drain } = await setup({ chunking: { size: 1, overlap: 0 } })
   await say(USER, 'user', '我喜欢苹果。')
@@ -442,6 +457,7 @@ test('coverage selection keeps one slot per facet and respects topK', async () =
   const text = pair.candidates.map((item) => item.text).join('\n')
   assert.match(text, /苹果/)
   assert.match(text, /香蕉/)
+  assert.ok(pair.trace.coverage?.facets.some((facet) => facet.added))
 
   const single = await namiso.retrieve({
     query: '苹果和香蕉',
@@ -499,6 +515,42 @@ test('word hits skip the bigram fallback when they are already sufficient', asyn
     result.trace.notes.some((note) => note.includes('二元组')),
     false,
   )
+  namiso.close()
+})
+
+test('the bigram fallback filters by kind before applying its limit', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'ngram-kind',
+    async extract(input) {
+      const first = input.focusMessageIds[0]
+      return {
+        entities: [{ name: USER, type: 'person', evidenceMessageIds: [first] }],
+        claims: input.focusMessageIds.map((messageId, index) => ({
+          subject: { name: USER, type: 'person' as const },
+          predicate: `记录${index}`,
+          attribute: `记录${index}`,
+          object: { kind: 'literal' as const, value: `杭州西湖${index}` },
+          modality: 'asserted' as const,
+          confidence: 0.9,
+          evidenceMessageIds: [messageId],
+        })),
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction, chunking: { size: 32, overlap: 0 } })
+  for (let index = 0; index < 30; index += 1) {
+    await say(USER, 'user', `记录${index}`)
+  }
+  await say(USER, 'user', '我去了杭州西湖。')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '州西',
+    memoryTypes: ['conversation'],
+    rerank: false,
+    includeRelations: false,
+  })
+  assert.ok(result.candidates.some((item) => item.kind === 'chunk'))
   namiso.close()
 })
 

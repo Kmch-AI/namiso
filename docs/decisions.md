@@ -260,6 +260,12 @@ Verification: 96 tests pass, 1 integration test skipped. Two fixtures cover subs
 
 Turn-pair documents are not added. The chunk policy already accepts size 1 or 2, so a caller can get turn-level windows without a new source type, and a new source type would need its own candidate mapping, forget and rebuild paths, and duplicate fusion. Automatic entity merge is not added either: alias text is already indexed and matched, and merging on name similarity would be unsafe. Both stay deferred.
 
+## D35. Review corrections to the Phase 3 retrieval change
+
+An adversarial review of the Phase 3 diff confirmed these defects. A month qualified by 今年/去年/明年 now selects that year, and a bare month uses the most recent past occurrence. February 29 falls back to the most recent leap year instead of rolling into March 1. Day and week ends use the next civil boundary, so a DST day is not 25 hours. Multi-word English phrases resolve before their single-word parts, and a trailing English before or after no longer turns a bounded phrase into an open range. Windows return in source order. A change query keeps superseded claims through validation. FTS kind filtering happens inside the query, before the limit, for both the word and bigram stages. A model switch deletes the previous model's FTS rows in the same upsert, and the indexer removes their vectors.
+
+Verification: 103 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 724 and ingest 26.3s.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

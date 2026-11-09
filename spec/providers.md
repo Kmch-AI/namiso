@@ -72,7 +72,7 @@ interface RerankerProvider {
 
 `LexicalReranker` scores token overlap and gives a small bonus to a document that contains all query tokens in order. It is deterministic and offline.
 
-`HttpRerankerProvider` posts `{ model, query, documents }`. It accepts `{ scores: number[] }`, `{ results: [{ index, score }] }`, or `{ data: [{ index, relevance_score }] }`. The response must contain no more scores than documents; fewer is allowed, and missing scores fall back to normalized RRF. The provider sends at most `maxDocuments` (default 25) documents, each cut to a query-centered excerpt of at most `maxDocumentChars` (default 240), so a small reranker context window does not fail the request.
+`HttpRerankerProvider` posts `{ model, query, documents }`. It accepts `{ scores: number[] }`, `{ results: [{ index, score }] }`, or `{ data: [{ index, relevance_score }] }`. The response must contain no more scores than documents; fewer is allowed, and missing scores fall back to normalized RRF. The provider sends at most `maxDocuments` (default 25) documents, each cut to a query-centered excerpt of about `maxDocumentChars` (default 240) characters including any ellipses, so a small reranker context window does not fail the request.
 
 The engine expects scores on a comparable scale. The final ranking uses 0.7 × reranker score + 0.3 × normalized RRF. A cross-encoder that returns logits should normalize its scores before returning them.
 

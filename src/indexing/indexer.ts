@@ -46,6 +46,9 @@ export class Indexer {
           dimensions: this.embedding.dimensions,
           now,
         })
+        for (const removed of result.removedIds) {
+          this.vectors.remove(removed)
+        }
         indexDocument(this.db, result.document)
         if (result.needsEmbedding) {
           this.vectors.remove(result.document.id)
