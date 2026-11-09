@@ -158,6 +158,16 @@ The caller decides when memory is formed. The intended point is before context c
 
 The effect is proportional to batch size. A 100-message session now costs four extraction calls instead of 100. The formal 714-question offline run completed with 74% evidence recall and 78% context hit, unchanged from earlier runs. It used 482 consolidation calls for 4480 messages; one call per message would have been 4480. The harness consolidates at every exam cutoff, so this call pattern is closer to per-item than to per-session.
 
+## D25. Context contract, short refs, and structured relevance
+
+The real-model review showed that 46 of 60 failures already had the anchor in context. The context now renders a two-line memory contract, short refs with a `refs` map, local dates with a weekday, record-derived conflict and uncertainty sections, and modality markers. Retrieval trace notes and provider errors stay in the trace. Entity descriptions are suppressed when a rendered claim or event already describes the entity. Evidence selection keeps linked claim and event evidence even without query overlap and adds adjacent turns when slots remain.
+
+The SQL channel now ranks claims and events by query overlap with their document text, then status or intent boosts and recency, before its cap. This stops the newest unrelated records from filling the fusion pool.
+
+Workspace and memory space lookups now reuse an existing row by name when the caller omits an id. This fixes resume reopening a fresh empty space. On the real P01 database, two opens return the same workspace and space with 704 messages.
+
+Deferred: the as-of replay harness, extraction schema v5, token estimator calibration, and a context-aware internal judge. The next change is the extraction contract, because all 7,260 claims in the real-model databases are active with no supersession and no validity time.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
@@ -179,3 +189,14 @@ Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
 The first full benchmark attempt reported 23% evidence recall. The cause was a harness bug: `getMessages()` defaults to 100 rows, so anchor messages after turn 50 were missing from the index map. Fixing the harness to request all messages raised the result to 87%. The retrieval engine had not been the limiter. This is why the benchmark notes must state whether the observation method was checked before the system.
 
 The formal-set latency was 10.87 to 13.29 ms p50 and 26.68 to 30.71 ms p95 across five runs. Ingest was 17.1 to 19.3 seconds for 2240 turns. These are single-process measurements, not throughput claims. No profiler run was used to name a hardware limiter, so the report does not claim one.
+
+## Verification record (2026-11-09)
+
+| Check             | Result                                                                |
+| ----------------- | --------------------------------------------------------------------- |
+| `pnpm verify`     | Pass, 55 tests, 1 real-model test skipped                             |
+| Real P01 reopen   | Same workspace and space ID across two opens, 704 messages            |
+| Formal offline    | 74.0% evidence recall, 78.0% context hit, 482 batches, 0 errors       |
+| Context tokens    | p50 717, p95 1598, max 1600; baseline was p50 725, p95 1599, max 1600 |
+| Context UUIDs     | 0 of 714 rendered contexts contain a raw UUID                         |
+| Retrieval latency | p50 13.0 ms, p95 38.1 ms                                              |
