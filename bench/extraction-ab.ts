@@ -24,6 +24,7 @@ import {
 
 const TURNS_PER_BATCH = 16
 const BATCH_SIZE = 32
+const MIN_BATCH_SIZE = 8
 
 interface RunContext {
   persona: string
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
       batches: { type: 'string', default: '20' },
       arms: { type: 'string', default: 'compact,legacy,compact-facts' },
       out: { type: 'string', default: 'bench/out/extraction-ab' },
+      resume: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
     allowPositionals: false,
@@ -59,6 +61,7 @@ async function main(): Promise<void> {
   --batches <n>      consolidation batches per arm (default 20)
   --arms <list>      compact, legacy, compact-facts (default all three)
   --out <dir>        writes <arm>.json and summary.json
+  --resume           keep each arm database and finish its pending messages
 
 Run with node --env-file=.env. Extraction calls go to NAMISO_EXTRACTION_*.
 `)
@@ -96,7 +99,7 @@ Run with node --env-file=.env. Extraction calls go to NAMISO_EXTRACTION_*.
 
   const summaries: ArmSummary[] = []
   for (const config of armConfigs) {
-    const summary = await runArm(config, context)
+    const summary = await runArm(config, context, values.resume)
     summaries.push(summary)
     writeFileSync(join(outDir, `${config.name}.json`), `${JSON.stringify(summary, null, 2)}\n`)
     process.stdout.write(`\n${config.name}: ${formatArm(summary)}\n`)
@@ -114,6 +117,7 @@ interface ArmSummary {
   turns: number
   messages: number
   batches: number
+  retries: number
   durationMs: number
   calls: number
   usage: Record<string, number>
@@ -153,10 +157,16 @@ function armConfig(name: string): ArmConfig {
   throw new Error(`unknown arm: ${name}`)
 }
 
-async function runArm(config: ArmConfig, context: RunContext): Promise<ArmSummary> {
+async function runArm(
+  config: ArmConfig,
+  context: RunContext,
+  resume: boolean,
+): Promise<ArmSummary> {
   const databasePath = join(context.outDir, `${config.name}.db`)
-  for (const suffix of ['', '-wal', '-shm']) {
-    if (existsSync(`${databasePath}${suffix}`)) rmSync(`${databasePath}${suffix}`)
+  if (!resume) {
+    for (const suffix of ['', '-wal', '-shm']) {
+      if (existsSync(`${databasePath}${suffix}`)) rmSync(`${databasePath}${suffix}`)
+    }
   }
   const providers = providersFromEnv({
     ...process.env,
@@ -196,17 +206,41 @@ async function runArm(config: ArmConfig, context: RunContext): Promise<ArmSummar
     })
   }
   await namiso.drain()
-  const report = await namiso.consolidate({
-    conversationId: conversation.id,
-    batchSize: BATCH_SIZE,
-  })
+  let batchSize = BATCH_SIZE
+  let consecutiveFailures = 0
+  let retries = 0
+  let batches = 0
+  for (;;) {
+    if (namiso.health().counts.pendingMessages === 0) break
+    try {
+      const report = await namiso.consolidate({
+        conversationId: conversation.id,
+        batchSize,
+      })
+      batches += report.batches
+      batchSize = BATCH_SIZE
+      consecutiveFailures = 0
+      if (report.batches === 0) break
+    } catch (error) {
+      consecutiveFailures += 1
+      retries += 1
+      const next = Math.max(MIN_BATCH_SIZE, Math.floor(batchSize / 2))
+      const message = error instanceof Error ? error.message : String(error)
+      process.stdout.write(
+        `  ${config.name} retry batchSize=${next} after ${consecutiveFailures}: ${message}\n`,
+      )
+      if (consecutiveFailures >= 5 || next === batchSize) throw error
+      batchSize = next
+    }
+  }
   const health = namiso.health()
   const durationMs = Math.round(performance.now() - startedAt)
   const usage = providerUsage(providers.extraction)
   namiso.close()
 
   const summary = summarize(config, context, {
-    report,
+    batches,
+    retries,
     health: health.counts,
     usage,
     calls: counting.calls,
@@ -221,7 +255,8 @@ function summarize(
   config: ArmConfig,
   context: RunContext,
   run: {
-    report: { messages: number; batches: number }
+    batches: number
+    retries: number
     health: Record<string, number>
     usage: Record<string, number>
     calls: number
@@ -249,8 +284,9 @@ function summarize(
     wireFormat: config.wireFormat,
     knownFacts: config.knownFacts,
     turns: 0,
-    messages: run.report.messages,
-    batches: run.report.batches,
+    messages: (run.health['messages'] ?? 0) - (run.health['pendingMessages'] ?? 0),
+    batches: run.batches,
+    retries: run.retries,
     durationMs: 0,
     calls: run.calls,
     usage: run.usage,
@@ -356,7 +392,7 @@ function formatArm(summary: ArmSummary): string {
     `entities=${summary.entities.total} aliases=${summary.entities.aliases} described=${summary.entities.withDescription}`,
     `claims=${summary.claims.total} active=${summary.claims.active} superseded=${summary.claims.superseded} dup=${summary.claims.duplicateActive}`,
     `events=${summary.events.total} noEvidence=${summary.claims.withoutEvidence + summary.events.withoutEvidence}`,
-    `fallbacks=${summary.diagnostics.evidenceFallbacks} dropped=${summary.diagnostics.evidenceDropped}`,
+    `fallbacks=${summary.diagnostics.evidenceFallbacks} dropped=${summary.diagnostics.evidenceDropped} retries=${summary.retries}`,
     `usage=${summary.usage['totalTokens'] ?? 'n/a'} cacheHit=${summary.usage['cacheHitTokens'] ?? 'n/a'}`,
     `duration=${summary.durationMs}ms`,
   ].join(' | ')
