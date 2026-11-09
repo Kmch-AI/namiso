@@ -229,6 +229,7 @@ export class Namiso {
       this.indexer,
       this.resolver,
       config.extractRoles,
+      config.knownFacts,
     )
     this.chunks = new ChunkService(db, this.indexer, config.chunkPolicy)
     this.worker = new JobWorker(db, this.chunks, memorySpace.id)

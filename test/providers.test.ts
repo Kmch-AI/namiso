@@ -216,6 +216,7 @@ function wireInput(): ExtractionInput {
       type: 'person' as const,
       aliases: [`别名${index}`, `昵称${index}`],
     })),
+    knownFacts: [{ subject: '人物0', attribute: '居住地', value: '苏州' }],
   }
 }
 
@@ -585,7 +586,12 @@ test('compact requests drop message ids and are smaller than legacy requests', a
     1_790_000_900,
   ])
   assert.deepEqual(entityTuples[0], ['人物0', 'p', ['别名0', '昵称0']])
+  assert.deepEqual(compactPayload['knownFacts'], [['人物0', '居住地', '苏州']])
   assert.equal(JSON.stringify(compactPayload).includes('0b8f6e3a'), false)
+
+  const compactSystem = compactMessages[0]
+  assert.ok(compactSystem !== undefined)
+  assert.match(compactSystem.content, /knownFacts are current values/)
 
   const legacyMessages = bodies[1]?.['messages'] as Array<{ content: string }>
   const legacyUser = legacyMessages[1]

@@ -218,6 +218,16 @@ On a 16-message, 20-entity fixture the compact request body is 54% of the legacy
 
 Verification: 74 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
 
+## D31. Optional known-facts digest
+
+Extraction saw known entities and attribute keys but not their current values, so it could restate an unchanged fact or miss that a value changed. The digest was capped tightly after the cost review: an earlier 24-fact version was estimated at 840-1,440 input tokens per call, several times its first estimate.
+
+`knownFacts: true` sends up to 12 `{subject, attribute, value}` facts: active asserted positive claims for the batch's speakers and mentioned entities, deduplicated, ordered by entity order then attribute, with restricted records excluded. The prompt appends one no-restatement rule only when facts are present. The engine's object dedupe and state machine still decide what is stored, so a model that ignores the digest does not corrupt state.
+
+It is off by default. It is a correctness feature, not a cost saving: the added input is real, and the benefit needs a real-model A/B to quantify.
+
+Verification: 76 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

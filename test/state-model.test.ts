@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
-import type { ExtractionProvider } from '../src/providers/types.ts'
+import type { ExtractionProvider, KnownFact } from '../src/providers/types.ts'
 import type {
   Claim,
   ClaimCardinality,
@@ -27,7 +27,10 @@ interface ClaimSpec {
   disclosure?: MemoryDisclosure
 }
 
-function claimProvider(make: (content: string, id: MessageId) => ClaimSpec): ExtractionProvider {
+function claimProvider(
+  make: (content: string, id: MessageId) => ClaimSpec,
+  subject = '用户',
+): ExtractionProvider {
   return {
     version: 'state-test',
     async extract(input) {
@@ -35,10 +38,10 @@ function claimProvider(make: (content: string, id: MessageId) => ClaimSpec): Ext
       const message = input.messages.find((item) => item.id === id)
       const spec = make(message?.content ?? '', id)
       return {
-        entities: [{ name: '用户', type: 'person', evidenceMessageIds: [id] }],
+        entities: [{ name: subject, type: 'person', evidenceMessageIds: [id] }],
         claims: [
           {
-            subject: { name: '用户', type: 'person' },
+            subject: { name: subject, type: 'person' },
             predicate: spec.predicate,
             attribute: spec.attribute,
             cardinality: spec.cardinality,
@@ -398,6 +401,95 @@ test('private events render in the private section', async () => {
   assert.match(context.text, /\[Private\]/)
   assert.match(context.text, /私密，/)
   assert.match(context.text, /私密原文/)
+  namiso.close()
+})
+
+test('known facts are off by default and sent when enabled', async () => {
+  const base = claimProvider(
+    (content) => ({
+      predicate: '居住地',
+      attribute: '居住地',
+      cardinality: 'one',
+      change: 'replaces',
+      value: content,
+    }),
+    USER,
+  )
+  const seen: Array<readonly KnownFact[] | undefined> = []
+  const recording: ExtractionProvider = {
+    version: 'facts',
+    async extract(input) {
+      seen.push(input.knownFacts)
+      return base.extract(input)
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction: recording, knownFacts: true })
+  await say(USER, 'user', '苏州')
+  await drain()
+  await say(USER, 'user', '上海')
+  await drain()
+  assert.deepEqual(seen[0], [])
+  assert.deepEqual(seen[1], [{ subject: USER, attribute: '居住地', value: '苏州' }])
+  namiso.close()
+
+  const defaults: Array<readonly KnownFact[] | undefined> = []
+  const plain: ExtractionProvider = {
+    version: 'facts-default',
+    async extract(input) {
+      defaults.push(input.knownFacts)
+      return base.extract(input)
+    },
+  }
+  const second = await setup({ extraction: plain })
+  await second.say(USER, 'user', '苏州')
+  await second.drain()
+  assert.equal(defaults[0], undefined)
+  second.namiso.close()
+})
+
+test('the known-facts digest is capped and excludes private facts', async () => {
+  let call = 0
+  let facts: readonly KnownFact[] | undefined
+  const extraction: ExtractionProvider = {
+    version: 'facts-cap',
+    async extract(input) {
+      call += 1
+      if (call === 1) {
+        const id = input.focusMessageIds[0]
+        return {
+          entities: [{ name: USER, type: 'person', evidenceMessageIds: [id] }],
+          claims: Array.from({ length: 14 }, (_, index) => ({
+            subject: { name: USER, type: 'person' as const },
+            predicate: `属性${index}`,
+            attribute: `属性${index}`,
+            cardinality: 'many' as const,
+            change: 'adds' as const,
+            object: {
+              kind: 'literal' as const,
+              value: index === 13 ? '秘密' : `值${index}`,
+            },
+            modality: 'asserted' as const,
+            confidence: 0.9,
+            ...(index === 13 ? { sensitivity: 'private' as const } : {}),
+            evidenceMessageIds: [id],
+          })),
+          events: [],
+        }
+      }
+      facts = input.knownFacts
+      return { entities: [], claims: [], events: [] }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction, knownFacts: true })
+  await say(USER, 'user', '记录一些属性')
+  await drain()
+  await say(USER, 'user', '再记一条')
+  await drain()
+  assert.equal(facts?.length, 12)
+  assert.equal(
+    facts?.some((fact) => fact.value === '秘密'),
+    false,
+  )
   namiso.close()
 })
 

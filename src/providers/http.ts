@@ -147,15 +147,17 @@ export class HttpExtractionProvider implements ExtractionProvider {
 
   async extract(input: ExtractionInput): Promise<ExtractionResult> {
     const compact = this.wireFormat === 'compact'
+    const basePrompt = compact ? COMPACT_EXTRACTION_SYSTEM_PROMPT : EXTRACTION_SYSTEM_PROMPT
+    const factPrompt =
+      input.knownFacts === undefined || input.knownFacts.length === 0
+        ? ''
+        : '\nknownFacts are current values already recorded for mentioned entities. Do not restate an unchanged fact; when a focus message changes one, emit the change; when it confirms one, omit it.'
     const body: Record<string, unknown> = {
       model: this.options.model,
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
-        {
-          role: 'system',
-          content: compact ? COMPACT_EXTRACTION_SYSTEM_PROMPT : EXTRACTION_SYSTEM_PROMPT,
-        },
+        { role: 'system', content: `${basePrompt}${factPrompt}` },
         {
           role: 'user',
           content: JSON.stringify(compact ? compactRequest(input) : legacyRequest(input)),
@@ -283,6 +285,9 @@ function legacyRequest(input: ExtractionInput): Record<string, unknown> {
     messages: input.messages,
     knownEntities: input.knownEntities,
     knownAttributes: input.knownAttributes ?? [],
+    ...(input.knownFacts === undefined || input.knownFacts.length === 0
+      ? {}
+      : { knownFacts: input.knownFacts }),
   }
 }
 
@@ -306,6 +311,11 @@ function compactRequest(input: ExtractionInput): Record<string, unknown> {
         : [entity.name, ENTITY_TYPE_CODES[entity.type], entity.aliases],
     ),
     knownAttributes: input.knownAttributes ?? [],
+    ...(input.knownFacts === undefined || input.knownFacts.length === 0
+      ? {}
+      : {
+          knownFacts: input.knownFacts.map((fact) => [fact.subject, fact.attribute, fact.value]),
+        }),
   }
 }
 

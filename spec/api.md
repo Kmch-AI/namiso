@@ -19,6 +19,7 @@ const memory = await Namiso.open({
   extraction: new RuleExtractionProvider(),
   reranker: new LexicalReranker(),
   extractRoles: ['user', 'assistant'],
+  knownFacts: false,
   self: {
     name: '四时小路',
     aliases: ['小路'],
@@ -37,6 +38,7 @@ const memory = await Namiso.open({
 | `embedding`                          | `HashEmbeddingProvider`   | Dimensions must stay stable for a database         |
 | `extraction`                         | `RuleExtractionProvider`  | Use an LLM provider for production                 |
 | `extractRoles`                       | `['user', 'assistant']`   | Roles sent to extraction; system and tool stay raw |
+| `knownFacts`                         | `false`                   | Send up to 12 current facts to extraction          |
 | `self`                               | unset                     | Assistant identity: name, aliases, description     |
 | `reranker`                           | `LexicalReranker`         | Set `rerank: false` per query to skip              |
 | `vectorIndex`                        | `auto`                    | `auto`, `sqlite-vec`, or `exact`                   |
@@ -45,6 +47,8 @@ const memory = await Namiso.open({
 The returned object exposes `workspace` and `memorySpace`.
 
 `self` is optional. Without it, the first assistant speaker creates the self entity. `ensureSelf()` can set or update the identity later.
+
+`knownFacts` sends up to 12 active asserted facts about the batch's speakers and mentioned entities to the extraction provider. Private facts are excluded. It is off by default and is a correctness aid for change detection, not a cost saving.
 
 ## Conversations
 

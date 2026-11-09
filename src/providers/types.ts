@@ -66,12 +66,19 @@ export interface KnownAttribute {
   cardinality: ClaimCardinality
 }
 
+export interface KnownFact {
+  subject: string
+  attribute: string
+  value: string
+}
+
 export interface ExtractionInput {
   memorySpaceId: MemorySpaceId
   focusMessageIds: readonly [MessageId, ...MessageId[]]
   messages: readonly ExtractionMessage[]
   knownEntities: readonly KnownEntity[]
   knownAttributes?: readonly KnownAttribute[]
+  knownFacts?: readonly KnownFact[]
 }
 
 export interface ExtractedEntity {

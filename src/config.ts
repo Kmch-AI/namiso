@@ -18,6 +18,7 @@ export interface NamisoOptions {
   extraction?: ExtractionProvider
   reranker?: RerankerProvider
   extractRoles?: readonly MessageRole[]
+  knownFacts?: boolean
   self?: SelfIdentity
   vectorIndex?: VectorIndexMode
   chunking?: Partial<ChunkPolicy>
@@ -31,6 +32,7 @@ export interface ResolvedNamisoOptions {
   extraction: ExtractionProvider
   reranker: RerankerProvider
   extractRoles: readonly MessageRole[]
+  knownFacts: boolean
   self?: SelfIdentity
   vectorIndex: VectorIndexMode
   chunkPolicy: ChunkPolicy
@@ -63,6 +65,10 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     }
   }
   const uniqueExtractRoles = [...new Set(extractRoles)]
+  const knownFacts = options.knownFacts ?? false
+  if (typeof knownFacts !== 'boolean') {
+    throw new ValidationError('knownFacts must be a boolean')
+  }
   const self = options.self === undefined ? undefined : normalizeSelfIdentity(options.self)
   const vectorIndex = options.vectorIndex ?? 'auto'
   if (!['auto', 'sqlite-vec', 'exact'].includes(vectorIndex)) {
@@ -90,6 +96,7 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     extraction,
     reranker,
     extractRoles: uniqueExtractRoles,
+    knownFacts,
     ...(self === undefined ? {} : { self }),
     vectorIndex,
     chunkPolicy: { size, overlap },

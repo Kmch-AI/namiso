@@ -6,6 +6,7 @@ import type {
   ExtractedClaim,
   ExtractedEvent,
   KnownAttribute,
+  KnownFact,
 } from '../providers/types.ts'
 import type { Database } from '../storage/database.ts'
 import type {
@@ -32,16 +33,18 @@ import {
   getEvent,
   getOrCreateEvidence,
   linkMemoryEvidence,
+  listClaimsForEntities,
   listEventParticipants,
   setClaimRestriction,
   setEventRestriction,
 } from '../storage/memory-repo.ts'
 import { normalizeAttribute } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
-import { mergeRestriction, restrictionOf } from './restriction.ts'
+import { isRestricted, mergeRestriction, restrictionOf } from './restriction.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
 const KNOWN_ATTRIBUTE_LIMIT = 24
+const KNOWN_FACT_LIMIT = 12
 const LEGACY_ONE_VALUED = new Set([
   'name',
   'occupation',
@@ -59,6 +62,7 @@ export class AnnotationPipeline {
   private readonly extractor: ExtractionProvider
   private readonly indexer: Indexer
   private readonly extractRoles: ReadonlySet<MessageRole>
+  private readonly knownFacts: boolean
 
   constructor(
     db: Database,
@@ -66,12 +70,14 @@ export class AnnotationPipeline {
     indexer: Indexer,
     resolver: EntityResolver,
     extractRoles: readonly MessageRole[],
+    knownFacts: boolean,
   ) {
     this.db = db
     this.extractor = extractor
     this.indexer = indexer
     this.resolver = resolver
     this.extractRoles = new Set(extractRoles)
+    this.knownFacts = knownFacts
     this.linker = new MemoryLinker(db, resolver)
   }
 
@@ -122,19 +128,22 @@ export class AnnotationPipeline {
       messageIndex: item.messageIndex,
     }))
 
+    const texts = [...focus, ...context].map((item) => item.content)
+    const knownEntities = this.resolver.knownEntities(spaceId, texts, KNOWN_ENTITY_LIMIT)
     const extraction = await this.extractor.extract({
       memorySpaceId: spaceId,
       focusMessageIds: [extractionFocus.id, ...extractable.slice(1).map((item) => item.id)],
       messages,
-      knownEntities: this.resolver.knownEntities(
-        spaceId,
-        [...focus, ...context].map((item) => item.content),
-        KNOWN_ENTITY_LIMIT,
-      ),
-      knownAttributes: this.knownAttributes(
-        spaceId,
-        [...focus, ...context].map((item) => item.content),
-      ),
+      knownEntities,
+      knownAttributes: this.knownAttributes(spaceId, texts),
+      ...(this.knownFacts
+        ? {
+            knownFacts: this.factsFor(spaceId, [
+              ...entityIds,
+              ...knownEntities.map((entity) => entity.id),
+            ]),
+          }
+        : {}),
     })
 
     const validEvidence = this.validEvidenceMap(spaceId, extraction, focusIds)
@@ -265,6 +274,49 @@ export class AnnotationPipeline {
     const merged = mergeRestriction(restrictionOf(stored), restrictionOf(extracted))
     if (merged === null) return
     setEventRestriction(this.db, stored.id, merged.sensitivity, merged.disclosure)
+  }
+
+  private factsFor(spaceId: MemorySpaceId, entityIds: readonly EntityId[]): KnownFact[] {
+    const ids = [...new Set(entityIds)]
+    if (ids.length === 0) return []
+    const claims = listClaimsForEntities(this.db, spaceId, ids, { limit: 200 }).filter(
+      (claim) =>
+        claim.modality === 'asserted' &&
+        claim.polarity === 'positive' &&
+        !isRestricted(restrictionOf(claim)),
+    )
+    const names = getEntitiesByIds(this.db, [
+      ...new Set(
+        claims.flatMap((claim) => [
+          claim.subjectId,
+          ...(claim.object.kind === 'entity' ? [claim.object.entityId] : []),
+        ]),
+      ),
+    ])
+    const rank = new Map(ids.map((id, index) => [id, index]))
+    const ordered = claims.toSorted(
+      (left, right) =>
+        (rank.get(left.subjectId) ?? Number.MAX_SAFE_INTEGER) -
+          (rank.get(right.subjectId) ?? Number.MAX_SAFE_INTEGER) ||
+        left.attribute.localeCompare(right.attribute) ||
+        right.createdAt - left.createdAt,
+    )
+    const facts: KnownFact[] = []
+    const seen = new Set<string>()
+    for (const claim of ordered) {
+      const subject = names.get(claim.subjectId)?.name
+      const value =
+        claim.object.kind === 'literal'
+          ? claim.object.value
+          : names.get(claim.object.entityId)?.name
+      if (subject === undefined || value === undefined) continue
+      const key = `${subject}\n${claim.predicate}\n${value}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      facts.push({ subject, attribute: claim.predicate, value })
+      if (facts.length >= KNOWN_FACT_LIMIT) break
+    }
+    return facts
   }
 
   private knownAttributes(spaceId: MemorySpaceId, texts: readonly string[]): KnownAttribute[] {

@@ -7,7 +7,7 @@ Annotation turns raw messages into entities, claims, events, evidence, and state
 1. Receive a focus batch and up to eight messages of earlier context.
 2. Resolve the speaker entity for every focus message.
 3. If no focus message has a role in `extractRoles`, sync the speaker documents and mark the batch consolidated.
-4. Build the extraction input with the focus message IDs, the focus batch, the context, and known entities mentioned in those messages.
+4. Build the extraction input with the focus message IDs, the focus batch, the context, known entities mentioned in those messages, and, when `knownFacts` is enabled, up to 12 current facts about the batch's speakers and mentioned entities.
 5. Call the extraction provider once for the batch.
 6. Validate evidence IDs against the same memory space. A claim or event with no valid evidence is skipped.
 7. In one transaction, resolve entities, apply claims and events, add annotations, and link evidence.
@@ -26,6 +26,8 @@ Set `extractRoles: ['user']` to skip assistant extraction. Assistant messages st
 The provider receives the focus message IDs, the batch, up to eight context messages, and known entities. It must extract only from the focus messages. Context and known entities are for resolving references.
 
 Known entities are filtered before the call. The self entity is always included first when it exists. The remaining entities are those whose name or alias appears in any focus or context message, capped at 50 total. This keeps the extraction prompt bounded as the space grows and gives the model a stable identity for the assistant. Because the batch is larger than one message, the entity list covers the whole batch rather than a single turn.
+
+With `knownFacts` enabled, the input also carries up to 12 `{subject, attribute, value}` facts: active asserted positive claims for the speaker entities and the known entities, ordered by entity order then attribute, deduplicated, and restricted records excluded. The digest lets the model avoid restating an unchanged fact and mark a changed one. The engine still dedupes identical values, so a model that ignores the digest does not corrupt state.
 
 The provider returns:
 
