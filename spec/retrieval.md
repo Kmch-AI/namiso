@@ -134,7 +134,7 @@ Each line carries a reference such as `[claim:c1]` or `[message:m1]`. `MemoryCon
 
 Every item keeps its internal reference, so a caller can fetch the record.
 
-The budget is a target, not a cap. `estimateTokens()` counts one per CJK character and one per four remaining characters; the heuristic is deliberately conservative.
+The budget is a target, not a cap. `estimateTokens()` charges 0.7 per CJK character, 1 per CJK punctuation mark, 0.8 per UUID character, 0.25 per ASCII letter or space, and 0.7 per remaining character. The coefficients were calibrated against the configured endpoint's reported prompt tokens on benchmark contexts. The estimate is a heuristic, not a tokenizer.
 
 The builder renders every selected item at full detail first. If the estimate exceeds `maxTokens`, it scales excerpt lengths for evidence, event summaries, entity descriptions, and literal objects down to a floor, then binary-searches the scale that fits. Nothing is dropped: every claim, entity, event, relation, and evidence message keeps its ID line, and `context.evidence` still returns full message records. `compressed` reports that excerpts were shortened. `overBudget` reports that even the floor exceeded the target, which happens when the selected items alone cost more than `maxTokens`. The uncertainty section is part of every render. An empty context is never returned for a non-empty result set.
 

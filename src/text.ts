@@ -102,10 +102,18 @@ export function normalizeAttribute(value: string): string {
   return normalized.length > 64 ? normalized.slice(0, 64) : normalized
 }
 
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+const CJK_PUNCTUATION_PATTERN = new RegExp('[\\u3000-\\u303f\\uff00-\\uffef]', 'g')
+
 export function estimateTokens(text: string): number {
-  const cjk = (text.match(/[㐀-鿿]/g) ?? []).length
-  const rest = text.length - cjk
-  return Math.ceil(cjk + rest / 4)
+  const uuids = text.match(UUID_PATTERN) ?? []
+  const body = text.replace(UUID_PATTERN, '')
+  const uuidChars = uuids.reduce((total, value) => total + value.length, 0)
+  const cjk = (body.match(/[㐀-鿿]/g) ?? []).length
+  const cjkPunctuation = (body.match(CJK_PUNCTUATION_PATTERN) ?? []).length
+  const asciiWords = (body.match(/[A-Za-z\s]/g) ?? []).length
+  const dense = body.length - cjk - cjkPunctuation - asciiWords
+  return Math.ceil(cjk * 0.7 + cjkPunctuation + uuidChars * 0.8 + asciiWords * 0.25 + dense * 0.7)
 }
 
 export function hashText(text: string): string {

@@ -306,6 +306,14 @@ Decision: compact stays the default because the cost saving is large and consist
 
 Verification: 103 tests pass, 1 integration test skipped. The formal offline run is unchanged because the offline rule extractor never issues HTTP requests.
 
+## D38. Calibrated token estimate for context budgeting
+
+`estimateTokens` charged one per CJK character and one per four other characters. The spec called it deliberately conservative, but a measurement against the configured endpoint's `usage.prompt_tokens` shows the errors point both ways: about 0.68 tokens per CJK character, 1.0 per CJK punctuation mark, 0.78 per UUID character, 0.27 per ASCII letter or space, and 0.7 per remaining character. The old formula overcounted CJK by about 45% and undercounted UUIDs by about 3x.
+
+The estimator now uses 0.7 per CJK character, 1.0 per CJK punctuation mark, 0.8 per UUID character, 0.25 per ASCII letter or space, and 0.7 per remaining character. On nine benchmark contexts the old estimate/measured ratio ranged 0.88–1.24; the new one ranges 0.81–1.22. Synthetic cases separate cleanly: 240 CJK characters estimate 157 against 161 measured, a 36-character UUID estimates 29 against 29, and 450 English characters estimate 117 against 100.
+
+Verification: 105 tests pass, 1 integration test skipped. The formal offline run stays at 74.0% evidence recall and 78.0% context hit, with p50 725 (was 724). 119 of 714 rendered contexts changed, with mean characters up 2.6%, because most contexts are below the target and only near-budget contexts are recompressed. The estimator is tied to the configured tokenizer; recalibrate when the answer model changes. The 1600 target is unchanged.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.
