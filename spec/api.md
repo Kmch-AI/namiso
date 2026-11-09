@@ -140,10 +140,14 @@ await memory.retrieve({
   rerankPool?: number,         // default 50, capped at 50
   includeEvidence?: boolean,
   includeRelations?: boolean,
+  now?: number | Date,         // clock for relative time, default current time
+  timeZone?: string,           // IANA zone, default process zone
 }): Promise<RetrieveResult>
 ```
 
 `RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score.
+
+`now` and `timeZone` control interpretation of relative time expressions. They never filter: a resolved window boosts matching records and appears in the trace and the context. Use `timeRange` for a deterministic filter.
 
 ## Context
 

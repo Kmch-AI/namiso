@@ -307,6 +307,23 @@ export interface RetrievalTrace {
   expandedCount: number
   elapsedMs: number
   notes: string[]
+  time?: RetrievalTimeTrace
+}
+
+export type TimeGranularity = 'exact' | 'day' | 'week' | 'month' | 'year'
+
+export interface TimeWindow {
+  text: string
+  from: number
+  to: number
+  granularity: TimeGranularity
+  approximate: boolean
+}
+
+export interface RetrievalTimeTrace {
+  now: number
+  timeZone: string
+  windows: TimeWindow[]
 }
 
 export interface RetrieveResult {

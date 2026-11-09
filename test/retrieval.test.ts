@@ -358,6 +358,70 @@ test('degenerate reranker scores keep the RRF order', async () => {
   namiso.close()
 })
 
+test('context renders the interpreted time window', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '我喜欢评弹。')
+  await drain()
+  const context = await namiso.getContext({
+    query: '我昨天说了什么？',
+    now: 1_790_000_000 + 86_400,
+    timeZone: 'UTC',
+  })
+  assert.equal(context.trace.time?.windows[0]?.text, '昨天')
+  assert.match(context.text, /\[Query Time\]/)
+  assert.match(context.text, /2026-09-21（周一）/)
+  namiso.close()
+})
+
+test('an in-window event outranks an out-of-window event', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'time-boost',
+    async extract(input) {
+      const events = input.focusMessageIds.flatMap((id) => {
+        const message = input.messages.find((item) => item.id === id)
+        if (message === undefined) return []
+        return [
+          {
+            type: 'discussion',
+            summary: '项目进度讨论',
+            occurredAt: message.occurredAt,
+            timePrecision: 'day' as const,
+            participants: [],
+            modality: 'asserted' as const,
+            confidence: 0.9,
+            evidenceMessageIds: [id],
+          },
+        ]
+      })
+      return { entities: [], claims: [], events }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '项目进度讨论')
+  await say(USER, 'user', '项目进度讨论')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '昨天的项目进度讨论',
+    now: 1_790_000_000 + 86_400,
+    timeZone: 'UTC',
+    rerank: false,
+    includeRelations: false,
+  })
+  const events = result.candidates.filter((item) => item.kind === 'event')
+  assert.equal(events.length, 2)
+  assert.equal(events[0]?.occurredAt, 1_790_000_000)
+  namiso.close()
+})
+
+test('now rejects invalid epoch values', async () => {
+  const { namiso } = await setup()
+  await assert.rejects(
+    namiso.retrieve({ query: '我喜欢什么？', now: -1 }),
+    /now must be a non-negative epoch time/,
+  )
+  namiso.close()
+})
+
 test('linked claim evidence includes a follow-up with no query overlap', async () => {
   const extraction: ExtractionProvider = {
     version: 'closure-test',

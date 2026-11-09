@@ -20,6 +20,7 @@ const { values } = parseArgs({
     db: { type: 'string' },
     items: { type: 'string' },
     'consolidate-batch': { type: 'string' },
+    timezone: { type: 'string' },
     help: { type: 'boolean', default: false },
   },
   allowPositionals: false,
@@ -39,6 +40,7 @@ if (values.help) {
   --db <path>        persistent database for resumable runs
   --items <path>     append every finished item; existing ids are skipped
   --consolidate-batch <n>  extraction batch size (default 32)
+  --timezone <zone>  IANA zone for relative time (default Asia/Shanghai)
 `)
   process.exit(0)
 }
@@ -81,6 +83,7 @@ try {
     ...(values['consolidate-batch'] === undefined
       ? {}
       : { consolidateBatch: Number(values['consolidate-batch']) }),
+    ...(values.timezone === undefined ? {} : { timeZone: values.timezone }),
     ...(completedIds.size === 0 ? {} : { completedIds }),
     ...(itemsPath === undefined
       ? {}

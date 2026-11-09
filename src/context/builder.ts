@@ -11,6 +11,7 @@ import type {
   MemorySpaceId,
   Message,
   MessageId,
+  RetrievalTimeTrace,
   RetrievalTrace,
 } from '../types.ts'
 
@@ -150,6 +151,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     uncertainEvents,
     dates,
     described,
+    ...(input.trace.time === undefined ? {} : { time: input.trace.time }),
     state,
   })
 
@@ -191,6 +193,7 @@ interface SectionsInput {
   uncertainEvents: readonly string[]
   dates: DateLookup
   described: ReadonlySet<string>
+  time?: RetrievalTimeTrace
   state: RenderState
 }
 
@@ -252,6 +255,7 @@ function renderSections(
     blocks.push(`${header}\n${lines.join('\n')}`)
   }
 
+  addSection('[Query Time]', queryTimeLines(input.time))
   addSection(
     '[Current Claims]',
     input.activeClaims.map((candidate) => claimLine(candidate, detail, input.state, input.dates)),
@@ -719,6 +723,28 @@ const CLAIM_STATUS_LABELS: Record<Claim['status'], string> = {
 
 function statusLabel(status: Claim['status']): string {
   return CLAIM_STATUS_LABELS[status]
+}
+
+function queryTimeLines(time: RetrievalTimeTrace | undefined): string[] {
+  if (time === undefined) return []
+  const window = time.windows[0]
+  if (window === undefined) return []
+  const start = formatDay(window.from, time.timeZone)
+  const end = formatDay(window.to - 1, time.timeZone)
+  const range = start === end ? formatDate(window.from, time.timeZone) : `${start} 至 ${end}`
+  return [`- ${range}（${window.text}${window.approximate ? '，约' : ''}）`]
+}
+
+function formatDay(seconds: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(seconds * 1000))
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
 }
 
 function formatDate(seconds: number, timeZone: string): string {

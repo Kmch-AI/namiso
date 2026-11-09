@@ -228,6 +228,16 @@ It is off by default. It is a correctness feature, not a cost saving: the added 
 
 Verification: 76 tests pass, 1 integration test skipped. The formal offline run remains at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717.
 
+## D32. Interpreted query time without hard filtering
+
+Relative-date questions were a measured error class. Extraction now stores absolute validity time, but retrieval did not interpret the question's own time phrase, so the answer model had to do calendar arithmetic.
+
+`resolveTimeExpressions()` converts bounded phrases into half-open epoch ranges in a caller-supplied zone and clock. It covers Chinese and English relative days, weekdays, counted intervals, months, years, and absolute dates. Open ranges such as `4月15日之前` produce no window. The windows add a soft boost (0.5 in SQL relevance, 0.1 after ranking), appear in `trace.time`, and render as `[Query Time]`.
+
+The first design used a hard filter with a widening fallback. Review found it would lose evidence: expansion re-adds out-of-window links, the survivor count is dominated by chunks and entities that the filter never drops, null-time records pass, and a false positive can silently empty the result. An explicit `timeRange` already covers the deterministic filter case. The soft boost and the rendered window keep every record and remove the calendar arithmetic from the answer model.
+
+Verification: 89 tests pass, 1 integration test skipped. The formal offline run stays at 74.0% evidence recall and 78.0% context hit, with context tokens p50 717. The d3 interval moved from 75.0% to 76.0% evidence recall; the other intervals are unchanged. This is a dev-set observation, not a held-out claim.
+
 ## Verification record
 
 Run on 2026-11-06 on Windows 11, Node 26.13.0, AMD Ryzen 9 8945HX.

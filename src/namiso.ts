@@ -111,6 +111,8 @@ export interface RetrieveInput {
   rerankPool?: number
   includeEvidence?: boolean
   includeRelations?: boolean
+  now?: number | Date
+  timeZone?: string
 }
 
 export interface ContextInput extends RetrieveInput {
@@ -407,6 +409,7 @@ export class Namiso {
   async retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     this.assertOpen()
     this.validateQuery(input.query)
+    if (input.timeZone !== undefined) validateTimeZone(input.timeZone)
     if (
       input.timeRange?.from !== undefined &&
       input.timeRange.to !== undefined &&
@@ -414,6 +417,7 @@ export class Namiso {
     ) {
       throw new ValidationError('timeRange.from must not be after timeRange.to')
     }
+    const now = normalizeNow(input.now)
     return this.retriever.retrieve({
       memorySpaceId: this.memorySpace.id,
       query: input.query,
@@ -425,6 +429,8 @@ export class Namiso {
       ...(input.rerankPool === undefined ? {} : { rerankPool: input.rerankPool }),
       ...(input.includeEvidence === undefined ? {} : { includeEvidence: input.includeEvidence }),
       ...(input.includeRelations === undefined ? {} : { includeRelations: input.includeRelations }),
+      ...(now === undefined ? {} : { now }),
+      ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
     })
   }
 
@@ -732,4 +738,13 @@ function validateTimeZone(timeZone: string): void {
   } catch {
     throw new ValidationError(`invalid timeZone: ${timeZone}`)
   }
+}
+
+function normalizeNow(value: number | Date | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const seconds = value instanceof Date ? Math.floor(value.getTime() / 1000) : value
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new ValidationError('now must be a non-negative epoch time')
+  }
+  return Math.floor(seconds)
 }

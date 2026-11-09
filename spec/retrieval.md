@@ -18,6 +18,12 @@ A query with both current and history markers is general. A current query filter
 
 Entity resolution checks explicit `entityIds` first. Otherwise it matches every entity name and alias against the query text. A query containing a second-person marker (`你`, `您`, `you`, `your`) adds the self entity, so questions such as `你的性格是什么` reach the assistant's persona claims. A query containing a first-person marker also adds the latest user speaker. This is how `我现在使用什么模型` reaches the user's active claims without naming the user.
 
+## Query time
+
+`resolveTimeExpressions(query, now, timeZone)` converts bounded expressions into half-open epoch ranges. It handles relative days (今天, 昨天, 明天), qualified weekdays (上周三, next Friday), counted intervals (3天前, 两周后), months and years (上个月, 去年), absolute dates (2026-03-02, 3月2日, 2025年12月), and their English forms. Each window carries its granularity and whether the year was implied. An open range such as `4月15日之前` or `before yesterday` produces no window, because its bounds are not known. `now` and `timeZone` come from the caller; the zone must be an IANA name.
+
+The windows are a soft signal. A claim or event in a window gains 0.5 in the SQL channel's relevance, and every in-window candidate gains 0.1 after ranking. Retrieval does not hard-filter on an interpreted window: expansion, null-time records, and a false positive would all lose evidence, and an explicit `timeRange` already provides a deterministic filter. `trace.time` records `now`, the zone, and the windows. The context renders the first window as `[Query Time]` before the claims section.
+
 ## Channels
 
 **SQL** returns mentioned entities, claims for those entities, and events with those participants. Claims and events are ranked by query overlap with their document text, then by status or intent boosts and recency, before the channel cap. This keeps recent but unrelated records from displacing a relevant older one. With no mentioned entity, an event or history query returns recent events.

@@ -93,6 +93,7 @@ export interface RunOptions {
   providers?: ProviderSet
   databasePath?: string
   consolidateBatch?: number
+  timeZone?: string
   completedIds?: ReadonlySet<string>
   onProgress?: (message: string) => void
   onItemResult?: (result: ItemResult) => void
@@ -202,6 +203,8 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
           query: item.question,
           maxTokens: options.maxTokens ?? 1600,
           topK: options.topK ?? 12,
+          now: Math.floor(Date.parse(item.now) / 1000),
+          timeZone: options.timeZone ?? 'Asia/Shanghai',
           ...(options.mode === 'raw'
             ? { memoryTypes: ['conversation'] as const, includeRelations: false }
             : {}),
