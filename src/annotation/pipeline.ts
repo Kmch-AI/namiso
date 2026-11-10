@@ -39,13 +39,25 @@ import {
   setClaimRestriction,
   setEventRestriction,
 } from '../storage/memory-repo.ts'
-import { normalizeAttribute } from '../text.ts'
+import { normalizeAttribute, normalizeName } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
 import { isRestricted, mergeRestriction, restrictionOf } from './restriction.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
 const KNOWN_ATTRIBUTE_LIMIT = 24
 const KNOWN_FACT_LIMIT = 12
+const NAME_ATTRIBUTES: ReadonlySet<string> = new Set([
+  'name',
+  '姓名',
+  '名字',
+  '昵称',
+  '别名',
+  'nickname',
+  'alias',
+])
+const NAME_ALIAS_STOP = /[（(，,、；;：:\s“”"']/
+const SELF_NAME =
+  /(?:我叫|我的名字(?:是|叫))\s*(?!他|她|它|你|您)([^，。！？,!?\s]{1,20})|叫我\s*([^，。！？,!?\s]{1,20})/
 const LEGACY_ONE_VALUED = new Set([
   'name',
   'occupation',
@@ -157,6 +169,8 @@ export class AnnotationPipeline {
     }> = []
 
     this.db.transaction(() => {
+      this.captureNameAliases(spaceId, focus, extraction)
+
       for (const entity of extraction.entities) {
         const sourceMessageId =
           entity.evidenceMessageIds.find((id) => validEvidence.has(id)) ?? extractionFocus.id
@@ -278,6 +292,34 @@ export class AnnotationPipeline {
 
     await this.indexer.sync(spaceId, this.indexItems(spaceId, entityIds, claimIds, eventIds))
     markMessagesConsolidated(this.db, focusIds)
+  }
+
+  private captureNameAliases(
+    spaceId: MemorySpaceId,
+    focus: readonly Message[],
+    extraction: ExtractionResult,
+  ): void {
+    const blocked = new Set<string>()
+    for (const claim of extraction.claims) {
+      if (claim.object.kind !== 'literal') continue
+      const key = normalizeAttribute(claim.attribute ?? claim.predicate)
+      if (!NAME_ATTRIBUTES.has(key)) continue
+      if (!isRestricted(restrictionOf(claim))) continue
+      const alias = cleanAlias(claim.object.value)
+      if (alias.length > 0) blocked.add(normalizeName(alias))
+    }
+
+    for (const message of focus) {
+      if (message.role !== 'user' && message.role !== 'assistant') continue
+      const match = SELF_NAME.exec(message.content)
+      if (match === null) continue
+      const alias = cleanAlias(match[1] ?? match[2] ?? '')
+      if (alias.length === 0 || alias.length > 24) continue
+      if (blocked.has(normalizeName(alias))) continue
+      const speaker = this.resolver.findSpeaker(spaceId, message.speakerId)
+      if (speaker === null) continue
+      this.resolver.addAlias(speaker, alias, message.id)
+    }
   }
 
   private upgradeClaimRestriction(stored: Claim, extracted: ExtractedClaim): void {
@@ -481,6 +523,10 @@ export class AnnotationPipeline {
     }
     return [...items.values()]
   }
+}
+
+function cleanAlias(value: string): string {
+  return (value.split(NAME_ALIAS_STOP)[0] ?? '').trim()
 }
 
 function speakerNameOf(message: Message): string {
