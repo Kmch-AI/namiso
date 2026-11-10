@@ -54,6 +54,7 @@ export type Relation =
   | 'derived_from'
   | 'related_to'
   | 'same_as'
+  | 'same_occurrence'
 
 export interface Workspace {
   id: WorkspaceId
@@ -286,6 +287,7 @@ export interface MemoryCandidate {
   occurredAt: number | null
   status: string | null
   evidenceMessageIds: MessageId[]
+  closureEvidenceMessageIds: MessageId[]
   relations: MemoryRelationView[]
   record: CandidateRecord
 }

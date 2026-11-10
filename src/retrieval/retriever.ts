@@ -515,6 +515,7 @@ export class Retriever {
         target.channels = ['graph']
         target.score = current.candidate.score * 0.8
         extras.set(key, target)
+        appendClosureEvidence(current.candidate, target)
         if (current.depth < 1) queue.push({ candidate: target, depth: current.depth + 1 })
       }
       if (current.candidate.record.kind === 'event' && extras.size < 30) {
@@ -532,6 +533,7 @@ export class Retriever {
             candidate.channels = ['timeline']
             candidate.score = current.candidate.score * 0.7
             extras.set(key, candidate)
+            appendClosureEvidence(current.candidate, candidate)
           }
         }
       }
@@ -597,6 +599,15 @@ function structuredRelevance(
 function inTimeWindow(occurredAt: number | null, windows: readonly TimeWindow[]): boolean {
   if (occurredAt === null) return false
   return windows.some((window) => occurredAt >= window.from && occurredAt < window.to)
+}
+
+function appendClosureEvidence(parent: MemoryCandidate, target: MemoryCandidate): void {
+  const seen = new Set(parent.closureEvidenceMessageIds)
+  for (const id of target.evidenceMessageIds) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    parent.closureEvidenceMessageIds.push(id)
+  }
 }
 
 function allowedKinds(

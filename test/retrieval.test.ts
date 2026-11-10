@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
-import type { ExtractionProvider } from '../src/index.ts'
+import type { ExtractionProvider, MessageId } from '../src/index.ts'
 
 import { Namiso } from '../src/index.ts'
 import { AI, USER, setup } from './helpers.ts'
@@ -649,6 +649,113 @@ test('linked claim evidence includes a follow-up with no query overlap', async (
   assert.ok(
     context.evidence.some((message) => message.content.includes('就是这个')),
     'a linked follow-up should stay in evidence even without query overlap',
+  )
+  namiso.close()
+})
+
+test('a linked event contributes evidence ahead of four matching claim messages', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'occurrence-closure',
+    async extract(input) {
+      const messages = new Map(input.messages.map((message) => [message.id, message]))
+      const groups = new Map<string, MessageId[]>()
+      for (const id of input.focusMessageIds) {
+        const content = messages.get(id)?.content ?? ''
+        const subject = ['甲山', '乙川', '丙原'].find((name) => content.includes(name))
+        if (subject === undefined) continue
+        groups.set(subject, [...(groups.get(subject) ?? []), id])
+      }
+      const claims = [...groups.entries()].map(([subject, evidenceMessageIds]) => ({
+        subject: { name: subject, type: 'other' as const },
+        predicate: '记录',
+        attribute: '记录',
+        cardinality: 'many' as const,
+        change: 'adds' as const,
+        object: { kind: 'literal' as const, value: `${subject}的记录` },
+        modality: 'asserted' as const,
+        confidence: 0.9,
+        evidenceMessageIds,
+      }))
+      const eventMessage = input.focusMessageIds.find((id) =>
+        messages.get(id)?.content.includes('咖啡馆'),
+      )
+      const occurredAt =
+        eventMessage === undefined ? undefined : messages.get(eventMessage)?.occurredAt
+      const first = input.focusMessageIds[0]
+      return {
+        entities: [
+          ...['甲山', '乙川', '丙原'].map((name) => ({
+            name,
+            type: 'other' as const,
+            evidenceMessageIds: groups.get(name) ?? [first],
+          })),
+          {
+            name: '丁野',
+            type: 'person' as const,
+            evidenceMessageIds: eventMessage === undefined ? [first] : [eventMessage],
+          },
+        ],
+        claims,
+        events:
+          eventMessage === undefined
+            ? []
+            : [
+                {
+                  type: '讨论',
+                  summary: '四月在咖啡馆讨论稿件',
+                  ...(occurredAt === undefined ? {} : { occurredAt }),
+                  timePrecision: 'day' as const,
+                  participants: [{ name: '丁野', type: 'person' as const, role: '参与者' }],
+                  modality: 'asserted' as const,
+                  confidence: 0.9,
+                  evidenceMessageIds: [eventMessage],
+                },
+              ],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction, chunking: { size: 1, overlap: 0 } })
+  for (let index = 0; index < 12; index += 1) {
+    const subject = ['甲山', '乙川', '丙原'][Math.floor(index / 4)] ?? '丙原'
+    await say(USER, 'user', `${subject} 的记录第 ${index} 条。`)
+  }
+  const eventMessage = await say(USER, 'user', '四月在咖啡馆讨论稿件，聊了很久。')
+  await drain()
+
+  const claim = namiso.getEntityDetails('丙原')?.claims.find((item) => item.predicate === '记录')
+  assert.ok(claim !== undefined)
+  const event = namiso
+    .getEntityDetails('丁野')
+    ?.events.find((item) => item.summary.includes('咖啡馆'))
+  assert.ok(event !== undefined)
+
+  const input = {
+    query: '甲山 乙川 的记录',
+    memoryTypes: ['entity', 'claim'] as const,
+    rerank: false,
+    topK: 12,
+  }
+  const before = await namiso.getContext(input)
+  assert.equal(
+    before.evidence.some((message) => message.id === eventMessage.messageId),
+    false,
+  )
+
+  namiso.link({
+    sourceType: 'claim',
+    sourceId: claim.id,
+    relation: 'same_occurrence',
+    targetType: 'event',
+    targetId: event.id,
+  })
+
+  const after = await namiso.getContext(input)
+  assert.ok(
+    after.items.some((item) => item.record.kind === 'event' && item.record.event.id === event.id),
+  )
+  assert.ok(
+    after.evidence.some((message) => message.id === eventMessage.messageId),
+    'the linked event evidence must be selected before the claim runs out of slots',
   )
   namiso.close()
 })

@@ -400,6 +400,22 @@ The D40 rerun and the D41 run reused fully built databases. Retrieval has no as-
 
 The 606 versus 608 pass comparison is therefore invalid, and the D41 trade-off analysis is provisional. The harness now rejects a database whose latest message is later than the first pending item's `now`. A clean comparison needs fresh databases or an as-of filter.
 
+## D44. Occurrence edges and evidence closure
+
+Problem. `P20-CASE-009/d15` asks "那回试读会" and retrieval selects claims about the first readthrough but not the April event that records what was pointed out. The event ranked 33 by RRF because the reranker returns unusable scores. Its evidence message 135 is the only record of the problem.
+
+Design. A new claim whose subject entity is an occurrence (`other`, `activity`, `topic`) and whose predicate plus literal object names a non-self entity participant of an earlier event links to that event with `same_occurrence`. Candidates exclude events that share evidence messages with the claim. The score is token Jaccard between the claim assertion and the event type plus summary. The edge is written when the best score is at least 0.1 and at least twice the runner-up. The match runs after the batch's event loop so same-batch events are visible, and only for claims created in the batch. The link confidence is the score. Evidence closure adds a linked record's evidence to the linking candidate, and evidence selection takes one closure message per candidate before its own messages.
+
+Prototype before the change, on a copy of the stored P20 database. A manual claim-to-event link made the April event render. Message 135 was still starved by the twelve-slot budget. Adding message 135 to the claim's evidence put it into the context. The shipped matcher reproduces the edge on the stored claim with confidence 0.25, and the context then contains the April event, message 135, and the relation line.
+
+Precision. Across the six stored databases the claim rule writes two edges: the P20 attendance claim to the April event at 0.25, and one P16 claim at 0.143. Four personas write none. Looser variants wrote 54 claim edges and 6 to 20 event-to-event edges per persona, with clear false links such as a signboard-width claim linked to a no-cold-drinks event. Requiring the shared entity in the claim's own assertion removed those. The event-to-event variant was rejected on that evidence.
+
+Live result. A fresh P20 database with the new code passes the d15 item at 2/2 anchors. The fresh extractor did not produce the instance claim, though; it recorded the June correction as an event, so the new link did not fire and the pass came from direct retrieval. The unit is proven on the stored records and dormant when extraction omits the trigger. The next step is the trigger: the correction must produce an occurrence claim or an explicit instance reference.
+
+Verification: 111 tests pass, 1 integration test skipped. Offline formal set 74.0% evidence recall and 78.0% context hit, context tokens p50 858. Paired retrieval latency at the same machine: head p50 20.0 ms and p95 47.4 ms against pre-change 20.1 ms and 48.9 ms. Ingest 27.22 s against 27.16 s.
+
+Non-overfit: no persona, question, or phrase rules in `src/`. The rule uses entity types, participant entities, time order, and token overlap. The threshold is relative.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |

@@ -630,6 +630,28 @@ export function listEvents(db: Database, spaceId: MemorySpaceId): Event[] {
     .map(mapEvent)
 }
 
+export function listEarlierEventsForEntities(
+  db: Database,
+  spaceId: MemorySpaceId,
+  entityIds: readonly EntityId[],
+  before: number,
+): Event[] {
+  if (entityIds.length === 0) return []
+  const placeholders = entityIds.map(() => '?').join(', ')
+  return db
+    .all(
+      `SELECT DISTINCT e.* FROM events e
+       JOIN event_participants p ON p.event_id = e.id
+       WHERE e.memory_space_id = ? AND p.entity_id IN (${placeholders})
+         AND e.status = 'active' AND e.occurred_at IS NOT NULL AND e.occurred_at < ?
+       ORDER BY e.occurred_at ASC, e.created_at ASC`,
+      spaceId,
+      ...entityIds,
+      before,
+    )
+    .map(mapEvent)
+}
+
 export function findPreviousEventForActor(
   db: Database,
   spaceId: MemorySpaceId,

@@ -18,16 +18,23 @@ import type {
 } from '../types.ts'
 
 import { nowSeconds } from '../ids.ts'
+import { getMessagesByIds } from '../storage/conversation-repo.ts'
 import {
   addMemoryLink,
   addParticipant,
+  evidenceMessageIds,
   findEventBySignature,
   findPreviousEventForActor,
   insertClaim,
   insertEvent,
   listClaimsBySubject,
+  listEarlierEventsForEntities,
   setClaimStatus,
 } from '../storage/memory-repo.ts'
+import { segment } from '../text.ts'
+
+const OCCURRENCE_SUBJECT_TYPES: ReadonlySet<string> = new Set(['other', 'activity', 'topic'])
+const OCCURRENCE_MIN_SCORE = 0.1
 
 export interface ClaimWriteResult {
   claim: Claim
@@ -229,6 +236,58 @@ export class MemoryLinker {
     return { claim, created: true, superseded, subject, objectEntity }
   }
 
+  linkOccurrence(
+    spaceId: MemorySpaceId,
+    claim: Claim,
+    subject: Entity,
+    evidenceIds: readonly MessageId[],
+  ): void {
+    if (!OCCURRENCE_SUBJECT_TYPES.has(subject.type)) return
+    if (claim.object.kind !== 'literal') return
+    const messages = getMessagesByIds(this.db, evidenceIds).filter(
+      (message) => message.memorySpaceId === spaceId,
+    )
+    if (messages.length === 0) return
+    const latestEvidence = Math.max(...messages.map((message) => message.occurredAt))
+    const assertion = `${claim.predicate} ${claim.object.value}`.trim()
+    const claimEvidence = new Set<string>(messages.map((message) => message.id))
+    const participants = this.resolver
+      .findMentioned(spaceId, assertion, 8)
+      .filter((entity) => entity.type !== 'self')
+    if (participants.length === 0) return
+    const events = listEarlierEventsForEntities(
+      this.db,
+      spaceId,
+      participants.map((entity) => entity.id),
+      latestEvidence,
+    )
+    const claimTokens = new Set(segment(assertion))
+    const scored: Array<{ event: Event; score: number }> = []
+    for (const event of events) {
+      if (evidenceMessageIds(this.db, 'event', event.id).some((id) => claimEvidence.has(id))) {
+        continue
+      }
+      scored.push({
+        event,
+        score: jaccard(claimTokens, new Set(segment(`${event.type} ${event.summary}`))),
+      })
+    }
+    scored.sort((left, right) => right.score - left.score)
+    const best = scored[0]
+    if (best === undefined || best.score < OCCURRENCE_MIN_SCORE) return
+    const runnerUp = scored[1]
+    if (runnerUp !== undefined && best.score < runnerUp.score * 2) return
+    addMemoryLink(this.db, {
+      spaceId,
+      sourceType: 'claim',
+      sourceId: claim.id,
+      relation: 'same_occurrence',
+      targetType: 'event',
+      targetId: best.event.id,
+      confidence: best.score,
+    })
+  }
+
   applyEvent(
     spaceId: MemorySpaceId,
     extracted: ExtractedEvent,
@@ -391,6 +450,15 @@ function sameObject(left: ClaimObject, right: ClaimObject): boolean {
     return left.entityId === right.entityId
   }
   return false
+}
+
+function jaccard(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
+  if (left.size === 0 || right.size === 0) return 0
+  let intersection = 0
+  for (const token of left) {
+    if (right.has(token)) intersection += 1
+  }
+  return intersection / (left.size + right.size - intersection)
 }
 
 export function entityIdsOf(claims: readonly Claim[]): EntityId[] {

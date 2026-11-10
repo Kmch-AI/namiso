@@ -113,6 +113,19 @@ For a `usage_change` event:
 
 For a `usage_stop` event, supersede the actor's active `uses` claims without inserting a new one. Uncertain events never change claim state.
 
+## Occurrence linking
+
+The linker may connect a new claim to an earlier event that records the same occurrence. The relation is `same_occurrence` from claim to event, and its confidence is the match score. The rule:
+
+1. The claim's subject entity type is `other`, `activity`, or `topic`.
+2. The claim's predicate plus literal object contains the name of a non-self entity that participates in a candidate event.
+3. Candidate events occur before the claim's latest evidence message and share no evidence message with the claim.
+4. The score is token Jaccard between the claim's predicate plus object and the event's type plus summary, using `segment()`.
+5. The best score must be at least 0.1 and at least twice the runner-up when one exists.
+6. The link is written with insert-or-ignore, so reconsolidation never duplicates it.
+
+The pipeline applies claims before events in a batch, so it runs the match for claims created in the batch after the event loop. That is the first point where the batch's events, their evidence, and the claim evidence are all stored. The write is insert-or-ignore, so reconsolidation never duplicates an edge, and a duplicate claim never starts a match.
+
 ## Evidence types
 
 Evidence is created from messages with one of `user_statement`, `assistant_statement`, or `external`. A claim or event always links to at least one evidence row. The same message can support many memories.

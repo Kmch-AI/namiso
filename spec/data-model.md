@@ -90,6 +90,14 @@ The fields are a rendering boundary, not a deletion policy. The record keeps its
 
 Schema version 7 adds the columns. Existing rows become normal and allowed, so an upgrade changes no content.
 
+## Memory links
+
+`memory_links` stores directed edges between two entities, claims, or events. `relation` is text, so a new relation needs no migration. Known relations are `supersedes`, `updates`, `contradicts`, `continues`, `caused_by`, `derived_from`, `related_to`, `same_as`, and `same_occurrence`.
+
+`same_occurrence` points from a claim about one occurrence to the event that records it. Its `confidence` is the token-overlap score that produced the match. The unique index on the endpoints and relation makes a repeated write a no-op.
+
+Evidence closure is computed during retrieval and adds no table or column. A candidate's `closureEvidenceMessageIds` holds the evidence of the records expanded from it.
+
 ## Time model
 
 Every message stores `occurred_at`, the logical time of the conversation, and `created_at`, the wall-clock time the engine wrote it. Claims and events use `occurred_at` values from their source messages. `valid_from` and `valid_until` describe when a claim was true, not when the row was written.

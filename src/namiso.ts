@@ -14,6 +14,7 @@ import type {
   Message,
   MessageId,
   MessageRole,
+  Relation,
   RetrievalTimeRange,
   RetrieveResult,
   SelfIdentity,
@@ -161,15 +162,7 @@ export interface ClaimDetails {
 export interface LinkInput {
   sourceType: 'entity' | 'claim' | 'event'
   sourceId: string
-  relation:
-    | 'supersedes'
-    | 'updates'
-    | 'contradicts'
-    | 'continues'
-    | 'caused_by'
-    | 'derived_from'
-    | 'related_to'
-    | 'same_as'
+  relation: Relation
   targetType: 'entity' | 'claim' | 'event'
   targetId: string
   confidence?: number

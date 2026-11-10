@@ -645,15 +645,14 @@ function collectEvidence(
   const ids = new Set<MessageId>()
   for (const candidate of candidates) {
     for (const id of candidate.evidenceMessageIds) ids.add(id)
+    for (const id of candidate.closureEvidenceMessageIds) ids.add(id)
     if (ids.size >= 120) break
   }
   const messages = getMessagesByIds(db, [...ids].slice(0, 120))
   const byId = new Map(messages.map((message) => [message.id, message]))
   const queryTokens = new Set(segment(query))
-  const prepared = candidates.map((candidate) => {
-    const perCandidateLimit = candidate.kind === 'chunk' ? 3 : 4
-    const linked = candidate.kind === 'claim' || candidate.kind === 'event'
-    const candidateMessages = candidate.evidenceMessageIds
+  const scored = (messageIds: readonly MessageId[]): Array<{ message: Message; score: number }> =>
+    messageIds
       .flatMap((id) => {
         const message = byId.get(asMessageId(id))
         return message === undefined || message.memorySpaceId !== spaceId ? [] : [message]
@@ -663,7 +662,15 @@ function collectEvidence(
         if (left.score !== right.score) return right.score - left.score
         return right.message.occurredAt - left.message.occurredAt
       })
-    return { messages: candidateMessages, perCandidateLimit, linked }
+  const prepared = candidates.map((candidate) => {
+    const perCandidateLimit = candidate.kind === 'chunk' ? 3 : 4
+    const linked = candidate.kind === 'claim' || candidate.kind === 'event'
+    const closure = scored(candidate.closureEvidenceMessageIds).slice(0, 1)
+    return {
+      messages: [...closure, ...scored(candidate.evidenceMessageIds)],
+      perCandidateLimit,
+      linked,
+    }
   })
   const chosen: Message[] = []
   const seen = new Set<string>()

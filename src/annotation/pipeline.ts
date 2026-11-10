@@ -13,6 +13,7 @@ import type {
   Claim,
   ClaimCardinality,
   ClaimChange,
+  Entity,
   EntityId,
   Event,
   MemorySpaceId,
@@ -149,6 +150,11 @@ export class AnnotationPipeline {
     const validEvidence = this.validEvidenceMap(spaceId, extraction, focusIds)
     const claimIds = new Set<string>()
     const eventIds = new Set<string>()
+    const createdClaims: Array<{
+      claim: Claim
+      subject: Entity
+      evidenceIds: readonly MessageId[]
+    }> = []
 
     this.db.transaction(() => {
       for (const entity of extraction.entities) {
@@ -211,6 +217,9 @@ export class AnnotationPipeline {
         )
         if (result === null) continue
         this.upgradeClaimRestriction(result.claim, claim)
+        if (result.created) {
+          createdClaims.push({ claim: result.claim, subject: result.subject, evidenceIds })
+        }
         entityIds.add(result.subject.id)
         if (result.objectEntity !== null) entityIds.add(result.objectEntity.id)
         claimIds.add(result.claim.id)
@@ -257,6 +266,10 @@ export class AnnotationPipeline {
           if (claim.object.kind === 'entity') entityIds.add(claim.object.entityId)
           entityIds.add(claim.subjectId)
         }
+      }
+
+      for (const created of createdClaims) {
+        this.linker.linkOccurrence(spaceId, created.claim, created.subject, created.evidenceIds)
       }
     })
 

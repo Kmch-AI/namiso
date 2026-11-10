@@ -90,6 +90,7 @@ The engine expands up to five top candidates through `memory_links` and event pa
 
 - Linked claims and events are added with a score decay of 0.8.
 - Related events from the same participant are added with a decay of 0.7.
+- When a target is added from a parent candidate, the target's evidence message IDs join the parent's `closureEvidenceMessageIds`, deduplicated.
 - Expansion stops at 30 extra candidates and two link hops.
 - `includeEvidence` adds up to 20 evidence messages as candidates.
 
@@ -99,7 +100,7 @@ Expansion can add superseded claims to a current-query result. That is intention
 
 The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in three passes:
 
-1. For each candidate in rank order, choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, and linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short.
+1. For each candidate in rank order, take its highest-overlap closure message before its own messages, then choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, including the closure message. Linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short.
 2. Add the messages adjacent to each chosen message when slots remain.
 3. Fill remaining slots with the highest-ranked messages that had no overlap.
 

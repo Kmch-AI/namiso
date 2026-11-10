@@ -64,6 +64,7 @@ const RELATIONS = [
   'derived_from',
   'related_to',
   'same_as',
+  'same_occurrence',
 ] as const
 const MEMORY_OR_ENTITY = ['entity', 'claim', 'event'] as const
 const JOB_TYPES = ['annotate', 'chunk'] as const

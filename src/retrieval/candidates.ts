@@ -43,6 +43,7 @@ export function candidateFromSource(
       occurredAt: chunk.startedAt,
       status: null,
       evidenceMessageIds: chunk.messageIds,
+      closureEvidenceMessageIds: [],
       relations: [],
       record: { kind: 'chunk', chunk },
     }
@@ -61,6 +62,7 @@ export function candidateFromSource(
       occurredAt: null,
       status: null,
       evidenceMessageIds: [],
+      closureEvidenceMessageIds: [],
       relations: relationViews(db, 'entity', entity.id),
       record: { kind: 'entity', entity, aliases },
     }
@@ -94,6 +96,7 @@ export function claimCandidate(db: Database, claim: Claim): MemoryCandidate | nu
     occurredAt: claim.validFrom,
     status: claim.status,
     evidenceMessageIds: evidenceMessageIds(db, 'claim', claim.id),
+    closureEvidenceMessageIds: [],
     relations: relationViews(db, 'claim', claim.id),
     record: { kind: 'claim', claim, subject, objectEntity },
   }
@@ -119,6 +122,7 @@ export function eventCandidate(db: Database, event: Event): MemoryCandidate | nu
     occurredAt: event.occurredAt,
     status: event.status,
     evidenceMessageIds: evidenceMessageIds(db, 'event', event.id),
+    closureEvidenceMessageIds: [],
     relations: relationViews(db, 'event', event.id),
     record: { kind: 'event', event, participants: views },
   }
@@ -135,6 +139,7 @@ export function messageCandidate(message: Message): MemoryCandidate {
     occurredAt: message.occurredAt,
     status: null,
     evidenceMessageIds: [message.id],
+    closureEvidenceMessageIds: [],
     relations: [],
     record: { kind: 'message', message },
   }
