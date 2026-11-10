@@ -464,6 +464,14 @@ Decision. Reverted again in dd787a2, returning the tree to the 144/170 state. Al
 
 Verification of the revert: 115 tests pass, 1 integration test skipped; `pnpm verify` passes.
 
+## D49. A subject takes at most four claim lines
+
+Problem. A person accumulates claims, and the twelve context slots can fill with one subject's records. The baseline P20 contexts show 8 to 10 claims whose subject is the user for a single profile question. The merged user entity measured in D48 had 243 to 311 claims, which made the crowding worse.
+
+Rule. Before coverage selection, the renderable claims are grouped by subject and capped at four. The first four in rank order stay. Each dropped claim's evidence messages move to the first kept claim's closure evidence, so the evidence stays reachable without a visible line. The cap runs in `Retriever.capClaimsPerSubject`, adds one constant, and does not touch the SQL, FTS, vector, or facet channels.
+
+Verification: a unit test with six claims on one subject renders four claim lines. The offline formal set stays at 74.0% evidence recall and 78.0% context hit with context tokens p50 831; the rule extractor rarely exceeds four claims per subject, so that set checks for regression, not for the cap's effect. The live controlled check uses the extraction replay harness in `bench/out/extraction-replay.mjs`. It records each extraction request and replays it keyed by the system prompt, focus indices, and message tuples, excluding known entities and facts, so two runs can differ only in resolution and retrieval. A smoke run replayed three items with two byte-identical contexts and one claim-order difference. A full controlled run was blocked by the extraction endpoint returning truncated JSON and throttling; the harness needs an error-free recording.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |
