@@ -167,7 +167,7 @@ export class AnnotationPipeline {
     }> = []
 
     this.db.transaction(() => {
-      this.captureNameAliases(spaceId, extraction, speakerNames, focusIds)
+      this.captureNameAliases(spaceId, extraction, speakerNames, validEvidence)
 
       for (const entity of extraction.entities) {
         const sourceMessageId =
@@ -296,7 +296,7 @@ export class AnnotationPipeline {
     spaceId: MemorySpaceId,
     extraction: ExtractionResult,
     speakerNames: ReadonlyMap<MessageId, string>,
-    focusIds: readonly MessageId[],
+    validEvidence: Map<MessageId, Message>,
   ): void {
     const speakers = new Set([...speakerNames.values()].map((name) => normalizeName(name)))
     for (const claim of extraction.claims) {
@@ -304,16 +304,24 @@ export class AnnotationPipeline {
       const key = normalizeAttribute(claim.attribute ?? claim.predicate)
       if (!NAME_ATTRIBUTES.has(key)) continue
       if (isRestricted(restrictionOf(claim))) continue
-      if (!speakers.has(normalizeName(claim.subject.name))) continue
       const alias = (claim.object.value.split(NAME_ALIAS_STOP)[0] ?? '').trim()
       if (alias.length === 0 || alias.length > 24) continue
-      const sourceMessageId = claim.evidenceMessageIds.find((id) => focusIds.includes(id))
+      const sourceMessageId = claim.evidenceMessageIds.find((id) => validEvidence.has(id))
       if (sourceMessageId === undefined) continue
-      const subject = this.resolver.resolve({
-        spaceId,
-        name: claim.subject.name,
-        type: claim.subject.type,
-      })
+      const message = validEvidence.get(sourceMessageId)
+      if (message === undefined) continue
+      const speakerNamed = speakers.has(normalizeName(claim.subject.name))
+      const selfNamed =
+        message.role === 'user' && normalizeName(claim.subject.name) === normalizeName(alias)
+      if (!speakerNamed && !selfNamed) continue
+      const subject = speakerNamed
+        ? this.resolver.resolve({
+            spaceId,
+            name: claim.subject.name,
+            type: claim.subject.type,
+          })
+        : this.resolver.findSpeaker(spaceId, message.speakerId)
+      if (subject === null) continue
       this.resolver.addAlias(subject, alias, sourceMessageId)
     }
   }

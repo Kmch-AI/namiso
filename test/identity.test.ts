@@ -33,7 +33,7 @@ test('a self-given name becomes an alias of the speaker entity', async () => {
       for (const id of input.focusMessageIds) {
         const content = messages.get(id)?.content ?? ''
         if (content.includes('我叫')) {
-          claims.push(nameClaim(USER, '姓名', '阿渡（渡口的渡）', id))
+          claims.push(nameClaim('阿渡', '姓名', '阿渡（渡口的渡）', id))
         } else if (content.includes('叫你')) {
           claims.push(nameClaim(AI, '称呼', '阿渡', id))
         } else {
@@ -72,7 +72,7 @@ test('a private name claim does not become an alias', async () => {
         entities: [],
         claims: [
           {
-            ...nameClaim(USER, '姓名', '阿渡', id),
+            ...nameClaim('阿渡', '姓名', '阿渡', id),
             sensitivity: 'private' as const,
             disclosure: 'do_not_volunteer' as const,
           },

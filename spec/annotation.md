@@ -115,13 +115,14 @@ For a `usage_stop` event, supersede the actor's active `uses` claims without ins
 
 ## Speaker identity
 
-A name-like claim about a speaker entity registers an alias before entities and claims resolve. The rule:
+A name-like claim can declare a name for a speaker entity, and the declaration registers an alias before entities and claims resolve. The rule:
 
 1. The claim's attribute, normalized, is `name`, `姓名`, `名字`, `昵称`, `别名`, `nickname`, or `alias`.
-2. The subject name matches a speaker name in the batch.
+2. Either the subject name matches a speaker name in the batch, or the subject name equals the cleaned value and the cited evidence is a message from the user.
 3. The object is a literal. The alias is its text up to the first punctuation or whitespace, capped at 24 characters.
+4. A restricted claim, meaning `sensitivity = private` or a disclosure other than `allowed`, is skipped, because an alias renders in public entity lines and would bypass the claim restriction.
 
-The alias is inserted on the resolved speaker entity. Later claims and extracted entities that use that name resolve to the speaker, so a self-given name does not split the person into a second entity. A restricted claim, meaning `sensitivity = private` or a disclosure other than `allowed`, never registers an alias, because an alias renders in public entity lines and would bypass the claim restriction. `称呼` is excluded because its subject is not reliably the named person: an assistant-addressed nickname has the assistant as the subject.
+The alias is inserted on the subject's speaker entity in the first case, and on the speaker of the cited user message in the second. Later claims and extracted entities that use that name resolve to the speaker, so a self-given name does not split the person into a second entity. `称呼` is excluded because its subject is not reliably the named person: an assistant-addressed nickname has the assistant as the subject.
 
 ## Occurrence linking
 

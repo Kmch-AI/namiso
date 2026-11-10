@@ -326,7 +326,6 @@ knownAttributes lists state keys already used in this memory space. Reuse an exi
 Return one JSON object with keys entities, claims, events.
 entities: [{name, type, aliases?, description?, sensitivity?, disclosure?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
 The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
-The current user is also a known entity: the speaker of the user messages. Use that entity as the subject of the user's first-person statements, including the user's own name, age, location, and preferences. A name the user gives for themselves is an alias of that entity, not a new person; a nickname the assistant uses for the user is not a new person either.
 claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, validFrom?, modality, confidence, sensitivity?, disclosure?, evidenceMessageIds}].
 attribute is a short stable key reused across mentions. predicate is the human-readable label.
 cardinality is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit it when reusing a known attribute.
@@ -343,7 +342,6 @@ focus lists the indices of the messages to extract from. The other messages are 
 messages are [role, speaker, content, occurredAt]. role is u (user), a (assistant), s (system), or t (tool).
 knownEntities are [name, type, aliases?]. knownAttributes are state keys already used in this space; reuse a key when the meaning matches.
 Type codes: p person, g group, l place, a animal, o object, r artifact, c activity, t topic, x other, s the assistant itself. The assistant is the only s. Models, tools, other agents, and AI products are r; companies and institutions are g.
-The speaker of the user messages is the user entity. Use it as the subject of the user's first-person statements, including their own name, age, location, and preferences. A self-given name is an alias of that entity, not a new person; an assistant nickname for the user is not a new person.
 Return one JSON object with keys e, c, v.
 e: [{"n": name, "t": type, "al"?: [aliases], "d"?: description, "ev"?: [indices], "z"?: "private", "w"?: disclosure}]
 c: [{"s": subject name, "p": predicate, "a": attribute, "o": {"k": "l", "v": value} | {"k": "e", "n": name, "t"?: type}, "ev": [indices], "k"?: "one" | "many", "ch"?: change, "m"?: modality, "validFrom"?: validFrom, "z"?: sensitivity, "w"?: disclosure, "c"?: confidence}]
