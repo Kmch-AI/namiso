@@ -303,6 +303,7 @@ export class AnnotationPipeline {
       if (claim.object.kind !== 'literal') continue
       const key = normalizeAttribute(claim.attribute ?? claim.predicate)
       if (!NAME_ATTRIBUTES.has(key)) continue
+      if (isRestricted(restrictionOf(claim))) continue
       if (!speakers.has(normalizeName(claim.subject.name))) continue
       const alias = (claim.object.value.split(NAME_ALIAS_STOP)[0] ?? '').trim()
       if (alias.length === 0 || alias.length > 24) continue

@@ -121,7 +121,7 @@ A name-like claim about a speaker entity registers an alias before entities and 
 2. The subject name matches a speaker name in the batch.
 3. The object is a literal. The alias is its text up to the first punctuation or whitespace, capped at 24 characters.
 
-The alias is inserted on the resolved speaker entity. Later claims and extracted entities that use that name resolve to the speaker, so a self-given name does not split the person into a second entity. `称呼` is excluded because its subject is not reliably the named person: an assistant-addressed nickname has the assistant as the subject.
+The alias is inserted on the resolved speaker entity. Later claims and extracted entities that use that name resolve to the speaker, so a self-given name does not split the person into a second entity. A restricted claim, meaning `sensitivity = private` or a disclosure other than `allowed`, never registers an alias, because an alias renders in public entity lines and would bypass the claim restriction. `称呼` is excluded because its subject is not reliably the named person: an assistant-addressed nickname has the assistant as the subject.
 
 ## Occurrence linking
 

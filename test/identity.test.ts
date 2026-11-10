@@ -62,3 +62,32 @@ test('a self-given name becomes an alias of the speaker entity', async () => {
   assert.equal(assistant.aliases.includes('阿渡'), false)
   namiso.close()
 })
+
+test('a private name claim does not become an alias', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'identity-private',
+    async extract(input) {
+      const id = input.focusMessageIds[0]
+      return {
+        entities: [],
+        claims: [
+          {
+            ...nameClaim(USER, '姓名', '阿渡', id),
+            sensitivity: 'private' as const,
+            disclosure: 'do_not_volunteer' as const,
+          },
+          nameClaim('阿渡', '职业', '写悬疑小说', id),
+        ],
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '我叫阿渡，这事别往外说。')
+  await drain()
+
+  const user = namiso.getEntityDetails(USER)
+  assert.ok(user !== null)
+  assert.equal(user.aliases.includes('阿渡'), false)
+  namiso.close()
+})
