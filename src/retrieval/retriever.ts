@@ -64,7 +64,6 @@ const SOURCE_EVIDENCE_POOL = 8
 const RERANK_POOL_LIMIT = 50
 const TIME_BOOST = 0.1
 const FTS_STAGE_MIN = 3
-const CLAIM_SUBJECT_LIMIT = 4
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 const CONTEXT_MENTION_LIMIT = 2
 const CONTEXT_TAIL_CHARS = 240
@@ -155,9 +154,7 @@ export class Retriever {
       Math.min(options.rerankPool ?? RERANK_POOL_LIMIT, RERANK_POOL_LIMIT),
     )
     const ranked = await this.rank(query, validated.candidates, rerank, rerankPool, notes, windows)
-    const renderable = this.capClaimsPerSubject(
-      ranked.filter((candidate) => isRenderableKind(candidate.kind)),
-    )
+    const renderable = ranked.filter((candidate) => isRenderableKind(candidate.kind))
     const sourceOnly = ranked.filter((candidate) => !isRenderableKind(candidate.kind))
     const coverage = selectWithCoverage(renderable, {
       topK,
@@ -267,33 +264,6 @@ export class Retriever {
       .filter((entity) => !mentioned.some((item) => item.id === entity.id))
       .slice(0, CONTEXT_MENTION_LIMIT)
     mentioned.push(...picked)
-  }
-
-  private capClaimsPerSubject(candidates: readonly MemoryCandidate[]): MemoryCandidate[] {
-    const perSubject = new Map<string, MemoryCandidate[]>()
-    const kept: MemoryCandidate[] = []
-    for (const candidate of candidates) {
-      if (candidate.record.kind !== 'claim') {
-        kept.push(candidate)
-        continue
-      }
-      const subjectId = candidate.record.claim.subjectId
-      const group = perSubject.get(subjectId) ?? []
-      if (group.length < CLAIM_SUBJECT_LIMIT) {
-        group.push(candidate)
-        perSubject.set(subjectId, group)
-        kept.push(candidate)
-        continue
-      }
-      const anchor = group[0]
-      if (anchor === undefined) continue
-      for (const messageId of candidate.evidenceMessageIds) {
-        if (!anchor.closureEvidenceMessageIds.includes(messageId)) {
-          anchor.closureEvidenceMessageIds.push(messageId)
-        }
-      }
-    }
-    return kept
   }
 
   private sqlChannel(

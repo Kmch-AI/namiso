@@ -824,31 +824,3 @@ test('an entity line renders only when it carries details', async () => {
   assert.match(detailContext.text, /\[Relevant Entities\][\s\S]*在城南开花店/)
   withDetails.namiso.close()
 })
-
-test('one subject takes at most four claim lines', async () => {
-  const extraction: ExtractionProvider = {
-    version: 'subject-cap',
-    async extract(input) {
-      const id = input.focusMessageIds[0]
-      const claims = Array.from({ length: 6 }, (_, index) => ({
-        subject: { name: USER, type: 'person' as const },
-        predicate: `事项${index}`,
-        attribute: `事项${index}`,
-        cardinality: 'many' as const,
-        change: 'adds' as const,
-        object: { kind: 'literal' as const, value: `内容${index}` },
-        modality: 'asserted' as const,
-        confidence: 0.9,
-        evidenceMessageIds: [id],
-      }))
-      return { entities: [], claims, events: [] }
-    },
-  }
-  const { namiso, say, drain } = await setup({ extraction })
-  await say(USER, 'user', '我说了几件事。')
-  await drain()
-  const context = await namiso.getContext({ query: '我有哪些事项？' })
-  const lines = context.text.split('\n').filter((line) => line.startsWith('- [claim:'))
-  assert.equal(lines.length, 4)
-  namiso.close()
-})

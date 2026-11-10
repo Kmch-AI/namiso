@@ -66,8 +66,6 @@ The reranker judges relevance only. It does not decide whether a claim is curren
 
 Selection runs over the renderable candidates (entity, claim, and event) first. Conversation chunks and message candidates are source-only: they never render as lines of their own, so they cannot occupy a visible slot while a structured record is available. The source-only pool still contributes evidence messages, up to the first eight ranked entries.
 
-Before coverage, claims are capped at four per subject. The four highest-ranked claims for a subject stay in the renderable pool. Each dropped claim's evidence messages move to the first kept claim's closure evidence, so its facts can still reach the evidence section without taking a visible line.
-
 The renderable pool feeds coverage selection, which returns `min(topK, pool length)` items:
 
 1. Take rank 1.
