@@ -448,6 +448,20 @@ Rule. An entity renders only when it has details: aliases, a description that is
 
 Verification: a claim-named bare entity produces no `[Relevant Entities]` section while the claim renders; an entity with a description still renders its line; the private-entity test now asserts the public section is absent and the description stays in `[Private]`. 114 tests pass, 1 integration test skipped. The offline formal set stays at 74.0% evidence recall and 78.0% context hit, and context tokens p50 fall from 858 to 831; retrieval latency p50 is 19.7 ms and ingest 27.2 s.
 
+## D48. Speaker identity merge rejected on the live result
+
+Problem. In the fresh P20 database the user was stored as three entities: `用户` with 147 claims, `秦渡` with 82, and `渡哥` with 53. The speaker entity comes from the message speaker, so a first-person query resolves to `用户` and the SQL channel never reaches the claims and events under the other names. Across 170 fresh P20 contexts, 24 contained claims on a named user entity. P20-CASE-029/d00 shows the cost: the self-introduction event that says the user writes suspense has `秦渡` as its participant, so the profile question never retrieves it and the answer denies the genre.
+
+First attempt. A prompt rule named the user speaker entity and required first-person statements, including a self-given name, to use it. The configured extractor ignored it: a live P20 run still stored `秦渡 名字 秦渡` with the named entity as subject, contexts with named user claims rose from 24 to 77, evidence recall fell from 78.0% to 75.0%, and context hit from 84.0% to 80.0%. The prompt additions were removed.
+
+Second attempt. A structural pass ran before entities and claims resolved. Self-introductions were read from the messages (`我叫X`, `我的名字是X`, `叫我X`), and name-like claims also registered aliases. Restricted claims registered nothing. The merge worked: the user entity absorbed `秦渡` and `渡哥` with aliases, no separate name entity remained, and contexts with named user claims fell from 24 to 2. The user entity grew to 311 claims and 66 events.
+
+Live result. Fresh P20 end to end, answer at reasoning `none`, judged by the benchmark's own prompt: baseline 144/170 passed, merged 139/170. Evidence recall 78.0% in both runs, context hit 84.0% to 83.0%. Context tokens p95 rose from 1,669 to 1,850 and max from 1,924 to 2,229. Per-item flips were 12 gained and 16 lost. The gains include the predicted profile items (`P20-CASE-029/d03`, `P20-CASE-010/d03`); the losses include `P20-CASE-041` at two intervals, where the extractor attributed the 7/23 delivery to the story character 周砚, and several items where the merged subject crowded out the answer record. Extraction variance is large: an earlier fresh P20 run scored 81.0% evidence recall and this baseline 78.0% with the same code.
+
+Decision. Reverted in 44f59fb, returning the tree to 144/170. The identity model is correct, but it needs two companions before it can ship: a selection cap that keeps one subject from filling the context, and alias validation so extraction-provided aliases that name another entity (the assistant nicknames `满编` and `小满` landed on the user) are refused. The finding stays recorded so the next attempt starts from the merge, not from the prompt.
+
+Verification of the revert: 114 tests pass, 1 integration test skipped; `pnpm verify` passes.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |
