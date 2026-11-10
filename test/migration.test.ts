@@ -105,6 +105,77 @@ test('schema migration backfills consolidation state from completed annotate job
   }
 })
 
+test('schema migration allows an alias to repeat across entities', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'namiso-migration-'))
+  const databasePath = join(directory, 'memory.db')
+  let db: Database | undefined
+  try {
+    db = new Database(databasePath)
+    db.run(
+      'INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)',
+      'workspace',
+      'workspace',
+      1,
+    )
+    db.run(
+      `INSERT INTO memory_spaces (id, workspace_id, name, created_at)
+       VALUES (?, ?, ?, ?)`,
+      'space',
+      'workspace',
+      'space',
+      1,
+    )
+    for (const id of ['entity-1', 'entity-2']) {
+      db.run(
+        `INSERT INTO entities (id, memory_space_id, type, name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        id,
+        'space',
+        'person',
+        id,
+        1,
+        1,
+      )
+    }
+    db.run(
+      `INSERT INTO entity_aliases (id, memory_space_id, entity_id, alias, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      'alias-1',
+      'space',
+      'entity-1',
+      '同名',
+      1,
+    )
+    db.exec('DROP INDEX idx_entity_aliases_unique')
+    db.exec(
+      'CREATE UNIQUE INDEX idx_entity_aliases_unique ON entity_aliases(memory_space_id, alias)',
+    )
+    db.exec('PRAGMA user_version = 8')
+    db.close()
+    db = undefined
+
+    db = new Database(databasePath)
+    db.run(
+      `INSERT INTO entity_aliases (id, memory_space_id, entity_id, alias, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      'alias-2',
+      'space',
+      'entity-2',
+      '同名',
+      2,
+    )
+    const rows = db.all('SELECT entity_id FROM entity_aliases ORDER BY entity_id')
+    assert.deepEqual(
+      rows.map((row) => row['entity_id']),
+      ['entity-1', 'entity-2'],
+    )
+    assert.equal(readNumber(db.get('PRAGMA user_version'), 'user_version'), SCHEMA_VERSION)
+  } finally {
+    db?.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('schema migration maps legacy entity types', () => {
   const directory = mkdtempSync(join(tmpdir(), 'namiso-migration-'))
   const databasePath = join(directory, 'memory.db')

@@ -489,7 +489,9 @@ Design. Aliases are unique per entity, not per space: `idx_entity_aliases_unique
 
 The restricted-name rule is unchanged: a name-like claim marked private or restrictive still blocks the self-given-name scan, so a restricted name never becomes a public alias.
 
-Verification: tests cover a duplicate alias attached to a second entity, a canonical name winning over another entity's alias, and a shared alias resolving to the typed owner over an older entity. `pnpm verify` passes.
+Verification: tests cover a duplicate alias attached to a second entity, a canonical name winning over another entity's alias, and a shared alias resolving to the typed owner over an older entity. A migration test builds a version-8 database with the old unique index and proves the rebuilt index accepts the same alias on a second entity. `pnpm verify` passes with 120 tests.
+
+Controlled replay. The error-free P20 extraction recording was replayed into three fresh databases. The merge build scored 78.0% evidence recall and 85.0% context hit. The alias build scored the same, with one item changed: `P20-CASE-030/d03` fell from 2 to 1 anchor hits. A second identical alias build reproduced that same single change, so it is deterministic rather than run-to-run jitter; the merge-versus-alias context text also differs in 133 items, but that is a separate ordering effect, and a same-code rebuild still reorders 96. The cause is the two aliases the guard used to drop, `满编 → 小满` and `苏编 → full name`: entity documents index aliases, so their embeddings and downstream ranking shift. The lost anchor is the 2026-08-11 turn whose assistant line says the person manages the library; the 2026-07-14 turn carries the same fact, so the item's context hit stays true. Headline retrieval is unchanged.
 
 ## Verification record (2026-11-09)
 
