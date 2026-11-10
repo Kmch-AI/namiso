@@ -39,13 +39,23 @@ import {
   setClaimRestriction,
   setEventRestriction,
 } from '../storage/memory-repo.ts'
-import { normalizeAttribute } from '../text.ts'
+import { normalizeAttribute, normalizeName } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
 import { isRestricted, mergeRestriction, restrictionOf } from './restriction.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
 const KNOWN_ATTRIBUTE_LIMIT = 24
 const KNOWN_FACT_LIMIT = 12
+const NAME_ATTRIBUTES: ReadonlySet<string> = new Set([
+  'name',
+  '姓名',
+  '名字',
+  '昵称',
+  '别名',
+  'nickname',
+  'alias',
+])
+const NAME_ALIAS_STOP = /[（(，,、；;：:\s“”"']/
 const LEGACY_ONE_VALUED = new Set([
   'name',
   'occupation',
@@ -157,6 +167,8 @@ export class AnnotationPipeline {
     }> = []
 
     this.db.transaction(() => {
+      this.captureNameAliases(spaceId, extraction, speakerNames, focusIds)
+
       for (const entity of extraction.entities) {
         const sourceMessageId =
           entity.evidenceMessageIds.find((id) => validEvidence.has(id)) ?? extractionFocus.id
@@ -278,6 +290,31 @@ export class AnnotationPipeline {
 
     await this.indexer.sync(spaceId, this.indexItems(spaceId, entityIds, claimIds, eventIds))
     markMessagesConsolidated(this.db, focusIds)
+  }
+
+  private captureNameAliases(
+    spaceId: MemorySpaceId,
+    extraction: ExtractionResult,
+    speakerNames: ReadonlyMap<MessageId, string>,
+    focusIds: readonly MessageId[],
+  ): void {
+    const speakers = new Set([...speakerNames.values()].map((name) => normalizeName(name)))
+    for (const claim of extraction.claims) {
+      if (claim.object.kind !== 'literal') continue
+      const key = normalizeAttribute(claim.attribute ?? claim.predicate)
+      if (!NAME_ATTRIBUTES.has(key)) continue
+      if (!speakers.has(normalizeName(claim.subject.name))) continue
+      const alias = (claim.object.value.split(NAME_ALIAS_STOP)[0] ?? '').trim()
+      if (alias.length === 0 || alias.length > 24) continue
+      const sourceMessageId = claim.evidenceMessageIds.find((id) => focusIds.includes(id))
+      if (sourceMessageId === undefined) continue
+      const subject = this.resolver.resolve({
+        spaceId,
+        name: claim.subject.name,
+        type: claim.subject.type,
+      })
+      this.resolver.addAlias(subject, alias, sourceMessageId)
+    }
   }
 
   private upgradeClaimRestriction(stored: Claim, extracted: ExtractedClaim): void {

@@ -113,6 +113,16 @@ For a `usage_change` event:
 
 For a `usage_stop` event, supersede the actor's active `uses` claims without inserting a new one. Uncertain events never change claim state.
 
+## Speaker identity
+
+A name-like claim about a speaker entity registers an alias before entities and claims resolve. The rule:
+
+1. The claim's attribute, normalized, is `name`, `姓名`, `名字`, `昵称`, `别名`, `nickname`, or `alias`.
+2. The subject name matches a speaker name in the batch.
+3. The object is a literal. The alias is its text up to the first punctuation or whitespace, capped at 24 characters.
+
+The alias is inserted on the resolved speaker entity. Later claims and extracted entities that use that name resolve to the speaker, so a self-given name does not split the person into a second entity. `称呼` is excluded because its subject is not reliably the named person: an assistant-addressed nickname has the assistant as the subject.
+
 ## Occurrence linking
 
 The linker may connect a new claim to an earlier event that records the same occurrence. The relation is `same_occurrence` from claim to event, and its confidence is the match score. The rule:
@@ -139,7 +149,7 @@ The context builder groups active claims by subject and attribute. Two different
 ## Known gaps
 
 - No general coreference resolution beyond the speaker, known aliases, and ordinal occurrence clauses.
-- No automatic entity merge after creation.
+- No automatic entity merge beyond a self-given name alias on a speaker.
 - Extraction defaults to user and assistant messages. System and tool facts remain raw chunks unless `extractRoles` includes them.
 - The rule extractor ignores assistant-stated facts.
 - No contradiction detector that marks a claim `disputed` during writes. Conflicts surface as retrieval notes.
