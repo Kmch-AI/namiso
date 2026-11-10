@@ -493,6 +493,18 @@ Verification: tests cover a duplicate alias attached to a second entity, a canon
 
 Controlled replay. The error-free P20 extraction recording was replayed into three fresh databases. The merge build scored 78.0% evidence recall and 85.0% context hit. The alias build scored the same, with one item changed: `P20-CASE-030/d03` fell from 2 to 1 anchor hits. A second identical alias build reproduced that same single change, so it is deterministic rather than run-to-run jitter; the merge-versus-alias context text also differs in 133 items, but that is a separate ordering effect, and a same-code rebuild still reorders 96. The cause is the two aliases the guard used to drop, `满编 → 小满` and `苏编 → full name`: entity documents index aliases, so their embeddings and downstream ranking shift. The lost anchor is the 2026-08-11 turn whose assistant line says the person manages the library; the 2026-07-14 turn carries the same fact, so the item's context hit stays true. Headline retrieval is unchanged.
 
+## D51. Full-set real-model run with thinking answers
+
+Run. The current version (12b93d0 plus e9fd003) built all 714 questions in one fresh database, 6 personas, 2,240 turns, 478 extraction batches. Extraction used `reasoning_effort=none`; answers and judging omitted the parameter, so they ran at the provider's default thinking level. Answers were capped at 4,096 tokens, reviews at 4,096 with retries at 8,192 and 32,768 for packets whose reasoning exhausted the cap. The answer model was the same `workbuddy2api/cn:deepseek-v4.1-flash` endpoint. Embedding and reranking stayed on the local Qwen3 servers.
+
+Retrieval. 709 of 714 items scored; five extraction calls returned non-JSON and were skipped (`P12-ADD-001/d03`, `P17-CASE-011/d03`, `P17-CASE-013/d03`, `P20-CASE-022/d45`, `P20-CASE-030/d00`). Evidence recall 86.0%, context hit 89.0%, context tokens p50/p95/max 1,300/1,600/1,891, retrieval latency p50 449 ms, ingest 40.7 minutes.
+
+Answers. 557 of 709 passed (78.6%). By persona: P01 71/88, P12 68/78, P14 57/82, P16 86/123, P17 140/170, P20 135/168. By interval: d0 155/188, d3 141/181, d15 134/174, d45 127/166. Answering took 11.2 minutes.
+
+Cost. Extraction 1,249,408 tokens (prompt 1,039,267; completion 210,141; reasoning 0; cache hit 313,855). Answers 1,611,230 tokens (prompt 1,497,165; completion 114,065; reasoning 74,680; cache hit 37,504). Judging 1,701,406 tokens across three passes (prompt 863,953; completion 837,453; reasoning 686,750; cache hit 385,275; 866 calls). Total 4,562,044 tokens, of which 3,400,385 prompt, 1,161,659 completion, 761,430 reasoning, 736,634 cached. The provider exposes no per-call price or credit, so the cost basis is tokens. Wall clock was about 1 hour 46 minutes: 50 build and retrieval, 11 answers, 45 judging.
+
+Artifacts. `bench/out/full-20261110/` holds `items.jsonl`, `contexts.jsonl`, `answers.jsonl`, `packets.jsonl`, `reviews.jsonl`, `results.jsonl`, `summary.json`, and the per-stage logs and usage files.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |
