@@ -416,6 +416,20 @@ Verification: 111 tests pass, 1 integration test skipped. Offline formal set 74.
 
 Non-overfit: no persona, question, or phrase rules in `src/`. The rule uses entity types, participant entities, time order, and token overlap. The threshold is relative.
 
+## D45. Ordinal clauses trigger event occurrence links
+
+Problem. D44 left the occurrence edge dormant when extraction records a correction as an event instead of an occurrence claim. The fresh P20 extractor did exactly that: the June correction became event `840f5c5a` with the summary "秦渡纠正试读会顺序：第一次在…咖啡馆（只来X），南岗社区图书室是第二次", and no claim had an occurrence subject.
+
+Rejected trigger. Splitting every event summary into clauses and matching each clause against earlier events wrote 0 edges on P01 and 9 to 28 edges on each other persona, with clear false links such as a family mention linked to a knee-pain event and writing-session clauses each linked to one earlier writing event. Adding the requirement that the clause contain an ordinal occurrence reference (`第一次`, `上次`, `首次`, and similar) left one edge across the six stored databases and 1,406 events: the P20 correction to the April event, score 0.24.
+
+Rule. When a created event's summary contains a clause with an ordinal occurrence reference, the linker matches that clause against earlier events. The clause must name a non-self entity that participates in the candidate event, the candidate must occur before the latest evidence message time, shared evidence excludes a candidate, and the score gate is the D44 gate. The relation is `updates` from the new event to the earlier one, because the correction restates the occurrence rather than recording it again. The evidence time anchors the match because a restating event often has no occurrence time.
+
+Live result. On a copy of the fresh P20 database, the shipped path writes `updates` from event `840f5c5a` to the April event at 0.241. `P20-CASE-009/d45` asks "我第一次试读会在哪儿、谁来了、他指出什么问题？". Before the link the context lacks the April event. After it, the context contains the April event, the claim that X pointed out the motive timeline gap, and the relation line, and estimated tokens rise from 1,623 to 1,711.
+
+Verification: 112 tests pass, 1 integration test skipped. A test covers a correction event linking its ordinal clause and a market trip with the same ordinal, place, and participant staying unlinked.
+
+Non-overfit: the trigger uses ordinal language patterns, participant entities, evidence order, and token overlap. No persona, question, or event-summary strings.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |

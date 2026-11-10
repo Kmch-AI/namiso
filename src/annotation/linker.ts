@@ -35,6 +35,8 @@ import { segment } from '../text.ts'
 
 const OCCURRENCE_SUBJECT_TYPES: ReadonlySet<string> = new Set(['other', 'activity', 'topic'])
 const OCCURRENCE_MIN_SCORE = 0.1
+const OCCURRENCE_CLAUSE = /[，；。：]/
+const OCCURRENCE_ORDINAL = /第[一二三四五六七八九十百\d]+[次回遍场]|头一回|头一次|首次|上回|上次/
 
 export interface ClaimWriteResult {
   claim: Claim
@@ -248,44 +250,84 @@ export class MemoryLinker {
       (message) => message.memorySpaceId === spaceId,
     )
     if (messages.length === 0) return
-    const latestEvidence = Math.max(...messages.map((message) => message.occurredAt))
     const assertion = `${claim.predicate} ${claim.object.value}`.trim()
-    const claimEvidence = new Set<string>(messages.map((message) => message.id))
-    const participants = this.resolver
-      .findMentioned(spaceId, assertion, 8)
-      .filter((entity) => entity.type !== 'self')
-    if (participants.length === 0) return
-    const events = listEarlierEventsForEntities(
-      this.db,
+    const match = this.matchEarlierEvent(
       spaceId,
-      participants.map((entity) => entity.id),
-      latestEvidence,
+      assertion,
+      new Set(messages.map((message) => message.id)),
+      Math.max(...messages.map((message) => message.occurredAt)),
     )
-    const claimTokens = new Set(segment(assertion))
-    const scored: Array<{ event: Event; score: number }> = []
-    for (const event of events) {
-      if (evidenceMessageIds(this.db, 'event', event.id).some((id) => claimEvidence.has(id))) {
-        continue
-      }
-      scored.push({
-        event,
-        score: jaccard(claimTokens, new Set(segment(`${event.type} ${event.summary}`))),
-      })
-    }
-    scored.sort((left, right) => right.score - left.score)
-    const best = scored[0]
-    if (best === undefined || best.score < OCCURRENCE_MIN_SCORE) return
-    const runnerUp = scored[1]
-    if (runnerUp !== undefined && best.score < runnerUp.score * 2) return
+    if (match === null) return
     addMemoryLink(this.db, {
       spaceId,
       sourceType: 'claim',
       sourceId: claim.id,
       relation: 'same_occurrence',
       targetType: 'event',
-      targetId: best.event.id,
-      confidence: best.score,
+      targetId: match.event.id,
+      confidence: match.score,
     })
+  }
+
+  linkEventOccurrence(
+    spaceId: MemorySpaceId,
+    event: Event,
+    evidenceIds: readonly MessageId[],
+  ): void {
+    const messages = getMessagesByIds(this.db, evidenceIds).filter(
+      (message) => message.memorySpaceId === spaceId,
+    )
+    if (messages.length === 0) return
+    const evidence = new Set(messages.map((message) => message.id))
+    const anchor = Math.max(...messages.map((message) => message.occurredAt))
+    for (const clause of occurrenceClauses(event.summary)) {
+      const match = this.matchEarlierEvent(spaceId, clause, evidence, anchor)
+      if (match === null) continue
+      addMemoryLink(this.db, {
+        spaceId,
+        sourceType: 'event',
+        sourceId: event.id,
+        relation: 'updates',
+        targetType: 'event',
+        targetId: match.event.id,
+        confidence: match.score,
+      })
+    }
+  }
+
+  private matchEarlierEvent(
+    spaceId: MemorySpaceId,
+    assertion: string,
+    evidence: ReadonlySet<string>,
+    before: number,
+  ): { event: Event; score: number } | null {
+    const participants = this.resolver
+      .findMentioned(spaceId, assertion, 8)
+      .filter((entity) => entity.type !== 'self')
+    if (participants.length === 0) return null
+    const events = listEarlierEventsForEntities(
+      this.db,
+      spaceId,
+      participants.map((entity) => entity.id),
+      before,
+    )
+    const assertionTokens = new Set(segment(assertion))
+    const scored: Array<{ event: Event; score: number }> = []
+    for (const candidate of events) {
+      if (evidenceMessageIds(this.db, 'event', candidate.id).some((id) => evidence.has(id))) {
+        continue
+      }
+      scored.push({
+        event: candidate,
+        score: jaccard(assertionTokens, new Set(segment(`${candidate.type} ${candidate.summary}`))),
+      })
+    }
+    scored.sort((left, right) => right.score - left.score)
+    const best = scored[0]
+    if (best === undefined || best.score < OCCURRENCE_MIN_SCORE) return null
+    const runnerUp = scored[1]
+    if (runnerUp !== undefined && best.score < runnerUp.score * 2) return null
+    return best
   }
 
   applyEvent(
@@ -450,6 +492,13 @@ function sameObject(left: ClaimObject, right: ClaimObject): boolean {
     return left.entityId === right.entityId
   }
   return false
+}
+
+function occurrenceClauses(summary: string): string[] {
+  return summary
+    .split(OCCURRENCE_CLAUSE)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length >= 4 && OCCURRENCE_ORDINAL.test(clause))
 }
 
 function jaccard(left: ReadonlySet<string>, right: ReadonlySet<string>): number {

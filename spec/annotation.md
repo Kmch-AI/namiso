@@ -126,6 +126,8 @@ The linker may connect a new claim to an earlier event that records the same occ
 
 The pipeline applies claims before events in a batch, so it runs the match for claims created in the batch after the event loop. That is the first point where the batch's events, their evidence, and the claim evidence are all stored. The write is insert-or-ignore, so reconsolidation never duplicates an edge, and a duplicate claim never starts a match.
 
+An event can restate an earlier occurrence without recording it again, for example a correction that says the first session was the one at the café. When a created event's summary holds a clause with an ordinal occurrence reference such as `第一次`, `上次`, or `首次`, the linker runs the same match for that clause. The clause must name the non-self participant, the candidate must occur before the latest evidence message time, and the same score gate applies. The relation is `updates` from the new event to the earlier event. The evidence time is the anchor because a restating event often has no occurrence time of its own. Only created events start a match, and the write is insert-or-ignore.
+
 ## Evidence types
 
 Evidence is created from messages with one of `user_statement`, `assistant_statement`, or `external`. A claim or event always links to at least one evidence row. The same message can support many memories.
@@ -136,7 +138,7 @@ The context builder groups active claims by subject and attribute. Two different
 
 ## Known gaps
 
-- No coreference resolution beyond the speaker and known aliases.
+- No general coreference resolution beyond the speaker, known aliases, and ordinal occurrence clauses.
 - No automatic entity merge after creation.
 - Extraction defaults to user and assistant messages. System and tool facts remain raw chunks unless `extractRoles` includes them.
 - The rule extractor ignores assistant-stated facts.

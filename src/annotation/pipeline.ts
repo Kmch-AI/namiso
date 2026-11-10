@@ -245,6 +245,9 @@ export class AnnotationPipeline {
           extractorVersion: this.extractor.version,
           evidenceIds,
         })
+        if (result.created) {
+          this.linker.linkEventOccurrence(spaceId, result.event, evidenceIds)
+        }
         this.upgradeEventRestriction(result.event, event)
         eventIds.add(result.event.id)
         for (const participant of result.participants) entityIds.add(participant.entity.id)
