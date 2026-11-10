@@ -30,17 +30,29 @@ test('a self-given name becomes an alias of the speaker entity', async () => {
     async extract(input) {
       const messages = new Map(input.messages.map((message) => [message.id, message]))
       const claims: ExtractedClaim[] = []
+      let introducedBy = input.focusMessageIds[0]
       for (const id of input.focusMessageIds) {
         const content = messages.get(id)?.content ?? ''
         if (content.includes('我叫')) {
-          claims.push(nameClaim('阿渡', '姓名', '阿渡（渡口的渡）', id))
+          introducedBy = id
         } else if (content.includes('叫你')) {
           claims.push(nameClaim(AI, '称呼', '阿渡', id))
         } else {
           claims.push(nameClaim('阿渡', '职业', '写悬疑小说', id))
         }
       }
-      return { entities: [], claims, events: [] }
+      return {
+        entities: [
+          {
+            name: '阿渡',
+            type: 'person',
+            description: '写悬疑小说的作者',
+            evidenceMessageIds: [introducedBy],
+          },
+        ],
+        claims,
+        events: [],
+      }
     },
   }
   const { namiso, say, drain } = await setup({ extraction })
