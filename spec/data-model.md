@@ -15,7 +15,7 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 | `conversations`       | Conversation metadata                                                                | Space, external ID, time range                                          |
 | `messages`            | Raw conversation, append-only; `consolidated_at` marks extracted rows                | Unique `(conversation_id, message_index)`; unique external ID per space |
 | `entities`            | People, groups, places, animals, objects, artifacts, activities, topics, other, self | Space and name index                                                    |
-| `entity_aliases`      | Alternate names                                                                      | Unique alias per space                                                  |
+| `entity_aliases`      | Alternate names                                                                      | Unique per entity; a name may repeat across entities                    |
 | `claims`              | Subject, attribute, predicate, object facts                                          | Subject and attribute index; status                                     |
 | `attributes`          | Attribute key, label, and cardinality per space                                      | Primary key `(memory_space_id, key)`                                    |
 | `events`              | Time-bound occurrences                                                               | Time, type, and status indexes                                          |

@@ -76,7 +76,7 @@ Resolution order in `EntityResolver`:
 4. Speaker ID stored in entity metadata.
 5. Create a new entity. If the requested type is `self`, create it as `artifact` instead.
 
-Aliases are unique per space. Two similar names are never merged by string similarity alone. An extracted alias that already belongs to another entity is skipped, so extraction cannot attach one entity's name to another. A caller can add aliases with `ensureSelf()` or `ensureEntity()`. An extracted entity carries its sensitivity and disclosure through resolution; an existing entity upgrades when a later extraction is more restrictive.
+Names are not unique. Two entities may share a name, and an alias may repeat another entity's name; identity is the entity ID. Resolution chooses by evidence. A canonical name beats every alias, including one whose owner has the requested type. Among alias owners, an entity whose type equals the requested type wins; otherwise the oldest entity wins, ordering by `created_at` then ID. The order is stable, so repeated mentions keep resolving to one entity. Two similar names are never merged by string similarity alone. A caller can add aliases with `ensureSelf()` or `ensureEntity()`. An extracted entity carries its sensitivity and disclosure through resolution; an existing entity upgrades when a later extraction is more restrictive.
 
 ## Claim linking
 

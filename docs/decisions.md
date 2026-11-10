@@ -462,7 +462,7 @@ Third attempt. The merge was reduced to one source: the message pattern only, wi
 
 Controlled comparison. The extraction replay harness keys each extraction request by the system prompt, focus indices, and message tuples, excluding known entities and facts. One error-free P20 build was recorded and replayed for both runs, so the only difference was identity resolution. Retrieval was neutral: 78.0% evidence recall and 85.0% context hit in both runs. Nine items changed anchors, four gained and five lost; `P20-CASE-028`, the city profile question, gained at all four intervals. End to end, the same answer and judge pipeline scored the baseline 137/169 and the merge 141/169, with 16 items gained and 11 lost. The gains include `P20-CASE-009/d45`, `P20-CASE-021/d00`, `P20-CASE-013/d03`, and `P20-CASE-025/d45`. The sign under a fixed extraction is positive on answers and neutral on anchors. The two earlier negative samples measured extraction variance, which moved the anchor score by 3 points with identical code.
 
-Decision. The simplified merge ships. It reads self-introductions from the focus messages, vetoes names that a restricted claim marks private, and relies on the alias guard that refuses a name another entity owns (b5f8d13). The claim-source path and the prompt rule stay out. The per-subject claim cap was tried as the crowding companion and rejected (D49); under the same controlled replay it cost five anchors and gained none.
+Decision. The simplified merge ships. It reads self-introductions from the focus messages, vetoes names that a restricted claim marks private, and relies on the alias guard that refuses a name another entity owns (b5f8d13). The claim-source path and the prompt rule stay out. The per-subject claim cap was tried as the crowding companion and rejected (D49); under the same controlled replay it cost five anchors and gained none. The alias guard was replaced by duplicate-tolerant resolution in D50.
 
 Verification: 117 tests pass, 1 integration test skipped; `pnpm verify` passes. The offline formal set scores 74.0% evidence recall and 77.0% context hit with p50 860 tokens; the one-point hit difference from the pre-merge 78.0% is `P20-CASE-025/d00`, where the merged participant changes the expansion graph. The controlled artifacts are under `bench/out/replay-clean/`.
 
@@ -475,6 +475,21 @@ Rule tried. Before coverage selection, the renderable claims were grouped by sub
 Controlled result. One error-free P20 extraction recording was replayed for both runs, so the only difference was the cap. The baseline scored 78.0% evidence recall and 85.0% context hit. The cap scored 77.0% and 84.0%. Five items changed anchors, all five lost and none gained. The cap removed claims the questions needed; the MMR fill and the entity and facet quotas already kept one subject from taking every slot. Reverted in 3519a70.
 
 The extraction replay harness stays in `bench/out/extraction-replay.mjs`. It keys each extraction request by the system prompt, focus indices, and message tuples, excluding known entities and facts, and it is the tool that separated the merge's neutral effect from the earlier extraction variance.
+
+## D50. Duplicate names across entities, resolution by type then age
+
+Problem. The alias index was unique on `(memory_space_id, alias)`, and `aliasOwnedElsewhere` skipped any extracted alias that another entity already owned. Two people sharing a name are normal, so the engine could not record the second one and the first claimant kept the string forever. Identity was decided by whoever wrote first, not by the entity.
+
+Design. Aliases are unique per entity, not per space: `idx_entity_aliases_unique` covers `(memory_space_id, entity_id, alias)` (schema 9, `ALIAS_UNIQUENESS_MIGRATION_SQL`). Extraction attaches aliases without a collision check. Resolution picks a target from the evidence:
+
+1. The self entity, when the name matches its name or one of its aliases. The assistant identity keeps precedence so speaker names do not fragment.
+2. A canonical name, case-insensitive. This beats every alias, because an entity's own name is its primary designator.
+3. Alias owners. An owner whose type equals the requested type wins; otherwise the oldest owner wins, ordered by `created_at` then ID. The order is stable, so repeated mentions keep resolving to one entity.
+4. Otherwise create an entity.
+
+The restricted-name rule is unchanged: a name-like claim marked private or restrictive still blocks the self-given-name scan, so a restricted name never becomes a public alias.
+
+Verification: tests cover a duplicate alias attached to a second entity, a canonical name winning over another entity's alias, and a shared alias resolving to the typed owner over an older entity. `pnpm verify` passes.
 
 ## Verification record (2026-11-09)
 

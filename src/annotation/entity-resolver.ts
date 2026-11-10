@@ -21,6 +21,7 @@ import {
   insertEntity,
   listAliasesBySpace,
   listEntities,
+  listEntitiesByAlias,
   updateEntity,
 } from '../storage/memory-repo.ts'
 import { normalizeName } from '../text.ts'
@@ -60,7 +61,7 @@ export class EntityResolver {
     }
     let existing =
       findEntityByName(this.db, input.spaceId, name) ??
-      findEntityByAlias(this.db, input.spaceId, name)
+      this.aliasTarget(input.spaceId, name, input.type)
     if (existing !== null) {
       if (existing.type === 'self' && existing.id !== self?.id) {
         updateEntity(this.db, existing.id, { type: 'artifact' })
@@ -207,7 +208,12 @@ export class EntityResolver {
 
   private matchesSelf(self: Entity, spaceId: MemorySpaceId, name: string): boolean {
     if (normalizeName(self.name) === normalizeName(name)) return true
-    return findEntityByAlias(this.db, spaceId, name)?.id === self.id
+    return listEntitiesByAlias(this.db, spaceId, name).some((entity) => entity.id === self.id)
+  }
+
+  private aliasTarget(spaceId: MemorySpaceId, name: string, type: EntityKind): Entity | null {
+    const candidates = listEntitiesByAlias(this.db, spaceId, name)
+    return candidates.find((candidate) => candidate.type === type) ?? candidates[0] ?? null
   }
 
   private updateDetails(entity: Entity, input: ResolveEntityInput, name: string): void {
@@ -237,7 +243,6 @@ export class EntityResolver {
       if (cleaned.length === 0 || normalizeName(cleaned) === normalizeName(canonicalName)) {
         continue
       }
-      if (this.aliasOwnedElsewhere(entity, cleaned)) continue
       insertAlias(this.db, {
         spaceId: entity.memorySpaceId,
         entityId: entity.id,
@@ -245,13 +250,6 @@ export class EntityResolver {
         ...(sourceMessageId === undefined ? {} : { sourceMessageId }),
       })
     }
-  }
-
-  private aliasOwnedElsewhere(entity: Entity, alias: string): boolean {
-    const byName = findEntityByName(this.db, entity.memorySpaceId, alias)
-    if (byName !== null && byName.id !== entity.id) return true
-    const byAlias = findEntityByAlias(this.db, entity.memorySpaceId, alias)
-    return byAlias !== null && byAlias.id !== entity.id
   }
 
   addAlias(entity: Entity, alias: string, sourceMessageId?: MessageId): void {

@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { NamisoError } from '../errors.ts'
 import {
+  ALIAS_UNIQUENESS_MIGRATION_SQL,
   CLAIM_ATTRIBUTE_BACKFILL_SQL,
   CLAIM_ATTRIBUTE_COLUMN_SQL,
   CLAIM_ATTRIBUTE_INDEX_SQL,
@@ -103,6 +104,9 @@ export class Database {
       if (!this.hasColumn('events', 'disclosure')) {
         this.raw.exec(EVENT_DISCLOSURE_COLUMN_SQL)
       }
+    }
+    if (version < 9) {
+      this.raw.exec(ALIAS_UNIQUENESS_MIGRATION_SQL)
     }
     this.raw.exec(CLAIM_ATTRIBUTE_INDEX_SQL)
     if (version < SCHEMA_VERSION) {

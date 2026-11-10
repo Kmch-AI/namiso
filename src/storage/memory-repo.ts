@@ -95,7 +95,10 @@ export function findEntityByName(
   name: string,
 ): Entity | null {
   const row = db.get(
-    'SELECT * FROM entities WHERE memory_space_id = ? AND name = ? COLLATE NOCASE LIMIT 1',
+    `SELECT * FROM entities
+     WHERE memory_space_id = ? AND name = ? COLLATE NOCASE
+     ORDER BY created_at ASC, id ASC
+     LIMIT 1`,
     spaceId,
     name,
   )
@@ -107,15 +110,20 @@ export function findEntityByAlias(
   spaceId: MemorySpaceId,
   alias: string,
 ): Entity | null {
-  const row = db.get(
-    `SELECT e.* FROM entity_aliases a
-     JOIN entities e ON e.id = a.entity_id
-     WHERE a.memory_space_id = ? AND a.alias = ? COLLATE NOCASE
-     LIMIT 1`,
-    spaceId,
-    alias,
-  )
-  return row === undefined ? null : mapEntity(row)
+  return listEntitiesByAlias(db, spaceId, alias)[0] ?? null
+}
+
+export function listEntitiesByAlias(db: Database, spaceId: MemorySpaceId, alias: string): Entity[] {
+  return db
+    .all(
+      `SELECT e.* FROM entity_aliases a
+       JOIN entities e ON e.id = a.entity_id
+       WHERE a.memory_space_id = ? AND a.alias = ? COLLATE NOCASE
+       ORDER BY e.created_at ASC, e.id ASC`,
+      spaceId,
+      alias,
+    )
+    .map(mapEntity)
 }
 
 export function listEntities(db: Database, spaceId: MemorySpaceId): Entity[] {

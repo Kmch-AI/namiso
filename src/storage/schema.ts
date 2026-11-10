@@ -1,4 +1,10 @@
-export const SCHEMA_VERSION = 8
+export const SCHEMA_VERSION = 9
+
+export const ALIAS_UNIQUENESS_MIGRATION_SQL = `
+DROP INDEX IF EXISTS idx_entity_aliases_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_aliases_unique
+ON entity_aliases(memory_space_id, entity_id, alias);
+`
 
 export const ENTITY_TYPE_MIGRATION_SQL = `
 UPDATE entities
@@ -184,7 +190,7 @@ CREATE TABLE IF NOT EXISTS entity_aliases (
   FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_aliases_unique
-ON entity_aliases(memory_space_id, alias);
+ON entity_aliases(memory_space_id, entity_id, alias);
 CREATE INDEX IF NOT EXISTS idx_entity_aliases_entity
 ON entity_aliases(entity_id);
 
