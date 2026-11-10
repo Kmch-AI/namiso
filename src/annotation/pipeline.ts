@@ -56,6 +56,8 @@ const NAME_ATTRIBUTES: ReadonlySet<string> = new Set([
   'alias',
 ])
 const NAME_ALIAS_STOP = /[（(，,、；;：:\s“”"']/
+const SELF_NAME =
+  /(?:我叫|我的名字(?:是|叫))\s*(?!他|她|它|你|您)([^，。！？,!?\s]{1,20})|叫我\s*([^，。！？,!?\s]{1,20})/
 const LEGACY_ONE_VALUED = new Set([
   'name',
   'occupation',
@@ -167,7 +169,7 @@ export class AnnotationPipeline {
     }> = []
 
     this.db.transaction(() => {
-      this.captureNameAliases(spaceId, extraction, speakerNames, validEvidence)
+      this.captureNameAliases(spaceId, focus, extraction, speakerNames, validEvidence)
 
       for (const entity of extraction.entities) {
         const sourceMessageId =
@@ -294,17 +296,40 @@ export class AnnotationPipeline {
 
   private captureNameAliases(
     spaceId: MemorySpaceId,
+    focus: readonly Message[],
     extraction: ExtractionResult,
     speakerNames: ReadonlyMap<MessageId, string>,
     validEvidence: Map<MessageId, Message>,
   ): void {
+    const blocked = new Set<string>()
+    for (const claim of extraction.claims) {
+      if (claim.object.kind !== 'literal') continue
+      const key = normalizeAttribute(claim.attribute ?? claim.predicate)
+      if (!NAME_ATTRIBUTES.has(key)) continue
+      if (!isRestricted(restrictionOf(claim))) continue
+      const alias = cleanAlias(claim.object.value)
+      if (alias.length > 0) blocked.add(normalizeName(alias))
+    }
+
+    for (const message of focus) {
+      if (message.role !== 'user' && message.role !== 'assistant') continue
+      const match = SELF_NAME.exec(message.content)
+      if (match === null) continue
+      const alias = cleanAlias(match[1] ?? match[2] ?? '')
+      if (alias.length === 0 || alias.length > 24) continue
+      if (blocked.has(normalizeName(alias))) continue
+      const speaker = this.resolver.findSpeaker(spaceId, message.speakerId)
+      if (speaker === null) continue
+      this.resolver.addAlias(speaker, alias, message.id)
+    }
+
     const speakers = new Set([...speakerNames.values()].map((name) => normalizeName(name)))
     for (const claim of extraction.claims) {
       if (claim.object.kind !== 'literal') continue
       const key = normalizeAttribute(claim.attribute ?? claim.predicate)
       if (!NAME_ATTRIBUTES.has(key)) continue
       if (isRestricted(restrictionOf(claim))) continue
-      const alias = (claim.object.value.split(NAME_ALIAS_STOP)[0] ?? '').trim()
+      const alias = cleanAlias(claim.object.value)
       if (alias.length === 0 || alias.length > 24) continue
       const sourceMessageId = claim.evidenceMessageIds.find((id) => validEvidence.has(id))
       if (sourceMessageId === undefined) continue
@@ -527,6 +552,10 @@ export class AnnotationPipeline {
     }
     return [...items.values()]
   }
+}
+
+function cleanAlias(value: string): string {
+  return (value.split(NAME_ALIAS_STOP)[0] ?? '').trim()
 }
 
 function speakerNameOf(message: Message): string {
