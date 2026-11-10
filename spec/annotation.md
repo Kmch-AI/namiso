@@ -113,6 +113,12 @@ For a `usage_change` event:
 
 For a `usage_stop` event, supersede the actor's active `uses` claims without inserting a new one. Uncertain events never change claim state.
 
+## Speaker identity
+
+A self-given name registers an alias on the speaker entity before entities and claims resolve. The focus message is the source. A user or assistant message matching `我叫X`, `我的名字是X`, `我的名字叫X`, or `叫我X` registers `X` as an alias of that message's speaker. A negative lookahead keeps `我叫他`, `我叫你`, and similar from matching. The value is cut at the first punctuation or whitespace and capped at 24 characters.
+
+A name-like claim whose normalized attribute is `name`, `姓名`, `名字`, `昵称`, `别名`, `nickname`, or `alias` can veto the alias. When such a claim is restricted, meaning `sensitivity = private` or a disclosure other than `allowed`, its value is never registered. An alias renders in public entity lines, so promoting a restricted name would bypass its claim restriction. Later claims and extracted entities that use the name resolve to the speaker, so a self-given name does not split the person into a second entity.
+
 ## Occurrence linking
 
 The linker may connect a new claim to an earlier event that records the same occurrence. The relation is `same_occurrence` from claim to event, and its confidence is the match score. The rule:
@@ -139,7 +145,7 @@ The context builder groups active claims by subject and attribute. Two different
 ## Known gaps
 
 - No general coreference resolution beyond the speaker, known aliases, and ordinal occurrence clauses.
-- No automatic entity merge after creation.
+- No automatic entity merge beyond a self-given name alias on a speaker.
 - Extraction defaults to user and assistant messages. System and tool facts remain raw chunks unless `extractRoles` includes them.
 - The rule extractor ignores assistant-stated facts.
 - No contradiction detector that marks a claim `disputed` during writes. Conflicts surface as retrieval notes.

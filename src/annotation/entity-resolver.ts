@@ -254,6 +254,10 @@ export class EntityResolver {
     return byAlias !== null && byAlias.id !== entity.id
   }
 
+  addAlias(entity: Entity, alias: string, sourceMessageId?: MessageId): void {
+    this.addAliases(entity, [alias], sourceMessageId, entity.name)
+  }
+
   findSpeaker(spaceId: MemorySpaceId, speakerId: string): Entity | null {
     const bySpeaker = findEntityBySpeakerId(this.db, spaceId, speakerId)
     if (bySpeaker !== null) return bySpeaker

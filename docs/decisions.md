@@ -448,7 +448,7 @@ Rule. An entity renders only when it has details: aliases, a description that is
 
 Verification: a claim-named bare entity produces no `[Relevant Entities]` section while the claim renders; an entity with a description still renders its line; the private-entity test now asserts the public section is absent and the description stays in `[Private]`. 114 tests pass, 1 integration test skipped. The offline formal set stays at 74.0% evidence recall and 78.0% context hit, and context tokens p50 fall from 858 to 831; retrieval latency p50 is 19.7 ms and ingest 27.2 s.
 
-## D48. Speaker identity merge rejected twice on live results
+## D48. Speaker identity merge kept after a controlled comparison
 
 Problem. In the fresh P20 database the user was stored as three entities: `用户` with 147 claims, `秦渡` with 82, and `渡哥` with 53. The speaker entity comes from the message speaker, so a first-person query resolves to `用户` and the SQL channel never reaches the claims and events under the other names. Across 170 fresh P20 contexts, 24 contained claims on a named user entity. P20-CASE-029/d00 shows the cost: the self-introduction event that says the user writes suspense has `秦渡` as its participant, so the profile question never retrieves it and the answer denies the genre.
 
@@ -460,9 +460,21 @@ Live result. Fresh P20 end to end, answer at reasoning `none`, judged by the ben
 
 Third attempt. The merge was reduced to one source: the message pattern only, with the claim-source path removed, plus a veto for restricted name claims. The tree was rebuilt with this version and a second fresh P20 sample was taken. The merge again worked: contexts with named user claims were 3, and the user entity held 243 claims and 74 events. Retrieval scored 74.0% evidence recall and 80.0% context hit, against the 78.0%/84.0% baseline, with 3 extraction errors and 167 scored items. The two merged samples both land below the baseline.
 
-Decision. Reverted again in dd787a2, returning the tree to the 144/170 state. Aliases that another entity already owns are now refused by a guard kept from this work (b5f8d13), because that rule is independent of identity. The identity model is still correct, but it cannot ship before the engine can keep one subject's records from filling the context, and the extractor variance has to shrink before a two- or three-point difference means anything. The finding stays recorded so the next attempt starts from the merge, not from the prompt.
+Controlled comparison. The extraction replay harness keys each extraction request by the system prompt, focus indices, and message tuples, excluding known entities and facts. One error-free P20 build was recorded and replayed for both runs, so the only difference was identity resolution. Retrieval was neutral: 78.0% evidence recall and 85.0% context hit in both runs. Nine items changed anchors, four gained and five lost; `P20-CASE-028`, the city profile question, gained at all four intervals. End to end, the same answer and judge pipeline scored the baseline 137/169 and the merge 141/169, with 16 items gained and 11 lost. The gains include `P20-CASE-009/d45`, `P20-CASE-021/d00`, `P20-CASE-013/d03`, and `P20-CASE-025/d45`. The sign under a fixed extraction is positive on answers and neutral on anchors. The two earlier negative samples measured extraction variance, which moved the anchor score by 3 points with identical code.
 
-Verification of the revert: 115 tests pass, 1 integration test skipped; `pnpm verify` passes.
+Decision. The simplified merge ships. It reads self-introductions from the focus messages, vetoes names that a restricted claim marks private, and relies on the alias guard that refuses a name another entity owns (b5f8d13). The claim-source path and the prompt rule stay out. The per-subject claim cap was tried as the crowding companion and rejected (D49); under the same controlled replay it cost five anchors and gained none.
+
+Verification: 117 tests pass, 1 integration test skipped; `pnpm verify` passes. The controlled artifacts are under `bench/out/replay-clean/`.
+
+## D49. Subject claim cap rejected on the controlled replay
+
+Problem. A person accumulates claims, and the twelve context slots can fill with one subject's records. The baseline P20 contexts show 8 to 10 claims whose subject is the user for a single profile question, and the merged user entity measured in D48 held 243 to 311 claims.
+
+Rule tried. Before coverage selection, the renderable claims were grouped by subject and capped at four in rank order. Each dropped claim's evidence messages moved to the first kept claim's closure evidence, so the evidence stayed reachable without a visible line.
+
+Controlled result. One error-free P20 extraction recording was replayed for both runs, so the only difference was the cap. The baseline scored 78.0% evidence recall and 85.0% context hit. The cap scored 77.0% and 84.0%. Five items changed anchors, all five lost and none gained. The cap removed claims the questions needed; the MMR fill and the entity and facet quotas already kept one subject from taking every slot. Reverted in 3519a70.
+
+The extraction replay harness stays in `bench/out/extraction-replay.mjs`. It keys each extraction request by the system prompt, focus indices, and message tuples, excluding known entities and facts, and it is the tool that separated the merge's neutral effect from the earlier extraction variance.
 
 ## Verification record (2026-11-09)
 
