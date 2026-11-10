@@ -759,3 +759,33 @@ test('a linked event contributes evidence ahead of four matching claim messages'
   )
   namiso.close()
 })
+
+test('caller context resolves a pronoun to a recent entity', async () => {
+  const { namiso, say, drain } = await setup()
+  await say(USER, 'user', '小林是我的朋友。')
+  await say(USER, 'user', '我下周要去杭州看展览。')
+  await drain()
+
+  const friendId = namiso.getEntityDetails('小林')?.entity.id
+  assert.ok(friendId !== undefined)
+  const context = '我刚跟小林聊过，他最近在忙装修。'
+
+  const withContext = await namiso.retrieve({ query: '他最近在忙什么？', context })
+  assert.ok(withContext.trace.entityIds.includes(friendId))
+  assert.equal(
+    withContext.trace.coverage?.entities.some((entry) => entry.entityId === friendId),
+    false,
+  )
+
+  const withoutContext = await namiso.retrieve({ query: '他最近在忙什么？' })
+  assert.equal(withoutContext.trace.entityIds.includes(friendId), false)
+
+  const noReference = await namiso.retrieve({ query: '展览的主题是什么？', context })
+  assert.equal(noReference.trace.entityIds.includes(friendId), false)
+
+  await assert.rejects(
+    namiso.retrieve({ query: '他最近在忙什么？', context: 'x'.repeat(8001) }),
+    /context must be a string of at most 8000 characters/,
+  )
+  namiso.close()
+})

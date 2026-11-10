@@ -430,6 +430,16 @@ Verification: 112 tests pass, 1 integration test skipped. A test covers a correc
 
 Non-overfit: the trigger uses ordinal language patterns, participant entities, evidence order, and token overlap. No persona, question, or event-summary strings.
 
+## D46. Caller context resolves third-person queries
+
+Problem. `getContext` received only the query. A follow-up such as "他最近在忙什么？" names no entity, so the SQL channel had nothing to look up and the engine could not use the previous turn. The chat harness holds that turn but had no way to pass it.
+
+Design. `retrieve` and `getContext` accept `context?: string`, the recent dialogue, capped at 8,000 characters at the public boundary. It is read only when the query contains a third-person reference (`他`, `她`, `它`, `对方`, `这位`, `那人`, and similar), detected with a regex that excludes `其他`, `其它`, and `他人`. Matching runs on the last 240 characters of the context, falls back to the whole context, and adds at most two non-self entities. A person reference keeps person entities; a mixed reference keeps any type. Context entities join the mentioned set used by the SQL channel and appear in the trace, but create no coverage quotas, following the existing rule for pronoun-resolved entities. Ranking, FTS, and vector search still use the query alone.
+
+Verification: a unit test resolves a friend named in the context for a `他` query, finds no entity without the context, ignores the context for a query without a reference marker, and rejects a context over the cap. 113 tests pass, 1 integration test skipped. The benchmark harness passes no context, so this unit has no benchmark delta; it is a caller-facing capability with unit coverage only.
+
+Non-overfit: the rule uses pronoun markers and entity names from caller-supplied text. No persona, question, or phrase strings.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |

@@ -132,6 +132,7 @@ Calls are serialized per instance. A second call processes only messages that re
 ```ts
 await memory.retrieve({
   query: "我现在使用什么模型？",
+  context?: string,            // recent dialogue for pronoun resolution, at most 8000 characters
   entityIds?: string[],
   memoryTypes?: Array<"conversation" | "entity" | "claim" | "event">,
   timeRange?: { from?: number; to?: number },
@@ -148,6 +149,8 @@ await memory.retrieve({
 `RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score. The trace adds `aspects`, `facets`, `coverage`, and, when the query has a bounded time expression, `time` with the interpreted windows.
 
 `now` and `timeZone` control interpretation of relative time expressions. They never filter: a resolved window boosts matching records and appears in the trace and the context. Use `timeRange` for a deterministic filter.
+
+`context` is the recent dialogue, not additional query text. It is read only when the query has a third-person reference, and only to resolve that reference to entities. Ranking still uses the query alone.
 
 ## Context
 

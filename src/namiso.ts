@@ -102,8 +102,11 @@ export interface IngestResult {
   consolidated: boolean
 }
 
+const MAX_CONTEXT_CHARS = 8000
+
 export interface RetrieveInput {
   query: string
+  context?: string
   entityIds?: readonly string[]
   memoryTypes?: readonly ('conversation' | 'entity' | 'claim' | 'event')[]
   timeRange?: RetrievalTimeRange
@@ -402,6 +405,14 @@ export class Namiso {
   async retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     this.assertOpen()
     this.validateQuery(input.query)
+    if (
+      input.context !== undefined &&
+      (typeof input.context !== 'string' || input.context.length > MAX_CONTEXT_CHARS)
+    ) {
+      throw new ValidationError(
+        `context must be a string of at most ${MAX_CONTEXT_CHARS} characters`,
+      )
+    }
     if (input.timeZone !== undefined) validateTimeZone(input.timeZone)
     if (
       input.timeRange?.from !== undefined &&
@@ -414,6 +425,7 @@ export class Namiso {
     return this.retriever.retrieve({
       memorySpaceId: this.memorySpace.id,
       query: input.query,
+      ...(input.context === undefined ? {} : { context: input.context }),
       ...(input.entityIds === undefined ? {} : { entityIds: input.entityIds }),
       ...(input.memoryTypes === undefined ? {} : { memoryTypes: input.memoryTypes }),
       ...(input.timeRange === undefined ? {} : { timeRange: input.timeRange }),

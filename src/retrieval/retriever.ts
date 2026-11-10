@@ -40,6 +40,7 @@ import { resolveTimeExpressions } from './time-expression.ts'
 export interface RetrieveOptions {
   memorySpaceId: MemorySpaceId
   query: string
+  context?: string
   entityIds?: readonly string[]
   memoryTypes?: readonly ('conversation' | 'entity' | 'claim' | 'event')[]
   timeRange?: RetrievalTimeRange
@@ -64,6 +65,10 @@ const RERANK_POOL_LIMIT = 50
 const TIME_BOOST = 0.1
 const FTS_STAGE_MIN = 3
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+const CONTEXT_MENTION_LIMIT = 2
+const CONTEXT_TAIL_CHARS = 240
+const CONTEXT_PERSON_REFERENCE = /(?:^|[^其])他(?!人)|她|对方|此人|这人|那人|这位|那位/
+const CONTEXT_THING_REFERENCE = /(?:^|[^其])它/
 
 export class Retriever {
   private readonly db: Database
@@ -99,7 +104,12 @@ export class Retriever {
     const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE
     const windows = resolveTimeExpressions(query, now, timeZone)
     const notes: string[] = []
-    const mentioned = this.resolveMentioned(options.memorySpaceId, query, options.entityIds)
+    const mentioned = this.resolveMentioned(
+      options.memorySpaceId,
+      query,
+      options.entityIds,
+      options.context,
+    )
     const allowed = allowedKinds(options.memoryTypes)
     const sqlItems = this.sqlChannel(
       options,
@@ -198,6 +208,7 @@ export class Retriever {
     spaceId: MemorySpaceId,
     query: string,
     entityIds: readonly string[] | undefined,
+    context: string | undefined,
   ): { entities: Entity[]; coverageIds: string[] } {
     if (entityIds !== undefined && entityIds.length > 0) {
       const resolved: Entity[] = []
@@ -212,6 +223,7 @@ export class Retriever {
     const named = this.resolver.findMentioned(spaceId, query, 5)
     const coverageIds = named.map((entity) => entity.id)
     const mentioned = [...named]
+    this.addContextMentioned(spaceId, query, context, mentioned)
     if (/你|您|you\b|your\b/i.test(query)) {
       const self = this.resolver.self(spaceId)
       if (self !== null && !mentioned.some((entity) => entity.id === self.id)) {
@@ -226,6 +238,32 @@ export class Retriever {
       return { entities: mentioned, coverageIds }
     }
     return { entities: [speaker, ...mentioned], coverageIds }
+  }
+
+  private addContextMentioned(
+    spaceId: MemorySpaceId,
+    query: string,
+    context: string | undefined,
+    mentioned: Entity[],
+  ): void {
+    if (context === undefined) return
+    const trimmed = context.trim()
+    if (trimmed.length === 0) return
+    const person = CONTEXT_PERSON_REFERENCE.test(query)
+    const thing = CONTEXT_THING_REFERENCE.test(query)
+    if (!person && !thing) return
+    const personOnly = person && !thing
+    const recent =
+      trimmed.length > CONTEXT_TAIL_CHARS ? trimmed.slice(-CONTEXT_TAIL_CHARS) : trimmed
+    const recentMatches = this.resolver.findMentioned(spaceId, recent, 8)
+    const candidates =
+      recentMatches.length > 0 ? recentMatches : this.resolver.findMentioned(spaceId, trimmed, 8)
+    const picked = candidates
+      .filter((entity) => entity.type !== 'self')
+      .filter((entity) => !personOnly || entity.type === 'person')
+      .filter((entity) => !mentioned.some((item) => item.id === entity.id))
+      .slice(0, CONTEXT_MENTION_LIMIT)
+    mentioned.push(...picked)
   }
 
   private sqlChannel(
