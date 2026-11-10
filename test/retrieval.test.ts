@@ -789,3 +789,38 @@ test('caller context resolves a pronoun to a recent entity', async () => {
   )
   namiso.close()
 })
+
+test('an entity line renders only when it carries details', async () => {
+  const bare = await setup()
+  await bare.say(USER, 'user', '阿禾是我的朋友。')
+  await bare.drain()
+  const bareContext = await bare.namiso.getContext({ query: '阿禾是谁？' })
+  assert.ok(bareContext.items.some((item) => item.record.kind === 'claim'))
+  assert.equal(bareContext.text.includes('[Relevant Entities]'), false)
+  bare.namiso.close()
+
+  const detailed: ExtractionProvider = {
+    version: 'entity-detail',
+    async extract(input) {
+      const id = input.focusMessageIds[0]
+      return {
+        entities: [
+          {
+            name: '阿禾',
+            type: 'person',
+            description: '在城南开花店',
+            evidenceMessageIds: [id],
+          },
+        ],
+        claims: [],
+        events: [],
+      }
+    },
+  }
+  const withDetails = await setup({ extraction: detailed })
+  await withDetails.say(USER, 'user', '阿禾在城南开花店。')
+  await withDetails.drain()
+  const detailContext = await withDetails.namiso.getContext({ query: '阿禾是谁？' })
+  assert.match(detailContext.text, /\[Relevant Entities\][\s\S]*在城南开花店/)
+  withDetails.namiso.close()
+})

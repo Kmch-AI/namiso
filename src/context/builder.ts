@@ -131,6 +131,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
       : collectEvidence(db, input.memorySpaceId, input.candidates, input.query)
   const dates = collectDates(db, input.candidates)
   const described = describedEntities(input.candidates)
+  const renderedEntities = entities.filter((candidate) => entityHasDetails(candidate, described))
   const conflicts = collectConflicts(activeClaims, dates, state.timeZone)
   const uncertainEvents = collectUncertainEvents(publicEvents, dates, state.timeZone)
 
@@ -141,7 +142,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     unconfirmedClaims,
     privateClaims,
     privateEvents,
-    entities,
+    entities: renderedEntities,
     events: publicEvents,
     historicalClaims,
     relations,
@@ -160,7 +161,7 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     items: [
       ...activeClaims,
       ...unconfirmedClaims,
-      ...entities,
+      ...renderedEntities,
       ...publicEvents,
       ...historicalClaims,
       ...privateClaims,
@@ -268,7 +269,9 @@ function renderSections(
   )
   addSection(
     '[Relevant Entities]',
-    input.entities.map((candidate) => entityLine(candidate, detail, input.state, input.described)),
+    input.entities
+      .map((candidate) => entityLine(candidate, detail, input.state, input.described))
+      .filter((line) => line.length > 0),
   )
   addSection('[Unresolved Conflicts]', input.conflicts)
   addSection('[Uncertain Events]', input.uncertainEvents)
@@ -336,6 +339,14 @@ function claimLine(
   return `- [claim:${refOf(state, 'claim', claim.id)}] ${subject.name} ${claim.predicate} ${negative}${object}（${status}）`
 }
 
+function entityHasDetails(candidate: MemoryCandidate, described: ReadonlySet<string>): boolean {
+  if (candidate.record.kind !== 'entity') return false
+  const { entity, aliases } = candidate.record
+  if (aliases.length > 0) return true
+  if (entity.description === null) return false
+  return isRestricted(restrictionOf(entity)) || !described.has(entity.id)
+}
+
 function entityLine(
   candidate: MemoryCandidate,
   detail: DetailLevel,
@@ -355,8 +366,8 @@ function entityLine(
   if (aliases.length > 0) {
     details.push(truncate(`别名：${aliases.join('、')}`, detail.description))
   }
-  const suffix = details.length > 0 ? `：${details.join('；')}` : ''
-  return `- [entity:${refOf(state, 'entity', entity.id)}] ${entity.name}（${entity.type}）${suffix}`
+  if (details.length === 0) return ''
+  return `- [entity:${refOf(state, 'entity', entity.id)}] ${entity.name}（${entity.type}）：${details.join('；')}`
 }
 
 function eventLine(

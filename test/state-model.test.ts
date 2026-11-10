@@ -325,11 +325,7 @@ test('a private entity description stays out of the public entity line', async (
   const privateIndex = context.text.indexOf('[Private]')
   const descriptionIndex = context.text.indexOf('家里不知道')
   assert.ok(privateIndex !== -1 && descriptionIndex > privateIndex)
-  const publicEntities = context.text.slice(
-    context.text.indexOf('[Relevant Entities]'),
-    privateIndex,
-  )
-  assert.equal(publicEntities.includes('家里不知道'), false)
+  assert.equal(context.text.includes('[Relevant Entities]'), false)
   namiso.close()
 })
 

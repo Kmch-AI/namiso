@@ -440,6 +440,14 @@ Verification: a unit test resolves a friend named in the context for a `他` que
 
 Non-overfit: the rule uses pronoun markers and entity names from caller-supplied text. No persona, question, or phrase strings.
 
+## D47. Bare entities take no context line
+
+Problem. The relevant-entities section rendered every selected entity, so an entity with no description and no aliases produced a line that added only its name and type. In the P20 d15 readthrough context, two of the three entity lines carried no description and a third described a participant of a different instance. None answered the question, and each line cost context budget.
+
+Rule. An entity renders only when it has details: aliases, a description that is not suppressed because a rendered claim or event already names the entity, or, for a restricted entity, a description for the private section. The section header disappears when no line remains. The entity is removed from `MemoryContext.items`, which lists rendered records, but it remains a retrieval candidate, so selection, expansion, and coverage quotas are unchanged.
+
+Verification: a claim-named bare entity produces no `[Relevant Entities]` section while the claim renders; an entity with a description still renders its line; the private-entity test now asserts the public section is absent and the description stays in `[Private]`. 114 tests pass, 1 integration test skipped. The offline formal set stays at 74.0% evidence recall and 78.0% context hit, and context tokens p50 fall from 858 to 831; retrieval latency p50 is 19.7 ms and ingest 27.2 s.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |
