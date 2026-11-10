@@ -468,7 +468,7 @@ export class Retriever {
             .map((candidate) => `${candidate.title}\n${candidate.text}`),
         })
         if (isDegenerate(reranked)) {
-          notes.push('Reranker 分数无区分度，保留 RRF 排序。')
+          notes.push('Reranker 分数无可用区分度，保留 RRF 排序。')
         } else {
           scores = new Map(reranked.map((item) => [item.index, item.score]))
         }
@@ -640,5 +640,5 @@ function isDegenerate(scores: readonly { score: number }[]): boolean {
     min = Math.min(min, item.score)
     max = Math.max(max, item.score)
   }
-  return max <= 1e-9 || max - min <= 1e-9
+  return max < 1e-3 || max - min <= 1e-9
 }

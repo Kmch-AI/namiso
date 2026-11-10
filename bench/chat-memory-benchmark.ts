@@ -166,6 +166,16 @@ export async function runBenchmark(options: RunOptions): Promise<RunOutput> {
     const conversation =
       namiso.listConversations().find((item) => item.externalId === persona) ??
       namiso.createConversation({ externalId: persona })
+    const firstItem = items.find((item) => options.completedIds?.has(item.id) !== true)
+    if (firstItem !== undefined) {
+      const latest = namiso.getMessages({ conversationId: conversation.id, limit: 100_000 }).at(-1)
+      const visibleUntil = Math.floor(Date.parse(firstItem.now) / 1000)
+      if (latest !== undefined && latest.occurredAt > visibleUntil) {
+        throw new Error(
+          `database already contains messages after ${firstItem.id} (${firstItem.now}); start from a fresh --db path so retrieval cannot see later turns`,
+        )
+      }
+    }
     let ingestedTurns = 0
     for (const item of items) {
       if (options.completedIds?.has(item.id) === true) {

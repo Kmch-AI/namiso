@@ -153,6 +153,8 @@ The numbers above measure evidence recall. A whole-question pass count needs an 
 
 A formal run can take hours. Pass `--db <file>` and `--items <file>` to make it resumable. Every finished question is appended to the items file, and a rerun with the same paths skips those IDs. The database keeps consolidated messages, so extraction is not repeated for finished prefixes. The two flags are required together; `--items` without `--db` is rejected.
 
+Database reuse is only valid for resuming an unfinished run. A rerun that reprocesses finished items would query a database that already contains later turns, so early questions would see future messages. The harness rejects a database whose latest message is later than the first pending item's `now`; start such a rerun from a fresh `--db` path.
+
 ### End-to-end pass count
 
 The first two runs answered and judged through the local gateway with the benchmark's `grading/judge-prompt.md`. They differ in the retrieval and extraction stack.

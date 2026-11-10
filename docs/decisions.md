@@ -324,6 +324,8 @@ The real-model full run exposed this: P16 evidence recall was 13% and P01 33%. R
 
 Verification: 106 tests pass, 1 integration test skipped. Rerunning the same real-model databases with the fix raised evidence recall from 50% to 86% on P12, from 20% to 72% on P14, from 33% to 90% on P01, from 13% to 81% on P16, and from 18% to 75% on P17, with context hit following the same path. The combined 714-item run reaches 77.8% evidence recall and 82.5% context hit. The formal offline run is unaffected because it uses the lexical reranker.
 
+D42 corrects the mechanism. An un-reranked candidate keeps its full normalized RRF, not 0.3 of it. A reranked candidate gets 0.7 × relevance + 0.3 × normalized RRF. With relevance near 1e-6, the cap pushed ranks 26–50 above ranks 1–25. Raising the cap to 50 removed that asymmetry and restored the RRF order; it did not improve reranking.
+
 ## D40. Full real-model run with reasoning off
 
 Configuration: compact wire format, `knownFacts` off, reasoning effort `none` for extraction, answer, and judge, real Qwen3 embedding and reranker, calibrated token estimate, and the 50-document reranker pool from D39. Six personas ran in parallel over all 714 items.
@@ -340,7 +342,7 @@ Two follow-up experiments split the 106 failures. Re-answering all 106 with reas
 
 The first pass of this run also exposed the reranker pool defect in D39: with the 25-document cap, persona recall was 13–50%. Rerunning the same databases with the 50-document default produced the retrieval numbers above.
 
-Verification: 106 tests pass, 1 integration test skipped. The failed extraction batch stays pending; a rerun of that persona retries it.
+Verification: 106 tests pass, 1 integration test skipped. The failed extraction batch stays pending; a rerun of that persona retries it. D43 invalidates the pass comparison: the rerun reused a fully built database.
 
 ## Verification record
 
@@ -380,7 +382,23 @@ Decision: keep structured-first selection. The pass count is a tie, and the gain
 
 Tokens: extraction 1,255,350 (1,042,215 prompt, 213,135 completion); answer 1,569,548 (1,535,587 prompt, 33,961 completion); judge 1,040,402 (887,368 prompt, 153,034 completion, including a five-call retry). Total 3,865,300. Cost at DeepSeek-V4.1-Flash prices: $0.6575 off-peak, $1.3150 peak. The baseline D40 run used 3,710,971 tokens and $0.6421, so the richer context costs 4.2% more.
 
-Verification: 108 tests pass, 1 integration test skipped.
+Verification: 108 tests pass, 1 integration test skipped. D43 invalidates the pass comparison in this entry: the run reused a fully built database. The context-composition numbers and the retrieval deltas stand.
+
+## D42. The reranker signal is unusable
+
+Direct probes against the configured reranker return scores between 1e-6 and 1e-15 for every document, including a document that contains the answer. The order is also unreliable: replaying the fifty-document pool for `P20-CASE-009/d00` puts the answering event at reranker rank 43. The blend is `0.7 × relevance + 0.3 × normalized RRF`, so with relevance near zero the final order is the RRF order.
+
+This also explains D39 correctly. With the provider capped at 25 documents, the first 25 received `0.7 × ~0 + 0.3 × nrrf`, while documents 26–50 had no relevance and kept the full `nrrf`. The cap therefore pushed ranks 26–50 above ranks 1–25, which produced the 13–50% recall. Raising the cap to 50 made the treatment uniform and restored RRF; it did not improve reranking.
+
+`isDegenerate` now treats a batch whose best score is below 0.001 as carrying no usable signal, keeps the RRF order, and notes it in the trace. A test covers scores around 1e-7. P20 would not be saved by calibration alone, because the reranker's own order is poor; instance-aware selection and evidence closure remain the retrieval fixes.
+
+## D43. Database reuse leaked future messages
+
+The D40 rerun and the D41 run reused fully built databases. Retrieval has no as-of filter, so contexts for early questions included messages from later turns. Counting evidence lines dated after the item's `now`: D40 432/713 contexts, D41 560/714. All 22 P20 items that flipped from pass to fail under D41 had 4–12 future evidence messages; the D40 contexts for the same items had none.
+
+`P20-CASE-004/d03` shows the effect. Its `now` is 2026-04-18. The D41 context contains the 2026-07-22 message where the user quits the part-time job, and the answer asserts the quit and the date as fact. The D40 context contains only the April plan.
+
+The 606 versus 608 pass comparison is therefore invalid, and the D41 trade-off analysis is provisional. The harness now rejects a database whose latest message is later than the first pending item's `now`. A clean comparison needs fresh databases or an as-of filter.
 
 ## Verification record (2026-11-09)
 
