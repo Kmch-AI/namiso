@@ -237,6 +237,7 @@ export class EntityResolver {
       if (cleaned.length === 0 || normalizeName(cleaned) === normalizeName(canonicalName)) {
         continue
       }
+      if (this.aliasOwnedElsewhere(entity, cleaned)) continue
       insertAlias(this.db, {
         spaceId: entity.memorySpaceId,
         entityId: entity.id,
@@ -244,6 +245,13 @@ export class EntityResolver {
         ...(sourceMessageId === undefined ? {} : { sourceMessageId }),
       })
     }
+  }
+
+  private aliasOwnedElsewhere(entity: Entity, alias: string): boolean {
+    const byName = findEntityByName(this.db, entity.memorySpaceId, alias)
+    if (byName !== null && byName.id !== entity.id) return true
+    const byAlias = findEntityByAlias(this.db, entity.memorySpaceId, alias)
+    return byAlias !== null && byAlias.id !== entity.id
   }
 
   addAlias(entity: Entity, alias: string, sourceMessageId?: MessageId): void {
