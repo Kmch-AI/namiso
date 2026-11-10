@@ -448,14 +448,6 @@ Rule. An entity renders only when it has details: aliases, a description that is
 
 Verification: a claim-named bare entity produces no `[Relevant Entities]` section while the claim renders; an entity with a description still renders its line; the private-entity test now asserts the public section is absent and the description stays in `[Private]`. 114 tests pass, 1 integration test skipped. The offline formal set stays at 74.0% evidence recall and 78.0% context hit, and context tokens p50 fall from 858 to 831; retrieval latency p50 is 19.7 ms and ingest 27.2 s.
 
-## D48. Self-given names stay on the speaker entity
-
-Problem. In the fresh P20 database the user was stored as three entities: `用户` with 147 claims, `秦渡` with 82, and `渡哥` with 53. The speaker entity is created from the message speaker, so a first-person query resolves to `用户` and the SQL channel never reaches the claims and events under the other two names. Across the 170 fresh P20 contexts, 24 contained claims on a named user entity rather than the speaker. `P20-CASE-022/d00` shows the shape: the gastroscopy result sits under a named entity while the context selects only speaker claims.
-
-Design. The HTTP extraction prompt now names the speaker of the user messages as the user entity and requires first-person statements, including a self-given name, to use it; a nickname the assistant uses is not a new person. The pipeline adds a structural pass. When a claim whose normalized attribute is `name`, `姓名`, `名字`, `昵称`, `别名`, `nickname`, or `alias` has a subject matching a speaker name in the batch, the literal value up to the first punctuation or whitespace becomes an alias of that speaker entity. The pass runs before the entity loop, so an extracted entity using that name resolves to the speaker. Restricted claims never register an alias, because aliases render in public entity lines and would bypass the claim restriction. `称呼` is excluded because its subject is not reliably the named person.
-
-Verification. Unit tests cover a self-given name merging a later claim into the speaker, the assistant's `称呼` claim not creating an alias, and a private name claim not registering one. 116 tests pass, 1 integration test skipped. Offline formal set: 74.0% evidence recall, 77.0% context hit, tokens p50 857 against 831 before the change; one item changed, `P20-CASE-025/d00`, which lost one anchor because the merged participant changed the expansion graph. Live P20 A/B: [pending].
-
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |

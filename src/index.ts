@@ -34,11 +34,6 @@ export type {
 } from './providers/http.ts'
 export type {
   EmbeddingProvider,
-  ExtractedClaim,
-  ExtractedEntity,
-  ExtractedEvent,
-  ExtractedObject,
-  ExtractedParticipant,
   ExtractionDiagnostics,
   ExtractionInput,
   ExtractionMessage,
