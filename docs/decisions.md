@@ -464,7 +464,7 @@ Controlled comparison. The extraction replay harness keys each extraction reques
 
 Decision. The simplified merge ships. It reads self-introductions from the focus messages, vetoes names that a restricted claim marks private, and relies on the alias guard that refuses a name another entity owns (b5f8d13). The claim-source path and the prompt rule stay out. The per-subject claim cap was tried as the crowding companion and rejected (D49); under the same controlled replay it cost five anchors and gained none.
 
-Verification: 117 tests pass, 1 integration test skipped; `pnpm verify` passes. The controlled artifacts are under `bench/out/replay-clean/`.
+Verification: 117 tests pass, 1 integration test skipped; `pnpm verify` passes. The offline formal set scores 74.0% evidence recall and 77.0% context hit with p50 860 tokens; the one-point hit difference from the pre-merge 78.0% is `P20-CASE-025/d00`, where the merged participant changes the expansion graph. The controlled artifacts are under `bench/out/replay-clean/`.
 
 ## D49. Subject claim cap rejected on the controlled replay
 
