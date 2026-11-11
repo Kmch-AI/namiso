@@ -505,6 +505,8 @@ Cost. Extraction 1,249,408 tokens (prompt 1,039,267; completion 210,141; reasoni
 
 Artifacts. `bench/out/full-20261110/` holds `items.jsonl`, `contexts.jsonl`, `answers.jsonl`, `packets.jsonl`, `reviews.jsonl`, `results.jsonl`, `summary.json`, and the per-stage logs and usage files.
 
+Comparison with the 2026-11-08 run. That run passed 654/714 (91.6%) under the judge of the time. Re-judging its 714 stored answers with the current judge produced 561/714; on the 709 items the current run scored, the same old answers pass 558/709 (78.7%) against the current run's 557/709 (78.6%). On identical answers the old judge failed 60 items and the current judge failed 151, with `未知当事实` 27 against 121 and `违反禁止` 22 against 46. The current judge spends about 1,076 reasoning tokens per call and runs about five times slower. The 13-point gap is judge drift, not an engine change: under one judge the two engines differ by one item. The stricter judge also catches things the old one missed. In the current run, `P16-CASE-draft-d182-6/d15` states a date the record contradicts and fails; the old answer left the date out and passed. Future pass-rate comparisons must freeze the judge model, effort, and token cap. The 91.6% figure is not a valid baseline for the current judge.
+
 ## Verification record (2026-11-09)
 
 | Check             | Result                                                                |
