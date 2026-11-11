@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 11
 
 export const FTS_KEYS_SQL = `
 CREATE TABLE IF NOT EXISTS fts_keys (
@@ -21,6 +21,30 @@ SELECT 'fts_ngrams', document_key, rowid FROM fts_ngrams;
 export const CLAIM_OBJECT_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_claims_object
 ON claims(memory_space_id, object_entity_id);
+`
+
+export const SINGLE_SELF_MIGRATION_SQL = `
+WITH keeper(id) AS MATERIALIZED (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY memory_space_id
+      ORDER BY CASE WHEN type = 'self' THEN 0 ELSE 1 END, created_at ASC, id ASC
+    ) AS position
+    FROM entities
+    WHERE type = 'self' OR json_extract(metadata, '$.self') = 1
+  ) WHERE position = 1
+)
+UPDATE entities
+SET metadata = NULLIF(json_remove(metadata, '$.self'), '{}'),
+    type = CASE WHEN type = 'self' THEN 'artifact' ELSE type END
+WHERE (type = 'self' OR json_extract(metadata, '$.self') = 1)
+  AND id NOT IN (SELECT id FROM keeper);
+UPDATE entities
+SET type = 'self'
+WHERE type = 'self' OR json_extract(metadata, '$.self') = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_single_self
+ON entities(memory_space_id)
+WHERE type = 'self';
 `
 
 export const ALIAS_UNIQUENESS_MIGRATION_SQL = `

@@ -150,7 +150,7 @@ export function findEntityBySpeakerId(
 export function findSelfEntity(db: Database, spaceId: MemorySpaceId): Entity | null {
   const row = db.get(
     `SELECT * FROM entities
-     WHERE memory_space_id = ? AND json_extract(metadata, '$.self') = 1
+     WHERE memory_space_id = ? AND type = 'self'
      LIMIT 1`,
     spaceId,
   )

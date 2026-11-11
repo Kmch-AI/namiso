@@ -49,29 +49,17 @@ export class EntityResolver {
   resolve(input: ResolveEntityInput): Entity {
     const name = input.name.trim()
     if (name.length === 0) {
-      throw new Error('entity name cannot be empty')
+      throw new ValidationError('entity name cannot be empty')
     }
     const self = findSelfEntity(this.db, input.spaceId)
     if (self !== null && this.matchesSelf(self, input.spaceId, name)) {
-      if (self.type !== 'self') {
-        updateEntity(this.db, self.id, { type: 'self' })
-      }
-      const current = self.type === 'self' ? self : { ...self, type: 'self' as const }
-      this.updateDetails(current, input, name)
-      return current
+      this.updateDetails(self, input, name)
+      return self
     }
-    let existing =
+    const existing =
       findEntityByName(this.db, input.spaceId, name) ??
       this.aliasTarget(input.spaceId, name, input.type)
     if (existing !== null) {
-      if (existing.type === 'self' && existing.id !== self?.id) {
-        updateEntity(this.db, existing.id, { type: 'artifact' })
-        return { ...existing, type: 'artifact' }
-      }
-      if (self !== null && existing.id === self.id && existing.type !== 'self') {
-        updateEntity(this.db, existing.id, { type: 'self' })
-        existing = { ...existing, type: 'self' }
-      }
       this.updateDetails(existing, input, name)
       return existing
     }

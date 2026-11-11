@@ -621,6 +621,55 @@ test('the bigram fallback filters by kind before applying its limit', async () =
   namiso.close()
 })
 
+test('the bigram fallback runs when word hits do not cover every query bigram', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'ngram-coverage',
+    async extract(input) {
+      const first = input.focusMessageIds[0]
+      const subject = { name: USER, type: 'person' as const }
+      return {
+        entities: [{ name: USER, type: 'person', evidenceMessageIds: [first] }],
+        claims: [
+          ...['甲', '乙', '丙'].map((suffix, index) => ({
+            subject,
+            predicate: `驻地${index}`,
+            attribute: `驻地${index}`,
+            object: { kind: 'literal' as const, value: `杭州${suffix}号` },
+            modality: 'asserted' as const,
+            confidence: 0.9,
+            evidenceMessageIds: [first],
+          })),
+          {
+            subject,
+            predicate: '西湖行程',
+            attribute: '西湖行程',
+            object: { kind: 'literal' as const, value: '苏州西湖' },
+            modality: 'asserted' as const,
+            confidence: 0.9,
+            evidenceMessageIds: [first],
+          },
+        ],
+        events: [],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '记一下我的行程。')
+  await drain()
+  const result = await namiso.retrieve({
+    query: '杭州 州西',
+    memoryTypes: ['claim'],
+    rerank: false,
+    includeRelations: false,
+  })
+  const texts = result.candidates.map((item) => item.text)
+  assert.ok(texts.some((text) => text.includes('杭州甲号')))
+  const recovered = result.candidates.find((item) => item.text.includes('苏州西湖'))
+  assert.ok(recovered !== undefined)
+  assert.ok(recovered.channels.includes('fts'))
+  namiso.close()
+})
+
 test('linked claim evidence includes a follow-up with no query overlap', async () => {
   const extraction: ExtractionProvider = {
     version: 'closure-test',

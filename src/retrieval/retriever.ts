@@ -23,7 +23,7 @@ import {
   listRecentEvents,
 } from '../storage/memory-repo.ts'
 import { getDocument, searchFts, searchFtsNgrams } from '../storage/search-repo.ts'
-import { segment, toNgramQuery } from '../text.ts'
+import { segment, toNgramTerms } from '../text.ts'
 import {
   candidateFromSource,
   claimCandidate,
@@ -60,7 +60,6 @@ const CANDIDATES_PER_CHANNEL = 80
 const SOURCE_EVIDENCE_POOL = 8
 const RERANK_POOL_LIMIT = 50
 const TIME_BOOST = 0.1
-const FTS_STAGE_MIN = 3
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 const CONTEXT_MENTION_LIMIT = 2
 const CONTEXT_TAIL_CHARS = 240
@@ -329,13 +328,21 @@ export class Retriever {
     notes: string[],
   ): MemoryCandidate[] {
     const word = this.ftsHits(spaceId, query, allowed)
-    if (word.length >= FTS_STAGE_MIN) return word
-    if (!/[\u3400-\u9fff]/.test(query)) return word
-    if (toNgramQuery(query).length === 0) return word
-    notes.push('FTS 词级命中不足，已补充 CJK 二元组检索。')
-    const seen = new Set(word.map((item) => item.key))
+    const terms = toNgramTerms(query)
+    if (terms.length === 0) return word
+    const kinds = ftsKinds(allowed)
+    const wordKeys = new Set(word.map((item) => item.key))
+    const uncovered = terms.find(
+      (term) =>
+        !searchFtsNgrams(this.db, spaceId, term, CANDIDATES_PER_CHANNEL, kinds).some((hit) =>
+          wordKeys.has(`${hit.kind}:${hit.sourceId}`),
+        ),
+    )
+    if (uncovered === undefined) return word
+    notes.push('FTS 词级命中未覆盖查询的全部二元组，已补充 CJK 二元组检索。')
+    const seen = new Set(wordKeys)
     const merged = [...word]
-    for (const hit of searchFtsNgrams(this.db, spaceId, query, 30, ftsKinds(allowed))) {
+    for (const hit of searchFtsNgrams(this.db, spaceId, query, 30, kinds)) {
       if (merged.length >= CANDIDATES_PER_CHANNEL) break
       const item = candidateFromSource(this.db, spaceId, hit.kind, hit.sourceId)
       if (item === null || seen.has(item.key) || !allowed.has(item.kind)) continue

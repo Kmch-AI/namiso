@@ -5,6 +5,7 @@ dist/
 *.db-wal
 bench/out/
 temp/
+.vitest/
 .DS_Store
 .env
 .env.*

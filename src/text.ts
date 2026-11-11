@@ -61,9 +61,14 @@ export function toNgramText(text: string): string {
   return cjkBigrams(text).join(' ')
 }
 
+export function toNgramTerms(text: string): string[] {
+  return [...new Set(cjkBigrams(text))]
+}
+
 export function toNgramQuery(text: string): string {
-  const grams = [...new Set(cjkBigrams(text))]
-  return grams.map((gram) => `"${gram}"`).join(' OR ')
+  return toNgramTerms(text)
+    .map((gram) => `"${gram}"`)
+    .join(' OR ')
 }
 
 function cjkBigrams(text: string): string[] {

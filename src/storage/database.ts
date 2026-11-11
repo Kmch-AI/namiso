@@ -27,6 +27,7 @@ import {
   SCHEMA_SQL,
   SCHEMA_VERSION,
   SELF_TYPE_MIGRATION_SQL,
+  SINGLE_SELF_MIGRATION_SQL,
 } from './schema.ts'
 
 export type Row = Record<string, unknown>
@@ -118,6 +119,9 @@ export class Database {
       this.raw.exec(FTS_KEYS_SQL)
       if (version < 10) {
         this.raw.exec(FTS_KEYS_BACKFILL_SQL)
+      }
+      if (version < 11) {
+        this.raw.exec(SINGLE_SELF_MIGRATION_SQL)
       }
       if (version < SCHEMA_VERSION) {
         this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)

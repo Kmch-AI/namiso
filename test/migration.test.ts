@@ -315,3 +315,77 @@ test('schema migration backfills claim attributes and cardinality', () => {
     rmSync(directory, { recursive: true, force: true })
   }
 })
+
+test('schema migration keeps one self entity per memory space', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'namiso-migration-'))
+  const databasePath = join(directory, 'memory.db')
+  let db: Database | undefined
+  try {
+    db = new Database(databasePath)
+    db.run(
+      'INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)',
+      'workspace',
+      'workspace',
+      1,
+    )
+    db.run(
+      `INSERT INTO memory_spaces (id, workspace_id, name, created_at)
+       VALUES (?, ?, ?, ?)`,
+      'space',
+      'workspace',
+      'space',
+      1,
+    )
+    db.exec('DROP INDEX idx_entities_single_self')
+    for (const [id, createdAt] of [
+      ['self-1', 1],
+      ['self-2', 2],
+    ] as const) {
+      db.run(
+        `INSERT INTO entities (id, memory_space_id, type, name, created_at, updated_at, metadata)
+         VALUES (?, ?, 'self', ?, ?, ?, '{"self":true}')`,
+        id,
+        'space',
+        id,
+        createdAt,
+        createdAt,
+      )
+    }
+    db.exec('PRAGMA user_version = 10')
+    db.close()
+    db = undefined
+
+    db = new Database(databasePath)
+    const rows = db.all(
+      'SELECT id, type, metadata FROM entities WHERE memory_space_id = ? ORDER BY id',
+      'space',
+    )
+    assert.deepEqual(
+      rows.map((row) => [row['id'], row['type'], row['metadata']]),
+      [
+        ['self-1', 'self', '{"self":true}'],
+        ['self-2', 'artifact', null],
+      ],
+    )
+    assert.ok(
+      db.get(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_entities_single_self'",
+      ) !== undefined,
+    )
+    const current = db
+    assert.throws(() =>
+      current.run(
+        `INSERT INTO entities (id, memory_space_id, type, name, created_at, updated_at)
+         VALUES (?, ?, 'self', ?, ?, ?)`,
+        'self-3',
+        'space',
+        'self-3',
+        3,
+        3,
+      ),
+    )
+  } finally {
+    db?.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

@@ -14,7 +14,7 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 | `memory_spaces`       | Isolation boundary and configuration                                                 | Foreign key to workspace                                                |
 | `conversations`       | Conversation metadata                                                                | Space, external ID, time range                                          |
 | `messages`            | Raw conversation, append-only; `consolidated_at` marks extracted rows                | Unique `(conversation_id, message_index)`; unique external ID per space |
-| `entities`            | People, groups, places, animals, objects, artifacts, activities, topics, other, self | Space and name index                                                    |
+| `entities`            | People, groups, places, animals, objects, artifacts, activities, topics, other, self | Space and name index; one self per space                                |
 | `entity_aliases`      | Alternate names                                                                      | Unique per entity; a name may repeat across entities                    |
 | `claims`              | Subject, attribute, predicate, object facts                                          | Subject and attribute index; subject-object index; status               |
 | `attributes`          | Attribute key, label, and cardinality per space                                      | Primary key `(memory_space_id, key)`                                    |
@@ -37,7 +37,7 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 
 The general entity types are `person`, `group`, `place`, `animal`, `object`, `artifact`, `activity`, `topic`, and `other`. The first eight are semantic types; `other` is the fallback.
 
-`self` is a special kind outside that taxonomy. Each memory space has at most one self entity, marked with `metadata.self = true` and type `self`. The `self` option or `ensureSelf()` creates it; every assistant speaker resolves to it. The extraction prompt tells the model to use `artifact` for models, tools, other agents, and AI products, and `group` for companies and institutions. Persona, background, and preferences live on the self entity as its description and as claims whose subject is the self entity.
+`self` is a special kind outside that taxonomy. Each memory space has at most one self entity, marked with type `self` and `metadata.self = true`; a partial unique index on `memory_space_id` where `type = 'self'` enforces it, and lookups read the type. The `self` option or `ensureSelf()` creates it; every assistant speaker resolves to it. The extraction prompt tells the model to use `artifact` for models, tools, other agents, and AI products, and `group` for companies and institutions. Persona, background, and preferences live on the self entity as its description and as claims whose subject is the self entity.
 
 Schema version 2 migrates existing rows: `organization` becomes `group`, and `project` or `product` becomes `artifact`. Schema version 3 converts `ai` rows: a row with `metadata.self = true` becomes `self`, and any other `ai` row becomes `artifact`. Entity document text includes the type, so call `reindex()` once after upgrading an existing database.
 
@@ -118,3 +118,5 @@ Changing the embedding model changes the document identity. `reindex()` deletes 
 Schema version 8 adds `fts_ngrams`. `SCHEMA_SQL` creates it on open, so an existing database gets an empty table; call `reindex()` once to populate it. `indexDocument()` and `deleteFtsDocument()` maintain both FTS tables together.
 
 Schema version 10 adds `fts_keys`, the `claims(memory_space_id, object_entity_id)` index, and the partitioned `vec_documents` layout. Migration backfills `fts_keys` from both FTS tables. Vectors use the new table on the next open: the store drops the old layout and copies stored vectors back from `embedding_documents`. Call `reindex()` if the copy reports a dimension mismatch.
+
+Schema version 11 collapses duplicate self entities. It keeps one row per memory space, preferring a row already typed `self` and then the oldest, demotes the rest to `artifact`, clears their `metadata.self`, promotes the survivor to type `self`, and creates the partial unique index.
