@@ -25,6 +25,7 @@ import {
   evidenceMessageIds,
   findEventBySignature,
   findPreviousEventForActor,
+  findEvidenceClaim,
   insertClaim,
   insertEvent,
   listClaimsBySubject,
@@ -105,16 +106,13 @@ export class MemoryLinker {
       options.evidenceRoles.length > 0 &&
       options.evidenceRoles.every((role) => role === 'assistant')
     const subjectIsSelf = self !== null && subject.id === self.id
-    let modality: MemoryModality = extracted.modality
-    if (
+    const quoted =
       assistantOnly &&
       !(subjectIsSelf && objectEntity === null) &&
-      (modality === 'asserted' || modality === 'negated')
-    ) {
-      modality = 'quoted'
-    }
-    const polarity: ClaimPolarity = modality === 'negated' ? 'negative' : 'positive'
-    const storedModality: MemoryModality = polarity === 'negative' ? 'asserted' : modality
+      extracted.modality === 'asserted'
+    const modality: MemoryModality = quoted ? 'quoted' : extracted.modality
+    const polarity: ClaimPolarity = extracted.modality === 'negated' ? 'negative' : 'positive'
+    const storedModality: MemoryModality = extracted.modality === 'negated' ? 'asserted' : modality
     const metadata = {
       extractorVersion: options.extractorVersion,
       evidenceMessageIds: options.evidenceIds,
@@ -124,6 +122,10 @@ export class MemoryLinker {
       attribute,
       cardinality,
       change,
+    }
+    const replayed = this.replay(spaceId, subject.id, attribute, object, options)
+    if (replayed !== null) {
+      return { claim: replayed, created: false, superseded: [], subject, objectEntity }
     }
     const active = listClaimsBySubject(this.db, spaceId, subject.id).filter(
       (claim) => claim.attribute === attribute,
@@ -200,6 +202,10 @@ export class MemoryLinker {
     }
 
     if (change === 'disputes') {
+      const same = active.find((claim) => sameObject(claim.object, object))
+      if (same !== undefined) {
+        return { claim: same, created: false, superseded: [], subject, objectEntity }
+      }
       const claim = insert()
       return { claim, created: true, superseded: [], subject, objectEntity }
     }
@@ -213,29 +219,55 @@ export class MemoryLinker {
 
     const targets =
       cardinality === 'one' ? current : current.filter((claim) => sameObject(claim.object, object))
-    if (change === 'new' && cardinality === 'one' && targets.length > 0) {
-      const newer = targets.filter((claim) => (claim.validFrom ?? claim.createdAt) > assertedAt)
-      if (newer.length === targets.length) {
-        const validUntil = Math.min(...targets.map((claim) => claim.validFrom ?? claim.createdAt))
-        const claim = insert('superseded', validUntil)
+    const older = targets.filter((claim) => startOf(claim) <= assertedAt)
+    const newer = targets.filter((claim) => startOf(claim) > assertedAt)
+    if (older.length < targets.length) {
+      const validUntil = Math.min(...newer.map(startOf))
+      const claim = insert('superseded', validUntil)
+      if (older.length === 0) {
         return { claim, created: true, superseded: [], subject, objectEntity }
       }
+      const replaced: Claim[] = []
+      for (const target of older) {
+        this.supersede(spaceId, claim.id, target, assertedAt)
+        replaced.push(target)
+      }
+      return { claim, created: true, superseded: replaced, subject, objectEntity }
     }
     const claim = insert()
     const superseded: Claim[] = []
     for (const target of targets) {
-      setClaimStatus(this.db, target.id, 'superseded', assertedAt)
-      addMemoryLink(this.db, {
-        spaceId,
-        sourceType: 'claim',
-        sourceId: claim.id,
-        relation: 'supersedes',
-        targetType: 'claim',
-        targetId: target.id,
-      })
+      this.supersede(spaceId, claim.id, target, assertedAt)
       superseded.push(target)
     }
     return { claim, created: true, superseded, subject, objectEntity }
+  }
+
+  private supersede(
+    spaceId: MemorySpaceId,
+    claimId: string,
+    target: Claim,
+    validUntil: number,
+  ): void {
+    setClaimStatus(this.db, target.id, 'superseded', validUntil)
+    addMemoryLink(this.db, {
+      spaceId,
+      sourceType: 'claim',
+      sourceId: claimId,
+      relation: 'supersedes',
+      targetType: 'claim',
+      targetId: target.id,
+    })
+  }
+
+  private replay(
+    spaceId: MemorySpaceId,
+    subjectId: EntityId,
+    attribute: string,
+    object: ClaimObject,
+    options: { evidenceIds: readonly MessageId[] },
+  ): Claim | null {
+    return findEvidenceClaim(this.db, spaceId, subjectId, attribute, object, options.evidenceIds)
   }
 
   linkOccurrence(
@@ -481,6 +513,10 @@ export class MemoryLinker {
     }
     return active
   }
+}
+
+function startOf(claim: Claim): number {
+  return claim.validFrom ?? claim.createdAt
 }
 
 function sameObject(left: ClaimObject, right: ClaimObject): boolean {

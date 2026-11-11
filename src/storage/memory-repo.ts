@@ -335,6 +335,38 @@ export function getClaim(db: Database, claimId: string): Claim | null {
   return row === undefined ? null : mapClaim(row)
 }
 
+export function findEvidenceClaim(
+  db: Database,
+  spaceId: MemorySpaceId,
+  subjectId: EntityId,
+  attribute: string,
+  object: ClaimObject,
+  evidenceIds: readonly MessageId[],
+): Claim | null {
+  if (evidenceIds.length === 0) return null
+  const placeholders = evidenceIds.map(() => '?').join(', ')
+  const objectClause =
+    object.kind === 'literal'
+      ? 'AND c.object_type = ? AND c.object_value = ?'
+      : 'AND c.object_type = ? AND c.object_entity_id = ?'
+  const objectParams: string[] =
+    object.kind === 'literal' ? ['literal', object.value] : ['entity', object.entityId]
+  const row = db.get(
+    `SELECT DISTINCT c.* FROM claims c
+     JOIN annotations a
+       ON a.target_type = 'claim' AND a.target_id = c.id AND a.role = 'evidence'
+     WHERE c.memory_space_id = ? AND c.subject_id = ? AND c.attribute = ?
+       ${objectClause} AND a.message_id IN (${placeholders})
+     ORDER BY c.created_at DESC LIMIT 1`,
+    spaceId,
+    subjectId,
+    attribute,
+    ...objectParams,
+    ...evidenceIds,
+  )
+  return row === undefined ? null : mapClaim(row)
+}
+
 export function listClaimsBySubject(
   db: Database,
   spaceId: MemorySpaceId,
@@ -408,8 +440,17 @@ export function setClaimStatus(
   validUntil?: number | null,
 ): void {
   db.run(
-    'UPDATE claims SET status = ?, valid_until = COALESCE(?, valid_until), updated_at = ? WHERE id = ?',
+    `UPDATE claims
+     SET status = ?,
+         valid_until = CASE
+           WHEN ? IS NULL THEN valid_until
+           ELSE MAX(COALESCE(valid_until, ?), COALESCE(valid_from, ?))
+         END,
+         updated_at = ?
+     WHERE id = ?`,
     status,
+    validUntil ?? null,
+    validUntil ?? null,
     validUntil ?? null,
     nowSeconds(),
     claimId,

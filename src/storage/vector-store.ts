@@ -42,24 +42,61 @@ export class VectorStore {
   private ensureTable(): void {
     const stored = this.db.get("SELECT value FROM schema_meta WHERE key = 'vector_dimensions'")
     const storedDimensions = stored === undefined ? null : Number(text(stored, 'value'))
+    const layout = this.db.get("SELECT value FROM schema_meta WHERE key = 'vector_layout'")
+    const partitioned = layout !== undefined && text(layout, 'value') === 'partitioned'
     if (storedDimensions !== null && storedDimensions !== this.dimensions) {
       this.db.exec('DROP TABLE IF EXISTS vec_documents')
-      this.db.run("DELETE FROM schema_meta WHERE key = 'vector_dimensions'")
+      this.db.run("DELETE FROM schema_meta WHERE key IN ('vector_dimensions', 'vector_layout')")
     }
-    this.db.exec(
-      `CREATE VIRTUAL TABLE IF NOT EXISTS vec_documents USING vec0(
-        document_id TEXT PRIMARY KEY,
-        embedding FLOAT[${this.dimensions}]
-      )`,
-    )
+    if (partitioned) {
+      this.db.exec(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS vec_documents USING vec0(
+          document_id TEXT PRIMARY KEY,
+          memory_space_id TEXT PARTITION KEY,
+          embedding FLOAT[${this.dimensions}]
+        )`,
+      )
+    } else {
+      this.rebuildPartitionedTable()
+    }
     this.db.run(
       `INSERT INTO schema_meta (key, value) VALUES ('vector_dimensions', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       String(this.dimensions),
     )
+    this.db.run(
+      `INSERT INTO schema_meta (key, value) VALUES ('vector_layout', 'partitioned')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
   }
 
-  upsert(documentId: string, vector: readonly number[]): void {
+  private rebuildPartitionedTable(): void {
+    this.db.transaction(() => {
+      this.db.exec('DROP TABLE IF EXISTS vec_documents')
+      this.db.exec(
+        `CREATE VIRTUAL TABLE vec_documents USING vec0(
+          document_id TEXT PRIMARY KEY,
+          memory_space_id TEXT PARTITION KEY,
+          embedding FLOAT[${this.dimensions}]
+        )`,
+      )
+      const rows = this.db.all(
+        'SELECT id, memory_space_id, vector FROM embedding_documents WHERE vector IS NOT NULL',
+      )
+      for (const row of rows) {
+        const vector = row['vector']
+        if (!(vector instanceof Uint8Array) || vector.byteLength !== this.dimensions * 4) continue
+        this.db.run(
+          'INSERT INTO vec_documents (document_id, memory_space_id, embedding) VALUES (?, ?, ?)',
+          text(row, 'id'),
+          text(row, 'memory_space_id'),
+          vector,
+        )
+      }
+    })
+  }
+
+  upsert(memorySpaceId: string, documentId: string, vector: readonly number[]): void {
     if (this.backend !== 'sqlite-vec') return
     if (vector.length !== this.dimensions) {
       throw new NamisoError(
@@ -69,8 +106,9 @@ export class VectorStore {
     }
     this.db.run('DELETE FROM vec_documents WHERE document_id = ?', documentId)
     this.db.run(
-      'INSERT INTO vec_documents (document_id, embedding) VALUES (?, ?)',
+      'INSERT INTO vec_documents (document_id, memory_space_id, embedding) VALUES (?, ?, ?)',
       documentId,
+      memorySpaceId,
       vectorToBlob(vector),
     )
   }
@@ -102,21 +140,17 @@ export class VectorStore {
     limit: number,
   ): Array<{ documentId: string; score: number }> {
     const rows = this.db.all(
-      `SELECT v.document_id AS document_id, v.distance AS distance
-       FROM vec_documents v
-       JOIN embedding_documents d ON d.id = v.document_id
-       WHERE v.embedding MATCH ? AND k = ? AND d.memory_space_id = ?
-       ORDER BY v.distance ASC`,
-      vectorToBlob(vector),
-      Math.max(limit * 4, limit),
+      `SELECT document_id, distance FROM vec_documents
+       WHERE memory_space_id = ? AND embedding MATCH ? AND k = ?
+       ORDER BY distance ASC`,
       memorySpaceId,
+      vectorToBlob(vector),
+      limit,
     )
-    return rows
-      .map((row) => ({
-        documentId: text(row, 'document_id'),
-        score: 1 / (1 + Number(row['distance'])),
-      }))
-      .slice(0, limit)
+    return rows.map((row) => ({
+      documentId: text(row, 'document_id'),
+      score: 1 / (1 + Number(row['distance'])),
+    }))
   }
 
   private searchExact(

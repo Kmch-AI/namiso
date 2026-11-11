@@ -1,5 +1,6 @@
 import type { Row } from './database.ts'
 
+import { NamisoError } from '../errors.ts'
 import {
   asChunkId,
   asClaimId,
@@ -204,16 +205,20 @@ function polarityOf(row: Row): ClaimPolarity {
 
 function sensitivityOf(row: Row): MemorySensitivity {
   const value = textOrNull(row, 'sensitivity')
-  return value !== null && (SENSITIVITIES as readonly string[]).includes(value)
-    ? (value as MemorySensitivity)
-    : 'normal'
+  if (value === null) return 'normal'
+  if (!(SENSITIVITIES as readonly string[]).includes(value)) {
+    throw new NamisoError('schema', `unknown sensitivity ${value}`)
+  }
+  return value as MemorySensitivity
 }
 
 function disclosureOf(row: Row): MemoryDisclosure {
   const value = textOrNull(row, 'disclosure')
-  return value !== null && (DISCLOSURES as readonly string[]).includes(value)
-    ? (value as MemoryDisclosure)
-    : 'allowed'
+  if (value === null) return 'allowed'
+  if (!(DISCLOSURES as readonly string[]).includes(value)) {
+    throw new NamisoError('schema', `unknown disclosure ${value}`)
+  }
+  return value as MemoryDisclosure
 }
 
 export function mapMemoryLink(row: Row): MemoryLink {

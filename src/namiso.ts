@@ -654,7 +654,7 @@ export class Namiso {
       warnings.push('sqlite-vec 未加载，向量检索使用精确扫描。')
     }
     return {
-      ok: true,
+      ok: warnings.length === 0,
       database: 'ok',
       vectorBackend: this.vectors.backend,
       embedding: {

@@ -36,7 +36,7 @@ The windows are a soft signal. A claim or event in a window gains 0.5 in the SQL
 
 A second index stores CJK bigrams. The FTS channel runs the word query first, filtered to the requested memory types. When fewer than three eligible word hits remain, it runs the bigram query and appends new candidates after the word hits. This recovers a substring such as `州西` from a document that segmented as `杭州` and `西湖`. The trace notes when the fallback ran.
 
-**Vector** embeds the query and searches `sqlite-vec` for the nearest documents. If the extension is unavailable, the engine scans stored float32 vectors and computes cosine similarity. Both backends return document IDs; the engine maps them to chunk, entity, claim, or event candidates. When the query has facets, the same batched `embed` call also embeds each facet, and the best rank per candidate across the facet searches forms one **facet** channel.
+**Vector** embeds the query and searches `sqlite-vec` for the nearest documents in the current memory space. The virtual table is partitioned by `memory_space_id`, so the search applies `k` after the partition filter. If the extension is unavailable, the engine scans stored float32 vectors and computes cosine similarity. Both backends return document IDs; the engine maps them to chunk, entity, claim, or event candidates. When the query has facets, the same batched `embed` call also embeds each facet, and the best rank per candidate across the facet searches forms one **facet** channel.
 
 Channels return at most 80 candidates. The FTS channel asks for the top 30 matches before that cap.
 
@@ -80,7 +80,7 @@ If fewer renderable candidates exist than `topK`, the remaining slots fill from 
 After fusion:
 
 - Current queries drop claims whose status is not `active`.
-- A time range drops claims and events outside the range. Entities and chunks are not filtered because a chunk can span the boundary.
+- A time range drops claims and events outside the range. A claim occupies the interval from `validFrom` or `occurredAt` through `validUntil`; a claim with no end stays valid, and the range keeps it when the intervals intersect. Events are points. Entities and chunks are not filtered because a chunk can span the boundary.
 - Multiple active claims with the same subject and predicate produce a conflict note.
 - Events whose stored modality is `uncertain` produce an uncertainty note.
 
@@ -102,7 +102,7 @@ Expansion can add superseded claims to a current-query result. That is intention
 
 The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in three passes:
 
-1. For each candidate in rank order, take its highest-overlap closure message before its own messages, then choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, including the closure message. Linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short.
+1. For each candidate in rank order, take its highest-overlap closure message before its own messages, then choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, including the closure message. Linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short. The pass advances one message per candidate per round, so a high-ranked claim cannot fill every slot with its own evidence.
 2. Add the messages adjacent to each chosen message when slots remain.
 3. Fill remaining slots with the highest-ranked messages that had no overlap.
 

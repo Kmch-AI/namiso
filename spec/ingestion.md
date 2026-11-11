@@ -15,17 +15,17 @@ The call returns without running extraction and without an extraction job. `heal
 
 ## Job rules
 
-Only chunk jobs use the queue. A job uses a dedupe key with a unique index. Enqueueing a completed or failed job resets it to `pending` with zero attempts. Enqueueing a pending or running job leaves it queued. This gives one chunk job per conversation.
+Only chunk jobs use the queue. A job uses a dedupe key with a unique index. Enqueueing a job resets it to `pending` with zero attempts and the new payload, whether it was pending, running, completed, or failed. New messages therefore always get a fresh chunk pass. This gives one chunk job per conversation.
 
-`drain()`:
+`drain()` only sees jobs in the instance's memory space:
 
-1. Requeues jobs stuck in `running` for more than 300 seconds.
-2. Claims the oldest due job in a transaction.
+1. Requeues jobs in that space stuck in `running` for more than 300 seconds.
+2. Claims the oldest due job in that space in a transaction.
 3. Runs it.
 4. Marks it `completed` or fails it.
 5. Repeats until the queue is empty or the limit is reached.
 
-A failed job backs off by `10 × 2^attempts` seconds, capped at 300. After three attempts it becomes `failed`. `retryJobs()` resets failed jobs and drains.
+A failed job backs off by `10 × 2^(attempts - 1)` seconds, capped at 300. The first retry waits ten seconds. After three attempts it becomes `failed`. `retryJobs()` resets failed jobs and drains.
 
 ## Consolidation
 

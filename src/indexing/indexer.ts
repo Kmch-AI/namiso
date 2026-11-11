@@ -82,8 +82,8 @@ export class Indexer {
             `embedding ${document.id} has ${vector.length} dimensions, expected ${this.embedding.dimensions}`,
           )
         }
-        setDocumentVector(this.db, document.id, vector)
-        this.vectors.upsert(document.id, vector)
+        setDocumentVector(this.db, document.id, document.contentHash, vector)
+        this.vectors.upsert(document.memorySpaceId, document.id, vector)
       }
     })
   }

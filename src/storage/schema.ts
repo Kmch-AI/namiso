@@ -1,4 +1,27 @@
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
+
+export const FTS_KEYS_SQL = `
+CREATE TABLE IF NOT EXISTS fts_keys (
+  table_name TEXT NOT NULL,
+  document_key TEXT NOT NULL,
+  row_key INTEGER NOT NULL,
+  PRIMARY KEY (table_name, document_key)
+);
+CREATE INDEX IF NOT EXISTS idx_fts_keys_row
+ON fts_keys(table_name, row_key);
+`
+
+export const FTS_KEYS_BACKFILL_SQL = `
+INSERT OR REPLACE INTO fts_keys (table_name, document_key, row_key)
+SELECT 'fts_documents', document_key, rowid FROM fts_documents;
+INSERT OR REPLACE INTO fts_keys (table_name, document_key, row_key)
+SELECT 'fts_ngrams', document_key, rowid FROM fts_ngrams;
+`
+
+export const CLAIM_OBJECT_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS idx_claims_object
+ON claims(memory_space_id, object_entity_id);
+`
 
 export const ALIAS_UNIQUENESS_MIGRATION_SQL = `
 DROP INDEX IF EXISTS idx_entity_aliases_unique;

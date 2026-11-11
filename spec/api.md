@@ -254,9 +254,9 @@ memory.health(): HealthReport
 memory.close(): void
 ```
 
-`forget` removes the target, drops dependent rows and documents, invalidates memories with no evidence, and rebuilds indexes. `reindex` rebuilds all documents, FTS rows, and vectors for the space. Call it after changing the embedding model or dimensions.
+`forget` removes the target, drops dependent rows and documents, invalidates memories with no evidence, and rebuilds indexes. The entity scope also removes events the entity participates in, together with their evidence, annotations, and links. `reindex` rebuilds all documents, FTS rows, and vectors for the space. Call it after changing the embedding model or dimensions.
 
-`health` reports counts, job states, the vector backend, provider identities, extraction token usage when the provider exposes it, and warnings for missing vectors, failed jobs, and exact-scan fallback.
+`health` reports counts, job states, the vector backend, provider identities, extraction token usage when the provider exposes it, and warnings for missing vectors, failed jobs, and exact-scan fallback. `ok` is true only when there are no warnings.
 
 ## Errors
 

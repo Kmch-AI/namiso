@@ -10,6 +10,7 @@ import {
   CLAIM_CARDINALITY_COLUMN_SQL,
   CLAIM_DISCLOSURE_COLUMN_SQL,
   CLAIM_MODALITY_COLUMN_SQL,
+  CLAIM_OBJECT_INDEX_SQL,
   CLAIM_POLARITY_COLUMN_SQL,
   CLAIM_SENSITIVITY_COLUMN_SQL,
   ENTITY_DISCLOSURE_COLUMN_SQL,
@@ -18,6 +19,8 @@ import {
   EVENT_DISCLOSURE_COLUMN_SQL,
   EVENT_MODALITY_COLUMN_SQL,
   EVENT_SENSITIVITY_COLUMN_SQL,
+  FTS_KEYS_BACKFILL_SQL,
+  FTS_KEYS_SQL,
   MESSAGE_CONSOLIDATION_INDEX_SQL,
   MESSAGE_CONSOLIDATION_MIGRATION_SQL,
   MODALITY_BACKFILL_SQL,
@@ -53,64 +56,76 @@ export class Database {
         `database schema ${version} is newer than supported ${SCHEMA_VERSION}`,
       )
     }
-    this.raw.exec(SCHEMA_SQL)
-    if (version < 2) {
-      this.raw.exec(ENTITY_TYPE_MIGRATION_SQL)
-    }
-    if (version < 3) {
-      this.raw.exec(SELF_TYPE_MIGRATION_SQL)
-    }
-    if (version < 4 && !this.hasColumn('messages', 'consolidated_at')) {
-      this.raw.exec(MESSAGE_CONSOLIDATION_MIGRATION_SQL)
-    }
-    this.raw.exec(MESSAGE_CONSOLIDATION_INDEX_SQL)
-    if (version < 5) {
-      if (!this.hasColumn('claims', 'attribute')) {
-        this.raw.exec(CLAIM_ATTRIBUTE_COLUMN_SQL)
+    this.raw.exec('BEGIN IMMEDIATE')
+    try {
+      this.raw.exec(SCHEMA_SQL)
+      if (version < 2) {
+        this.raw.exec(ENTITY_TYPE_MIGRATION_SQL)
       }
-      if (!this.hasColumn('claims', 'cardinality')) {
-        this.raw.exec(CLAIM_CARDINALITY_COLUMN_SQL)
+      if (version < 3) {
+        this.raw.exec(SELF_TYPE_MIGRATION_SQL)
       }
-      this.raw.exec(CLAIM_ATTRIBUTE_BACKFILL_SQL)
-    }
-    if (version < 6) {
-      if (!this.hasColumn('claims', 'modality')) {
-        this.raw.exec(CLAIM_MODALITY_COLUMN_SQL)
+      if (version < 4 && !this.hasColumn('messages', 'consolidated_at')) {
+        this.raw.exec(MESSAGE_CONSOLIDATION_MIGRATION_SQL)
       }
-      if (!this.hasColumn('claims', 'polarity')) {
-        this.raw.exec(CLAIM_POLARITY_COLUMN_SQL)
+      this.raw.exec(MESSAGE_CONSOLIDATION_INDEX_SQL)
+      if (version < 5) {
+        if (!this.hasColumn('claims', 'attribute')) {
+          this.raw.exec(CLAIM_ATTRIBUTE_COLUMN_SQL)
+        }
+        if (!this.hasColumn('claims', 'cardinality')) {
+          this.raw.exec(CLAIM_CARDINALITY_COLUMN_SQL)
+        }
+        this.raw.exec(CLAIM_ATTRIBUTE_BACKFILL_SQL)
       }
-      if (!this.hasColumn('events', 'modality')) {
-        this.raw.exec(EVENT_MODALITY_COLUMN_SQL)
+      if (version < 6) {
+        if (!this.hasColumn('claims', 'modality')) {
+          this.raw.exec(CLAIM_MODALITY_COLUMN_SQL)
+        }
+        if (!this.hasColumn('claims', 'polarity')) {
+          this.raw.exec(CLAIM_POLARITY_COLUMN_SQL)
+        }
+        if (!this.hasColumn('events', 'modality')) {
+          this.raw.exec(EVENT_MODALITY_COLUMN_SQL)
+        }
+        this.raw.exec(MODALITY_BACKFILL_SQL)
       }
-      this.raw.exec(MODALITY_BACKFILL_SQL)
-    }
-    if (version < 7) {
-      if (!this.hasColumn('entities', 'sensitivity')) {
-        this.raw.exec(ENTITY_SENSITIVITY_COLUMN_SQL)
+      if (version < 7) {
+        if (!this.hasColumn('entities', 'sensitivity')) {
+          this.raw.exec(ENTITY_SENSITIVITY_COLUMN_SQL)
+        }
+        if (!this.hasColumn('entities', 'disclosure')) {
+          this.raw.exec(ENTITY_DISCLOSURE_COLUMN_SQL)
+        }
+        if (!this.hasColumn('claims', 'sensitivity')) {
+          this.raw.exec(CLAIM_SENSITIVITY_COLUMN_SQL)
+        }
+        if (!this.hasColumn('claims', 'disclosure')) {
+          this.raw.exec(CLAIM_DISCLOSURE_COLUMN_SQL)
+        }
+        if (!this.hasColumn('events', 'sensitivity')) {
+          this.raw.exec(EVENT_SENSITIVITY_COLUMN_SQL)
+        }
+        if (!this.hasColumn('events', 'disclosure')) {
+          this.raw.exec(EVENT_DISCLOSURE_COLUMN_SQL)
+        }
       }
-      if (!this.hasColumn('entities', 'disclosure')) {
-        this.raw.exec(ENTITY_DISCLOSURE_COLUMN_SQL)
+      if (version < 9) {
+        this.raw.exec(ALIAS_UNIQUENESS_MIGRATION_SQL)
       }
-      if (!this.hasColumn('claims', 'sensitivity')) {
-        this.raw.exec(CLAIM_SENSITIVITY_COLUMN_SQL)
+      this.raw.exec(CLAIM_ATTRIBUTE_INDEX_SQL)
+      this.raw.exec(CLAIM_OBJECT_INDEX_SQL)
+      this.raw.exec(FTS_KEYS_SQL)
+      if (version < 10) {
+        this.raw.exec(FTS_KEYS_BACKFILL_SQL)
       }
-      if (!this.hasColumn('claims', 'disclosure')) {
-        this.raw.exec(CLAIM_DISCLOSURE_COLUMN_SQL)
+      if (version < SCHEMA_VERSION) {
+        this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
       }
-      if (!this.hasColumn('events', 'sensitivity')) {
-        this.raw.exec(EVENT_SENSITIVITY_COLUMN_SQL)
-      }
-      if (!this.hasColumn('events', 'disclosure')) {
-        this.raw.exec(EVENT_DISCLOSURE_COLUMN_SQL)
-      }
-    }
-    if (version < 9) {
-      this.raw.exec(ALIAS_UNIQUENESS_MIGRATION_SQL)
-    }
-    this.raw.exec(CLAIM_ATTRIBUTE_INDEX_SQL)
-    if (version < SCHEMA_VERSION) {
-      this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+      this.raw.exec('COMMIT')
+    } catch (error) {
+      this.raw.exec('ROLLBACK')
+      throw error
     }
   }
 
@@ -139,17 +154,18 @@ export class Database {
   }
 
   transaction<T>(work: () => T): T {
-    if (this.transactionDepth > 0) {
-      return work()
-    }
-    this.raw.exec('BEGIN IMMEDIATE')
+    const depth = this.transactionDepth
+    const savepoint = depth > 0 ? `sp_${depth}` : null
+    this.raw.exec(savepoint === null ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${savepoint}`)
     this.transactionDepth += 1
     try {
       const result = work()
-      this.raw.exec('COMMIT')
+      this.raw.exec(savepoint === null ? 'COMMIT' : `RELEASE ${savepoint}`)
       return result
     } catch (error) {
-      this.raw.exec('ROLLBACK')
+      this.raw.exec(
+        savepoint === null ? 'ROLLBACK' : `ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`,
+      )
       throw error
     } finally {
       this.transactionDepth -= 1

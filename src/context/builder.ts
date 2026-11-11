@@ -686,16 +686,27 @@ function collectEvidence(
   const chosen: Message[] = []
   const seen = new Set<string>()
   const take = (onlyMatching: boolean): void => {
-    for (const item of prepared) {
-      if (chosen.length >= MAX_EVIDENCE) return
-      let added = 0
-      for (const entry of item.messages) {
-        if (onlyMatching && entry.score === 0 && !item.linked) continue
-        if (added >= item.perCandidateLimit || chosen.length >= MAX_EVIDENCE) break
-        if (seen.has(entry.message.id)) continue
-        seen.add(entry.message.id)
-        chosen.push(entry.message)
-        added += 1
+    const cursors = prepared.map(() => 0)
+    const added = prepared.map(() => 0)
+    let progress = true
+    while (progress && chosen.length < MAX_EVIDENCE) {
+      progress = false
+      for (const [index, item] of prepared.entries()) {
+        if (chosen.length >= MAX_EVIDENCE) return
+        if ((added[index] ?? 0) >= item.perCandidateLimit) continue
+        while ((cursors[index] ?? 0) < item.messages.length) {
+          const cursor = cursors[index] ?? 0
+          const entry = item.messages[cursor]
+          cursors[index] = cursor + 1
+          if (entry === undefined) break
+          if (onlyMatching && entry.score === 0 && !item.linked) continue
+          if (seen.has(entry.message.id)) continue
+          seen.add(entry.message.id)
+          chosen.push(entry.message)
+          added[index] = (added[index] ?? 0) + 1
+          progress = true
+          break
+        }
       }
     }
   }

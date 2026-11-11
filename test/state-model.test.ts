@@ -12,6 +12,7 @@ import type {
   MessageId,
 } from '../src/types.ts'
 
+import { ProviderError } from '../src/index.ts'
 import { normalizeAttribute } from '../src/text.ts'
 import { AI, USER, setup } from './helpers.ts'
 
@@ -493,4 +494,89 @@ test('attribute keys are normalized before they are stored', () => {
   assert.equal(normalizeAttribute('  居住地。 '), '居住地')
   assert.equal(normalizeAttribute('Residence  City'), 'residence city')
   assert.equal(normalizeAttribute('「喜好」'), '喜好')
+})
+
+test('backdated evidence is stored as history instead of rewriting the current value', async () => {
+  const timestamps: Record<string, number> = { 上海: 1_700_000_000, 杭州: 1_600_000_000 }
+  const extraction = claimProvider((content) => ({
+    predicate: '居住地',
+    attribute: '居住地',
+    cardinality: 'one',
+    change: 'replaces',
+    value: content,
+    ...(timestamps[content] === undefined ? {} : { validFrom: timestamps[content] }),
+  }))
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '上海')
+  await drain()
+  await say(USER, 'user', '杭州')
+  await drain()
+
+  const details = namiso.getEntityDetails('用户')
+  assert.ok(details !== null)
+  const claims = details.claims.filter((claim) => claim.predicate === '居住地')
+  assert.deepEqual(valuesOf(claims, 'active'), ['上海'])
+  assert.deepEqual(valuesOf(claims, 'superseded'), ['杭州'])
+  const historical = claims.find((claim) => claim.status === 'superseded')
+  assert.equal(historical?.validUntil, timestamps['上海'])
+  namiso.close()
+})
+
+test('a failed index sync does not duplicate claims on retry', async () => {
+  const timestamps: Record<string, number> = { 上海: 1_700_000_000, 杭州: 1_600_000_000 }
+  const extraction = claimProvider((content) => ({
+    predicate: '居住地',
+    attribute: '居住地',
+    cardinality: 'one',
+    change: 'replaces',
+    value: content,
+    ...(timestamps[content] === undefined ? {} : { validFrom: timestamps[content] }),
+  }))
+  let failed = false
+  const embedding = {
+    model: 'flaky-test',
+    version: '1',
+    dimensions: 8,
+    async embed(texts: readonly string[]): Promise<number[][]> {
+      if (!failed && texts.some((text) => text.includes('杭州'))) {
+        failed = true
+        throw new ProviderError('boom')
+      }
+      return texts.map(() => Array.from<number>({ length: 8 }).fill(0))
+    },
+  }
+  const { namiso, say } = await setup({ extraction, embedding })
+  await say(USER, 'user', '上海')
+  await namiso.consolidate()
+  await say(USER, 'user', '杭州')
+  await assert.rejects(namiso.consolidate())
+  await namiso.consolidate()
+
+  const details = namiso.getEntityDetails('用户')
+  assert.ok(details !== null)
+  const claims = details.claims.filter((item) => item.predicate === '居住地')
+  assert.equal(claims.length, 2)
+  assert.deepEqual(valuesOf(claims, 'superseded'), ['杭州'])
+  namiso.close()
+})
+
+test('an assistant-only negation stays a negative assertion instead of becoming quoted', async () => {
+  const extraction = claimProvider((content) => ({
+    predicate: '职业',
+    attribute: '职业',
+    cardinality: 'one',
+    change: 'new',
+    value: content,
+    modality: 'negated',
+  }))
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(AI, 'assistant', '设计师')
+  await drain()
+
+  const details = namiso.getEntityDetails('用户')
+  assert.ok(details !== null)
+  const claim = details.claims.find((item) => item.predicate === '职业')
+  assert.equal(claim?.modality, 'asserted')
+  assert.equal(claim?.polarity, 'negative')
+  namiso.close()
 })

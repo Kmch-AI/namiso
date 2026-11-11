@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
+import { asMemorySpaceId } from '../src/ids.ts'
 import { Namiso } from '../src/index.ts'
+import { Database } from '../src/storage/database.ts'
+import { claimNextJob, enqueueChunk, pendingJobCount } from '../src/storage/job-repo.ts'
 import { AI, USER, setup } from './helpers.ts'
 
 test('ingest stores raw messages in order and deduplicates external ids', async () => {
@@ -83,4 +86,42 @@ test('multiple memory spaces stay isolated', async () => {
   assert.equal(second.getConversation(first.conversation.id), null)
   first.namiso.close()
   second.close()
+})
+
+test('job claims and requeues stay inside one memory space', () => {
+  const db = new Database(':memory:')
+  try {
+    db.run('INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)', 'workspace', 'w', 1)
+    db.run(
+      'INSERT INTO memory_spaces (id, workspace_id, name, created_at) VALUES (?, ?, ?, ?)',
+      'space-a',
+      'workspace',
+      'a',
+      1,
+    )
+    db.run(
+      'INSERT INTO memory_spaces (id, workspace_id, name, created_at) VALUES (?, ?, ?, ?)',
+      'space-b',
+      'workspace',
+      'b',
+      1,
+    )
+    const first = asMemorySpaceId('space-a')
+    const second = asMemorySpaceId('space-b')
+    enqueueChunk(db, first, 'conversation-a')
+    enqueueChunk(db, second, 'conversation-b')
+
+    const now = Math.floor(Date.now() / 1000)
+    const claimed = claimNextJob(db, first, now)
+    assert.equal(claimed?.memorySpaceId, first)
+
+    enqueueChunk(db, first, 'conversation-a')
+    assert.equal(pendingJobCount(db, first), 1)
+    assert.equal(pendingJobCount(db, second), 1)
+    const reclaimed = claimNextJob(db, first, now)
+    assert.equal(reclaimed?.id, claimed?.id)
+    assert.equal(reclaimed?.status, 'running')
+  } finally {
+    db.close()
+  }
 })

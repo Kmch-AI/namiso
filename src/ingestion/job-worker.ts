@@ -31,16 +31,15 @@ export class JobWorker {
   }
 
   async drain(limit = 200): Promise<DrainReport> {
-    requeueStaleJobs(this.db)
+    requeueStaleJobs(this.db, this.spaceId)
     let completed = 0
     let failed = 0
     for (let processed = 0; processed < limit; processed += 1) {
-      const job = claimNextJob(this.db, Math.floor(Date.now() / 1000))
+      const job = claimNextJob(this.db, this.spaceId, Math.floor(Date.now() / 1000))
       if (job === null) break
       try {
         await this.execute(job)
-        completeJob(this.db, job.id)
-        completed += 1
+        if (completeJob(this.db, job.id)) completed += 1
       } catch (error) {
         failJob(this.db, job.id, error)
         failed += 1

@@ -82,20 +82,21 @@ Names are not unique. Two entities may share a name, and an alias may repeat ano
 
 The pipeline normalizes the claim attribute, resolves its cardinality from the provider or the `attributes` registry, and passes the change verb to `MemoryLinker`. The linker applies these rules:
 
-| Situation                                                         | Result                                                                 |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Same attribute and same object                                    | Reuse the active claim; add evidence                                   |
-| One-valued attribute, different object, newer or explicit replace | Insert a new active claim; supersede the old; add a `supersedes` link  |
-| One-valued attribute, different object, older evidence            | Insert the new claim as `superseded` history with `valid_until`        |
-| Many-valued attribute, new object                                 | Insert an active claim                                                 |
-| Many-valued attribute, explicit replace on the matching object    | Replace only that object; other values stay active                     |
-| `retracts` with a matching object                                 | Mark the matching active claims `retracted`                            |
-| `retracts` with no matching object                                | Insert a `retracted` claim so the recorded denial is not lost          |
-| `disputes`                                                        | Insert the claim alongside the current value; the context renders both |
-| Negated claim with user evidence                                  | Retract the matching positive value; store an active negative fact     |
-| Uncertain, hypothetical, quoted, or reported claim                | Store it; never supersede; the context renders it as unconfirmed       |
-| Asserted claim with assistant-only evidence, subject not self     | Store it as quoted                                                     |
-| Provider retry                                                    | Reuse existing rows; no duplicate claims                               |
+| Situation                                                         | Result                                                                                                                |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Same attribute and same object                                    | Reuse the active claim; add evidence                                                                                  |
+| One-valued attribute, different object, newer or explicit replace | Insert a new active claim; supersede the old; add a `supersedes` link                                                 |
+| One-valued attribute, different object, older evidence            | Insert the new claim as `superseded` history with `valid_until`                                                       |
+| Many-valued attribute, new object                                 | Insert an active claim                                                                                                |
+| Many-valued attribute, explicit replace on the matching object    | Replace only that object; other values stay active                                                                    |
+| `retracts` with a matching object                                 | Mark the matching active claims `retracted`                                                                           |
+| `retracts` with no matching object                                | Insert a `retracted` claim so the recorded denial is not lost                                                         |
+| `disputes`                                                        | Insert the claim alongside the current value; the context renders both                                                |
+| Negated claim with user evidence                                  | Retract the matching positive value; store an active negative fact                                                    |
+| Uncertain, hypothetical, quoted, or reported claim                | Store it; never supersede; the context renders it as unconfirmed                                                      |
+| Asserted claim with assistant-only evidence, subject not self     | Store it as quoted                                                                                                    |
+| Negated claim with assistant-only evidence                        | Store an asserted negative fact; keep polarity negative                                                               |
+| Provider retry                                                    | Reuse the existing row for the same evidence, including `retracted`, `superseded`, and disputed claims; no duplicates |
 
 Attribute keys are normalized by `normalizeAttribute()`: NFKC, trimmed, lowercase ASCII, collapsed whitespace, and stripped wrapping punctuation. An empty result falls back to the normalized predicate. The registry keeps the first declared cardinality for a key; it never upgrades a `many` attribute to `one`. Predicate remains the display label and the indexed text.
 

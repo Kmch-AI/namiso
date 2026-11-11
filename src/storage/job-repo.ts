@@ -23,21 +23,12 @@ function enqueue(
       max_attempts, run_after, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, 'pending', 0, 3, ?, ?, ?)
     ON CONFLICT(dedupe_key) DO UPDATE SET
-      status = CASE
-        WHEN jobs.status IN ('completed', 'failed') THEN 'pending'
-        ELSE jobs.status
-      END,
-      attempts = CASE
-        WHEN jobs.status IN ('completed', 'failed') THEN 0
-        ELSE jobs.attempts
-      END,
+      status = 'pending',
+      attempts = 0,
       payload = excluded.payload,
       run_after = excluded.run_after,
       updated_at = excluded.updated_at,
-      last_error = CASE
-        WHEN jobs.status IN ('completed', 'failed') THEN NULL
-        ELSE jobs.last_error
-      END`,
+      last_error = NULL`,
     asJobId(`job:${dedupeKey}`),
     spaceId,
     type,
@@ -49,12 +40,13 @@ function enqueue(
   )
 }
 
-export function claimNextJob(db: Database, now: number): Job | null {
+export function claimNextJob(db: Database, spaceId: MemorySpaceId, now: number): Job | null {
   return db.transaction(() => {
     const row = db.get(
       `SELECT * FROM jobs
-       WHERE status = 'pending' AND run_after <= ?
+       WHERE memory_space_id = ? AND status = 'pending' AND run_after <= ?
        ORDER BY created_at ASC, rowid ASC LIMIT 1`,
+      spaceId,
       now,
     )
     if (row === undefined) return null
@@ -71,11 +63,14 @@ export function claimNextJob(db: Database, now: number): Job | null {
   })
 }
 
-export function completeJob(db: Database, jobId: JobId): void {
-  db.run(
-    "UPDATE jobs SET status = 'completed', last_error = NULL, updated_at = ? WHERE id = ?",
-    nowSeconds(),
-    jobId,
+export function completeJob(db: Database, jobId: JobId): boolean {
+  return (
+    db.run(
+      `UPDATE jobs SET status = 'completed', last_error = NULL, updated_at = ?
+       WHERE id = ? AND status = 'running'`,
+      nowSeconds(),
+      jobId,
+    ) === 1
   )
 }
 
@@ -88,7 +83,7 @@ export function failJob(db: Database, jobId: JobId, error: unknown): void {
   if (job.attempts >= job.maxAttempts) {
     db.run(
       `UPDATE jobs SET status = 'failed', last_error = ?, run_after = ?, updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'running'`,
       message.slice(0, 2000),
       now + 300,
       now,
@@ -96,10 +91,10 @@ export function failJob(db: Database, jobId: JobId, error: unknown): void {
     )
     return
   }
-  const backoff = Math.min(10 * 2 ** job.attempts, 300)
+  const backoff = Math.min(10 * 2 ** (job.attempts - 1), 300)
   db.run(
     `UPDATE jobs SET status = 'pending', last_error = ?, run_after = ?, updated_at = ?
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'running'`,
     message.slice(0, 2000),
     now + backoff,
     now,
@@ -107,12 +102,17 @@ export function failJob(db: Database, jobId: JobId, error: unknown): void {
   )
 }
 
-export function requeueStaleJobs(db: Database, staleAfterSeconds = 300): number {
+export function requeueStaleJobs(
+  db: Database,
+  spaceId: MemorySpaceId,
+  staleAfterSeconds = 300,
+): number {
   const now = nowSeconds()
   return db.run(
     `UPDATE jobs SET status = 'pending', updated_at = ?
-     WHERE status = 'running' AND updated_at < ?`,
+     WHERE memory_space_id = ? AND status = 'running' AND updated_at < ?`,
     now,
+    spaceId,
     now - staleAfterSeconds,
   )
 }

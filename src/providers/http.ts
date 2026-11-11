@@ -65,6 +65,15 @@ export class HttpEmbeddingProvider implements EmbeddingProvider {
   private readonly options: HttpEmbeddingOptions
 
   constructor(options: HttpEmbeddingOptions) {
+    if (!Number.isInteger(options.dimensions) || options.dimensions <= 0) {
+      throw new ValidationError('embedding dimensions must be a positive integer')
+    }
+    if (
+      options.batchSize !== undefined &&
+      (!Number.isInteger(options.batchSize) || options.batchSize <= 0)
+    ) {
+      throw new ValidationError('embedding batchSize must be a positive integer')
+    }
     this.options = options
     this.model = options.model
     this.version = options.version ?? '1'
@@ -83,16 +92,34 @@ export class HttpEmbeddingProvider implements EmbeddingProvider {
       )
       const root = asRecord(payload, 'embedding response')
       const data = asArray(root['data'] ?? root['embeddings'], 'embedding data')
-      const batchVectors = data.map((item, index) => parseEmbedding(item, index, this.dimensions))
-      if (batchVectors.length !== batch.length) {
+      const batchVectors: Array<number[] | undefined> = Array.from({ length: batch.length })
+      for (const [position, item] of data.entries()) {
+        const index = embeddingIndex(item, position, batch.length)
+        batchVectors[index] = parseEmbedding(item, index, this.dimensions)
+      }
+      const ordered = batchVectors.filter((vector): vector is number[] => vector !== undefined)
+      if (ordered.length !== batch.length) {
         throw new ProviderError(
-          `embedding provider returned ${batchVectors.length} vectors for ${batch.length} inputs`,
+          `embedding provider returned ${ordered.length} vectors for ${batch.length} inputs`,
         )
       }
-      vectors.push(...batchVectors)
+      vectors.push(...ordered)
     }
     return vectors
   }
+}
+
+function embeddingIndex(item: unknown, position: number, batchLength: number): number {
+  const record = asRecord(item, `embedding ${position}`)
+  const value = record['index']
+  if (value === undefined) return position
+  const index = typeof value === 'number' ? value : Number.NaN
+  if (!Number.isInteger(index) || index < 0 || index >= batchLength) {
+    throw new ProviderError(
+      `embedding provider returned out-of-range index ${JSON.stringify(value)}`,
+    )
+  }
+  return index
 }
 
 function parseEmbedding(item: unknown, index: number, dimensions: number): number[] {

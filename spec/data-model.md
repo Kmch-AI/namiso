@@ -16,7 +16,7 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 | `messages`            | Raw conversation, append-only; `consolidated_at` marks extracted rows                | Unique `(conversation_id, message_index)`; unique external ID per space |
 | `entities`            | People, groups, places, animals, objects, artifacts, activities, topics, other, self | Space and name index                                                    |
 | `entity_aliases`      | Alternate names                                                                      | Unique per entity; a name may repeat across entities                    |
-| `claims`              | Subject, attribute, predicate, object facts                                          | Subject and attribute index; status                                     |
+| `claims`              | Subject, attribute, predicate, object facts                                          | Subject and attribute index; subject-object index; status               |
 | `attributes`          | Attribute key, label, and cardinality per space                                      | Primary key `(memory_space_id, key)`                                    |
 | `events`              | Time-bound occurrences                                                               | Time, type, and status indexes                                          |
 | `event_participants`  | Entity roles in an event                                                             | Composite primary key                                                   |
@@ -30,7 +30,8 @@ The schema is `src/storage/schema.ts`. Repositories in `src/storage/` are the on
 | `jobs`                | Outbox for chunk and index work                                                      | Unique `dedupe_key`; status and `run_after` index                       |
 | `fts_documents`       | FTS5 index over pre-segmented document text                                          | Virtual table, rebuilt from documents                                   |
 | `fts_ngrams`          | FTS5 index over CJK bigrams used as a second retrieval stage                         | Virtual table, rebuilt from documents                                   |
-| `vec_documents`       | sqlite-vec table keyed by document ID                                                | Virtual table, dimensions from the embedding provider                   |
+| `fts_keys`            | Document key to FTS rowid per FTS table                                              | Primary key `(table_name, document_key)`; rowid index                   |
+| `vec_documents`       | sqlite-vec table keyed by document ID, partitioned by memory space                   | Virtual table, dimensions from the embedding provider                   |
 
 ## Entity types
 
@@ -108,8 +109,12 @@ An evidence row names its source. The first version uses `source_type = 'message
 
 ## Derived indexes
 
-`embedding_documents` stores the retrieval text, its content hash, model name and version, dimensions, and a float32 vector blob. FTS rows and `vec_documents` rows are keyed by the document ID.
+`embedding_documents` stores the retrieval text, its content hash, model name and version, dimensions, and a float32 vector blob. FTS rows are keyed by the document ID. `vec_documents` uses the document ID as its primary key and `memory_space_id` as a partition key, so a nearest-neighbour search only scans the requested space before it applies `k`.
+
+`fts_keys` maps a document key to the FTS rowid in each table. Deleting a document looks up the rowid instead of scanning the `UNINDEXED` key column; a missing mapping falls back to the key scan.
 
 Changing the embedding model changes the document identity. `reindex()` deletes the space's documents and index rows, rebuilds document text from structured records and chunks, and re-embeds. The schema does not depend on any provider.
 
 Schema version 8 adds `fts_ngrams`. `SCHEMA_SQL` creates it on open, so an existing database gets an empty table; call `reindex()` once to populate it. `indexDocument()` and `deleteFtsDocument()` maintain both FTS tables together.
+
+Schema version 10 adds `fts_keys`, the `claims(memory_space_id, object_entity_id)` index, and the partitioned `vec_documents` layout. Migration backfills `fts_keys` from both FTS tables. Vectors use the new table on the next open: the store drops the old layout and copies stored vectors back from `embedding_documents`. Call `reindex()` if the copy reports a dimension mismatch.

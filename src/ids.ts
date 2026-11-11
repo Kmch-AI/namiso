@@ -14,9 +14,11 @@ import type {
   WorkspaceId,
 } from './types.ts'
 
+import { ValidationError } from './errors.ts'
+
 function identifier(value: string): string {
   if (value.length === 0) {
-    throw new Error('identifier cannot be empty')
+    throw new ValidationError('identifier cannot be empty')
   }
   return value
 }

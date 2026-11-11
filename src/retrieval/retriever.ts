@@ -225,7 +225,9 @@ export class Retriever {
         mentioned.unshift(self)
       }
     }
-    if (!/我|I\b|my\b/i.test(query)) return { entities: mentioned, coverageIds }
+    if (!/我|(\bI\b)|(\bmy\b)|(\bme\b)|(\bmine\b)/i.test(query)) {
+      return { entities: mentioned, coverageIds }
+    }
     const speakerId = latestUserSpeakerId(this.db, spaceId)
     if (speakerId === null) return { entities: mentioned, coverageIds }
     const speaker = this.resolver.findSpeaker(spaceId, speakerId)
@@ -328,8 +330,9 @@ export class Retriever {
   ): MemoryCandidate[] {
     const word = this.ftsHits(spaceId, query, allowed)
     if (word.length >= FTS_STAGE_MIN) return word
+    if (!/[\u3400-\u9fff]/.test(query)) return word
     if (toNgramQuery(query).length === 0) return word
-    notes.push('FTS 词级命中不足，已尝试 CJK 二元组检索。')
+    notes.push('FTS 词级命中不足，已补充 CJK 二元组检索。')
     const seen = new Set(word.map((item) => item.key))
     const merged = [...word]
     for (const hit of searchFtsNgrams(this.db, spaceId, query, 30, ftsKinds(allowed))) {
@@ -443,13 +446,16 @@ export class Retriever {
       ) {
         continue
       }
-      if (
-        timeRange !== undefined &&
-        (candidate.kind === 'event' || candidate.kind === 'claim') &&
-        candidate.occurredAt !== null
-      ) {
-        if (timeRange.from !== undefined && candidate.occurredAt < timeRange.from) continue
-        if (timeRange.to !== undefined && candidate.occurredAt > timeRange.to) continue
+      if (timeRange !== undefined) {
+        const bounds = candidateBounds(candidate)
+        if (bounds !== null) {
+          if (timeRange.from !== undefined && bounds.end !== null && bounds.end < timeRange.from) {
+            continue
+          }
+          if (timeRange.to !== undefined && bounds.start !== null && bounds.start > timeRange.to) {
+            continue
+          }
+        }
       }
       kept.push(candidate)
     }
@@ -630,6 +636,22 @@ function structuredRelevance(
 function inTimeWindow(occurredAt: number | null, windows: readonly TimeWindow[]): boolean {
   if (occurredAt === null) return false
   return windows.some((window) => occurredAt >= window.from && occurredAt < window.to)
+}
+
+function candidateBounds(
+  candidate: MemoryCandidate,
+): { start: number | null; end: number | null } | null {
+  if (candidate.record.kind === 'claim') {
+    const claim = candidate.record.claim
+    const start = claim.validFrom ?? candidate.occurredAt
+    const end = claim.validUntil
+    if (start === null && end === null) return null
+    return { start, end }
+  }
+  if (candidate.kind === 'event' && candidate.occurredAt !== null) {
+    return { start: candidate.occurredAt, end: candidate.occurredAt }
+  }
+  return null
 }
 
 function appendClosureEvidence(parent: MemoryCandidate, target: MemoryCandidate): void {

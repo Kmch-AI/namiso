@@ -52,7 +52,7 @@ interface EmbeddingProvider {
 
 `HashEmbeddingProvider` hashes word features into a fixed-width, L2-normalized vector. It is deterministic and offline. It is not a semantic model: synonyms and paraphrases do not move closer.
 
-`HttpEmbeddingProvider` posts `{ model, input: string[] }` to the endpoint and expects `{ data: [{ embedding: number[] }] }` or `{ embeddings: number[][] }`. It batches 64 texts by default. Each vector must match `dimensions`.
+`HttpEmbeddingProvider` posts `{ model, input: string[] }` to the endpoint and expects `{ data: [{ embedding: number[], index?: number }] }` or `{ embeddings: number[][] }`. It batches 64 texts by default. The constructor rejects a non-positive integer `dimensions` or `batchSize`. Each vector must match `dimensions`. A response item's `index` places its vector in the request order; a missing index falls back to the array position, and an out-of-range index throws.
 
 ### Changing the embedding model
 

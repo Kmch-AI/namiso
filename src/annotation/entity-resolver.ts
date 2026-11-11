@@ -11,6 +11,7 @@ import type {
   SelfIdentity,
 } from '../types.ts'
 
+import { ValidationError } from '../errors.ts'
 import {
   findEntityByAlias,
   findEntityByName,
@@ -90,7 +91,7 @@ export class EntityResolver {
   ensureSelf(spaceId: MemorySpaceId, input: SelfIdentity): Entity {
     const name = input.name.trim()
     if (name.length === 0) {
-      throw new Error('self name cannot be empty')
+      throw new ValidationError('self name cannot be empty')
     }
     const existing =
       findSelfEntity(this.db, spaceId) ??
@@ -170,7 +171,7 @@ export class EntityResolver {
   private writeSelf(entity: Entity, input: SelfIdentity): Entity {
     const name = input.name.trim()
     if (name.length === 0) {
-      throw new Error('self name cannot be empty')
+      throw new ValidationError('self name cannot be empty')
     }
     if (normalizeName(name) !== normalizeName(entity.name)) {
       insertAlias(this.db, {

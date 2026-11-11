@@ -161,7 +161,7 @@ export function excerpt(text: string, tokens: ReadonlySet<string>, maxChars: num
     }
   }
   if (matchIndex === -1) return truncate(text, limit)
-  const centered = Math.max(0, matchIndex - Math.floor((limit - matchLength) / 2))
+  const centered = Math.max(0, matchIndex - Math.max(0, Math.floor((limit - matchLength) / 2)))
   const start = Math.min(centered, Math.max(0, text.length - limit))
   const end = Math.min(text.length, start + limit)
   const body = text.slice(start, end)

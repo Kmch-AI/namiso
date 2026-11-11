@@ -97,12 +97,22 @@ export async function forget(
     const entity = getEntity(db, asEntityId(input.entityId))
     if (entity === null || entity.memorySpaceId !== spaceId) return report
     const claimRows = db.all(
-      'SELECT id FROM claims WHERE subject_id = ? OR object_entity_id = ?',
+      'SELECT id FROM claims WHERE memory_space_id = ? AND (subject_id = ? OR object_entity_id = ?)',
+      spaceId,
       entity.id,
       entity.id,
     )
     const claimIds = claimRows.map((row) => String(row['id']))
+    const eventRows = db.all(
+      `SELECT DISTINCT e.id FROM events e
+       JOIN event_participants p ON p.event_id = e.id
+       WHERE e.memory_space_id = ? AND p.entity_id = ?`,
+      spaceId,
+      entity.id,
+    )
+    const eventIds = eventRows.map((row) => String(row['id']))
     for (const claimId of claimIds) indexer.remove('claim', claimId)
+    for (const eventId of eventIds) indexer.remove('event', eventId)
     db.transaction(() => {
       if (claimIds.length > 0) {
         const placeholders = claimIds.map(() => '?').join(', ')
@@ -132,6 +142,31 @@ export async function forget(
         entity.id,
         entity.id,
       )
+      if (eventIds.length > 0) {
+        const placeholders = eventIds.map(() => '?').join(', ')
+        db.run(
+          `DELETE FROM memory_evidence
+           WHERE memory_type = 'event' AND memory_id IN (${placeholders})`,
+          ...eventIds,
+        )
+        db.run(
+          `DELETE FROM annotations
+           WHERE target_type = 'event' AND target_id IN (${placeholders})`,
+          ...eventIds,
+        )
+        db.run(
+          `DELETE FROM memory_links
+           WHERE (source_type = 'event' AND source_id IN (${placeholders}))
+              OR (target_type = 'event' AND target_id IN (${placeholders}))`,
+          ...eventIds,
+          ...eventIds,
+        )
+        report.deletedEvents = db.run(
+          `DELETE FROM events WHERE memory_space_id = ? AND id IN (${placeholders})`,
+          spaceId,
+          ...eventIds,
+        )
+      }
       report.deletedClaims = claimIds.length
       report.deletedEntities = db.run(
         'DELETE FROM entities WHERE id = ? AND memory_space_id = ?',

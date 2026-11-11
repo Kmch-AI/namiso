@@ -41,7 +41,7 @@ export async function rebuildIndexes(
     })
   }
 
-  const claims = listClaims(db, spaceId)
+  const claims = listClaims(db, spaceId).filter((claim) => claim.status !== 'invalid')
   const claimEntities = getEntitiesByIds(
     db,
     claims.flatMap((claim) => [
@@ -61,7 +61,7 @@ export async function rebuildIndexes(
     })
   }
 
-  const events = listEvents(db, spaceId)
+  const events = listEvents(db, spaceId).filter((event) => event.status !== 'invalid')
   const eventParticipants = events.map((event) => ({
     event,
     participants: listEventParticipants(db, event.id),

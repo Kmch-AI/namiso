@@ -1,5 +1,7 @@
 export { Namiso } from './namiso.ts'
 export type { ConsolidateReport } from './annotation/consolidator.ts'
+export type { DrainReport } from './ingestion/job-worker.ts'
+export type { ForgetInput, ForgetReport } from './admin/forget.ts'
 export type {
   ClaimDetails,
   ContextInput,
