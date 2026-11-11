@@ -8,14 +8,12 @@ import type {
   MemoryCandidate,
   MemorySourceType,
   MemorySpaceId,
-  QueryAspect,
   RetrievalChannel,
   RetrievalTimeRange,
   RetrievalTrace,
   RetrieveResult,
   TimeWindow,
 } from '../types.ts'
-import type { ParsedQuery } from './query-parser.ts'
 
 import { asDocumentId, asMessageId, newId, nowSeconds } from '../ids.ts'
 import { getMessagesByIds, latestUserSpeakerId } from '../storage/conversation-repo.ts'
@@ -33,8 +31,7 @@ import {
   messageCandidate,
 } from './candidates.ts'
 import { selectWithCoverage } from './coverage.ts'
-import { analyzeQuery } from './query-analysis.ts'
-import { parseQuery } from './query-parser.ts'
+import { analyzeQuery, type QueryAnalysis } from './query-analysis.ts'
 import { resolveTimeExpressions } from './time-expression.ts'
 
 export interface RetrieveOptions {
@@ -97,7 +94,6 @@ export class Retriever {
     if (query.length === 0) {
       throw new Error('query cannot be empty')
     }
-    const parsed = parseQuery(query)
     const analysis = analyzeQuery(query)
     const queryTokens = new Set(segment(query))
     const now = options.now ?? nowSeconds()
@@ -113,8 +109,7 @@ export class Retriever {
     const allowed = allowedKinds(options.memoryTypes)
     const sqlItems = this.sqlChannel(
       options,
-      parsed,
-      analysis.aspects,
+      analysis,
       mentioned.entities,
       queryTokens,
       windows,
@@ -145,7 +140,7 @@ export class Retriever {
       ...(analysis.facets.length === 0 ? [] : [{ channel: 'facet' as const, items: facetItems }]),
     ]
     const fused = this.fuse(channelResults)
-    const validated = this.validate(fused, parsed, analysis.aspects, options.timeRange)
+    const validated = this.validate(fused, analysis, options.timeRange)
     notes.push(...validated.notes)
     const topK = Math.max(1, Math.min(options.topK ?? 10, 50))
     const rerank = options.rerank !== false
@@ -182,7 +177,7 @@ export class Retriever {
     const trace: RetrievalTrace = {
       id: newId(),
       query,
-      intent: parsed.intent,
+      intent: analysis.intent,
       entityIds: mentioned.entities.map((entity) => entity.id),
       channels: channelResults.map((result) => ({
         channel: result.channel,
@@ -268,19 +263,18 @@ export class Retriever {
 
   private sqlChannel(
     options: RetrieveOptions,
-    parsed: ParsedQuery,
-    aspects: readonly QueryAspect[],
+    analysis: QueryAnalysis,
     mentioned: readonly Entity[],
     queryTokens: ReadonlySet<string>,
     windows: readonly TimeWindow[],
   ): MemoryCandidate[] {
     const spaceId = options.memorySpaceId
     const includeInactive =
-      parsed.wantsHistory || aspects.includes('change') || !parsed.wantsCurrent
+      analysis.wantsHistory || analysis.aspects.includes('change') || !analysis.wantsCurrent
     const wantsEvents =
-      aspects.includes('event_time') ||
-      aspects.includes('history') ||
-      aspects.includes('change') ||
+      analysis.aspects.includes('event_time') ||
+      analysis.aspects.includes('history') ||
+      analysis.aspects.includes('change') ||
       windows.length > 0
     const entityIds = mentioned.map((entity) => entity.id)
     const entities = mentioned.flatMap((entity) => {
@@ -313,10 +307,10 @@ export class Retriever {
       const candidate = eventCandidate(this.db, event)
       return candidate === null ? [] : [candidate]
     })
-    const rankedClaims = rankStructured(claimItems, queryTokens, parsed, windows)
-    const rankedEvents = rankStructured(eventItems, queryTokens, parsed, windows)
+    const rankedClaims = rankStructured(claimItems, queryTokens, analysis, windows)
+    const rankedEvents = rankStructured(eventItems, queryTokens, analysis, windows)
     const ordered =
-      parsed.intent === 'entity'
+      analysis.intent === 'entity'
         ? [...entities, ...rankedClaims, ...rankedEvents]
         : [...rankedClaims, ...entities, ...rankedEvents]
     const items = new Map<string, MemoryCandidate>()
@@ -434,16 +428,15 @@ export class Retriever {
 
   private validate(
     candidates: readonly MemoryCandidate[],
-    parsed: ParsedQuery,
-    aspects: readonly QueryAspect[],
+    analysis: QueryAnalysis,
     timeRange: RetrievalTimeRange | undefined,
   ): { candidates: MemoryCandidate[]; notes: string[] } {
     const notes: string[] = []
     const kept: MemoryCandidate[] = []
-    const keepInactive = aspects.includes('change')
+    const keepInactive = analysis.aspects.includes('change')
     for (const candidate of candidates) {
       if (
-        parsed.wantsCurrent &&
+        analysis.wantsCurrent &&
         !keepInactive &&
         candidate.kind === 'claim' &&
         candidate.status !== 'active'
@@ -597,13 +590,13 @@ export class Retriever {
 function rankStructured(
   items: readonly MemoryCandidate[],
   queryTokens: ReadonlySet<string>,
-  parsed: ParsedQuery,
+  analysis: QueryAnalysis,
   windows: readonly TimeWindow[],
 ): MemoryCandidate[] {
   return items
     .map((item) => ({
       item,
-      score: structuredRelevance(item, queryTokens, parsed, windows),
+      score: structuredRelevance(item, queryTokens, analysis, windows),
     }))
     .toSorted((left, right) => {
       if (left.score !== right.score) return right.score - left.score
@@ -618,18 +611,18 @@ function rankStructured(
 function structuredRelevance(
   item: MemoryCandidate,
   queryTokens: ReadonlySet<string>,
-  parsed: ParsedQuery,
+  analysis: QueryAnalysis,
   windows: readonly TimeWindow[],
 ): number {
   let score = 0
   for (const token of segment(`${item.title}\n${item.text}`)) {
     if (queryTokens.has(token)) score += 1
   }
-  if (item.status === 'active' && (parsed.wantsCurrent || parsed.intent === 'general')) {
+  if (item.status === 'active' && (analysis.wantsCurrent || analysis.intent === 'general')) {
     score += 0.25
   }
-  if (parsed.intent === 'event' && item.kind === 'event') score += 0.5
-  if (parsed.intent === 'entity' && item.kind === 'entity') score += 0.5
+  if (analysis.intent === 'event' && item.kind === 'event') score += 0.5
+  if (analysis.intent === 'entity' && item.kind === 'entity') score += 0.5
   if (inTimeWindow(item.occurredAt, windows)) score += 0.5
   return score
 }

@@ -4,7 +4,7 @@ Retrieval combines structured lookup, full-text search, and vector search. The p
 
 ## Query parsing
 
-`parseQuery()` classifies intent from markers:
+`analyzeQuery()` reads the query once and returns every signal retrieval needs: multi-label `aspects`, the single-label `intent` projection, and the `wantsCurrent` / `wantsHistory` flags. All of them derive from the same marker sets, so they cannot drift.
 
 | Intent         | Markers                                     |
 | -------------- | ------------------------------------------- |
@@ -14,9 +14,9 @@ Retrieval combines structured lookup, full-text search, and vector search. The p
 | `entity`       | 是谁, 是什么, who is                        |
 | `general`      | Everything else                             |
 
-A query with both current and history markers is general. A current query filters out non-active claims after fusion. A history query keeps superseded claims.
+`intent` is `current_fact` when current markers match without history markers, `history` when history matches without current, `event` when event markers match after that, `entity` when entity markers match, and `general` otherwise. `wantsCurrent` is true only for a current query without history. `wantsHistory` is true whenever history markers match. A current query filters out non-active claims after fusion. A history query keeps superseded claims. A query with both current and history markers keeps history and skips the inactive-claim filter.
 
-`analyzeQuery()` adds a multi-label view alongside that projection. Aspects are `current`, `change`, `event_time`, `entity`, `history`, and `general`; `general` appears only when no other aspect matched. Aspects are cues, not exclusive categories. A change query keeps inactive claims and fetches events. Facets split the query at clause punctuation and at whole-token conjunctions (`和`, `与`, `以及`, `and`, `or`, and similar), keep the first three non-duplicate fragments with content, and drop a fragment whose token set equals the whole query. `trace.intent` keeps the older single-label projection, so existing callers are unchanged.
+Aspects are `current`, `change`, `event_time`, `entity`, `history`, and `general`; `general` appears only when no other aspect matched. Aspects are cues, not exclusive categories. A change query keeps inactive claims and fetches events. Facets split the query at clause punctuation and at whole-token conjunctions (`和`, `与`, `以及`, `and`, `or`, and similar), keep the first three non-duplicate fragments with content, and drop a fragment whose token set equals the whole query. `trace.intent` records the single-label projection.
 
 Entity resolution checks explicit `entityIds` first. Otherwise it matches every entity name and alias against the query text. A query containing a second-person marker (`你`, `您`, `you`, `your`) adds the self entity, so questions such as `你的性格是什么` reach the assistant's persona claims. A query containing a first-person marker also adds the latest user speaker. This is how `我现在使用什么模型` reaches the user's active claims without naming the user. Only explicitly named or explicitly requested entities create coverage quotas; self and speaker entities added by a pronoun do not.
 

@@ -19,6 +19,19 @@ test('aspects are multi-label and general stands alone', () => {
   ])
 })
 
+test('intent and current/history flags derive from the same markers', () => {
+  assert.equal(analyzeQuery('我现在使用什么模型？').intent, 'current_fact')
+  assert.equal(analyzeQuery('我以前住在苏州').intent, 'history')
+  assert.equal(analyzeQuery('他何时出发').intent, 'event')
+  assert.equal(analyzeQuery('who are they').intent, 'entity')
+  assert.equal(analyzeQuery('我喜欢评弹').intent, 'general')
+
+  const both = analyzeQuery('我以前住在苏州，现在住在上海')
+  assert.equal(both.intent, 'general')
+  assert.equal(both.wantsCurrent, false)
+  assert.equal(both.wantsHistory, true)
+})
+
 test('facets split clauses and conjunctions without cutting words apart', () => {
   assert.deepEqual(facetsOf('我喜欢苹果和香蕉'), ['我喜欢苹果', '香蕉'])
   assert.deepEqual(facetsOf('我喜欢和平'), [])

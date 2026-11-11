@@ -7,7 +7,12 @@ export interface QueryFacet {
   tokens: ReadonlySet<string>
 }
 
+export type QueryIntent = 'current_fact' | 'history' | 'event' | 'entity' | 'general'
+
 export interface QueryAnalysis {
+  intent: QueryIntent
+  wantsCurrent: boolean
+  wantsHistory: boolean
   aspects: QueryAspect[]
   facets: QueryFacet[]
 }
@@ -54,10 +59,26 @@ interface TokenSpan {
 
 export function analyzeQuery(raw: string): QueryAnalysis {
   const text = raw.normalize('NFKC')
+  const aspects = aspectsOf(text)
+  const current = aspects.includes('current')
+  const history = aspects.includes('history')
   return {
-    aspects: aspectsOf(text),
+    intent: intentOf(aspects),
+    wantsCurrent: current && !history,
+    wantsHistory: history,
+    aspects,
     facets: facetsOf(text),
   }
+}
+
+function intentOf(aspects: readonly QueryAspect[]): QueryIntent {
+  const current = aspects.includes('current')
+  const history = aspects.includes('history')
+  if (current && !history) return 'current_fact'
+  if (history && !current) return 'history'
+  if (aspects.includes('event_time')) return 'event'
+  if (aspects.includes('entity')) return 'entity'
+  return 'general'
 }
 
 function aspectsOf(text: string): QueryAspect[] {
