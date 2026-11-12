@@ -1,16 +1,15 @@
 import type { TimeWindow } from '../types.ts'
 
-interface Civil {
-  year: number
-  month: number
-  day: number
-}
-
-interface CivilTime extends Civil {
-  hour: number
-  minute: number
-  second: number
-}
+import {
+  addDays,
+  addMonths,
+  compareCivil,
+  civilOf,
+  daysInMonth,
+  isoWeekday,
+  type Civil,
+  zonedEpoch,
+} from '../time.ts'
 
 const WEEKDAYS: Record<string, number> = {
   一: 1,
@@ -209,10 +208,6 @@ function pastCivil(now: Civil, month: number, day: number): Civil | null {
   return year < 1900 ? null : { year, month, day }
 }
 
-function compareCivil(left: Civil, right: Civil): number {
-  return left.year - right.year || left.month - right.month || left.day - right.day
-}
-
 function dayExpression(
   text: string,
   civil: Civil,
@@ -324,77 +319,4 @@ function parseCount(value: string): number | null {
   const ones = right.length === 0 ? 0 : (CHINESE_DIGITS[right] ?? -100)
   if (ones < 0) return null
   return tens * 10 + ones
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
-}
-
-function addDays(civil: Civil, days: number): Civil {
-  const date = new Date(Date.UTC(civil.year, civil.month - 1, civil.day + days))
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
-  }
-}
-
-function addMonths(civil: Civil, months: number): Civil {
-  const date = new Date(Date.UTC(civil.year, civil.month - 1 + months, 1))
-  const year = date.getUTCFullYear()
-  const month = date.getUTCMonth() + 1
-  return { year, month, day: Math.min(civil.day, daysInMonth(year, month)) }
-}
-
-function isoWeekday(civil: Civil): number {
-  const day = new Date(Date.UTC(civil.year, civil.month - 1, civil.day)).getUTCDay()
-  return day === 0 ? 7 : day
-}
-
-const CIVIL_FORMATTERS = new Map<string, Intl.DateTimeFormat>()
-
-function civilFormatter(timeZone: string): Intl.DateTimeFormat {
-  const cached = CIVIL_FORMATTERS.get(timeZone)
-  if (cached !== undefined) return cached
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  })
-  CIVIL_FORMATTERS.set(timeZone, formatter)
-  return formatter
-}
-
-function civilOf(epoch: number, timeZone: string): CivilTime {
-  const parts = civilFormatter(timeZone).formatToParts(new Date(epoch * 1000))
-  const part = (type: Intl.DateTimeFormatPartTypes): number =>
-    Number(parts.find((item) => item.type === type)?.value ?? 0)
-  return {
-    year: part('year'),
-    month: part('month'),
-    day: part('day'),
-    hour: part('hour'),
-    minute: part('minute'),
-    second: part('second'),
-  }
-}
-
-function zonedEpoch(civil: Civil, timeZone: string): number {
-  const target = Date.UTC(civil.year, civil.month - 1, civil.day) / 1000
-  let epoch = target
-  for (let step = 0; step < 3; step += 1) {
-    const local = civilOf(epoch, timeZone)
-    const asUtc =
-      Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second) /
-      1000
-    const difference = target - asUtc
-    if (difference === 0) break
-    epoch += difference
-  }
-  return epoch
 }

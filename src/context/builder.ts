@@ -115,11 +115,15 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
   })
   const historicalClaims = publicClaims.filter((candidate) => candidate.status !== 'active')
   const events = input.candidates.filter((candidate) => candidate.kind === 'event')
-  const publicEvents = events
+  const orderedEvents = [
+    ...events.filter((candidate) => candidate.pinned === true),
+    ...events.filter((candidate) => candidate.pinned !== true),
+  ]
+  const publicEvents = orderedEvents
     .filter((candidate) => !isRestricted(candidateRestriction(candidate)))
     .slice(0, MAX_EVENTS)
     .toSorted(compareEvents)
-  const privateEvents = events
+  const privateEvents = orderedEvents
     .filter((candidate) => isRestricted(candidateRestriction(candidate)))
     .slice(0, MAX_EVENTS)
     .toSorted(compareEvents)

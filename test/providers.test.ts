@@ -545,7 +545,11 @@ test('compact extraction parses short keys and type codes', async () => {
   assert.deepEqual(result.events[0]?.participants, [
     { name: '阿桐', type: 'person', role: 'actor' },
   ])
-  assert.deepEqual(result.diagnostics, { evidenceFallbacks: 0, evidenceDropped: 0 })
+  assert.deepEqual(result.diagnostics, {
+    evidenceFallbacks: 0,
+    evidenceDropped: 0,
+    claimsDroppedBarePredicate: 0,
+  })
 })
 
 test('compact evidence never points at a context message', async () => {
@@ -566,7 +570,11 @@ test('compact evidence never points at a context message', async () => {
   assert.deepEqual(result.claims[0]?.evidenceMessageIds, [])
   assert.deepEqual(result.claims[1]?.evidenceMessageIds, ['message-focus'])
   assert.deepEqual(result.claims[2]?.evidenceMessageIds, ['message-focus'])
-  assert.deepEqual(result.diagnostics, { evidenceFallbacks: 1, evidenceDropped: 1 })
+  assert.deepEqual(result.diagnostics, {
+    evidenceFallbacks: 1,
+    evidenceDropped: 1,
+    claimsDroppedBarePredicate: 0,
+  })
 })
 
 test('compact requests drop message ids and are smaller than legacy requests', async () => {
@@ -695,7 +703,12 @@ test('HTTP extraction tolerates fenced JSON', async () => {
     messages: [],
     knownEntities: [],
   })
-  assert.deepEqual(result, { entities: [], claims: [], events: [] })
+  assert.deepEqual(result, {
+    entities: [],
+    claims: [],
+    events: [],
+    diagnostics: { evidenceFallbacks: 0, evidenceDropped: 0, claimsDroppedBarePredicate: 0 },
+  })
 })
 
 test('health reports extraction usage from the HTTP provider', async () => {
@@ -813,4 +826,102 @@ test('provider environment parsing is all-or-nothing', () => {
   assert.equal(providers.embedding.dimensions, 8)
   assert.ok(providers.extraction instanceof HttpExtractionProvider)
   assert.ok(providers.reranker instanceof HttpRerankerProvider)
+})
+
+const legacyBarePredicateFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              entities: [],
+              claims: [
+                {
+                  subject: { name: '阿桐', type: 'person' },
+                  predicate: '说',
+                  object: { kind: 'literal', value: '明天来' },
+                  modality: 'asserted',
+                  confidence: 0.8,
+                },
+                {
+                  subject: { name: '阿桐', type: 'person' },
+                  predicate: '爱喝',
+                  object: { kind: 'literal', value: '手冲' },
+                  modality: 'asserted',
+                  confidence: 0.8,
+                },
+              ],
+              events: [],
+            }),
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
+const shortPredicateFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              e: [],
+              c: [
+                { s: '阿桐', p: '说', o: { k: 'l', v: '明天来' }, ev: [0] },
+                { s: '阿桐', p: '爱喝', a: '偏好', o: { k: 'l', v: '手冲' }, ev: [0] },
+              ],
+              v: [],
+            }),
+          },
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+
+test('compact extraction drops reporting predicates and counts them', async () => {
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: shortPredicateFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [
+      extractionMessage('message-1', 'user', '阿桐说明天来，爱喝手冲。', 1_790_000_000, 0),
+    ],
+    knownEntities: [],
+  })
+  assert.deepEqual(
+    result.claims.map((claim) => claim.predicate),
+    ['爱喝'],
+  )
+  assert.equal(result.diagnostics?.claimsDroppedBarePredicate, 1)
+})
+
+test('the legacy wire format drops a reporting predicate too', async () => {
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    wireFormat: 'legacy',
+    fetch: legacyBarePredicateFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [
+      extractionMessage('message-1', 'user', '阿桐说明天来，爱喝手冲。', 1_790_000_000, 0),
+    ],
+    knownEntities: [],
+  })
+  assert.deepEqual(
+    result.claims.map((claim) => claim.predicate),
+    ['爱喝'],
+  )
+  assert.equal(result.diagnostics?.claimsDroppedBarePredicate, 1)
 })

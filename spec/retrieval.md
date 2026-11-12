@@ -75,6 +75,8 @@ The renderable pool feeds coverage selection, which returns `min(topK, pool leng
 
 If fewer renderable candidates exist than `topK`, the remaining slots fill from the ranked source-only pool and the trace notes it. Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
 
+After selection, up to two asserted events dated today or tomorrow may append to the selection. They come from `listDatedEventsBetween`, which reads only events with a real precision (`exact`, `day`, `month`), so a statement-time event stored as `unknown` never poses as a scheduled item. The append is skipped when the caller passes a `timeRange`, and appended events are marked `pinned` so the event section keeps them even when a dozen other events compete for slots. They do not displace a selected candidate, so `topK` bounds the coverage selection but the result can exceed it by two.
+
 ## Validation
 
 After fusion:

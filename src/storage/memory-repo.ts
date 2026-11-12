@@ -732,6 +732,28 @@ export function listRecentEvents(db: Database, spaceId: MemorySpaceId, limit: nu
     .map(mapEvent)
 }
 
+export function listDatedEventsBetween(
+  db: Database,
+  spaceId: MemorySpaceId,
+  from: number,
+  to: number,
+  limit: number,
+): Event[] {
+  return db
+    .all(
+      `SELECT * FROM events WHERE memory_space_id = ? AND status = 'active'
+       AND modality = 'asserted'
+       AND time_precision IN ('exact', 'day', 'month')
+       AND occurred_at >= ? AND occurred_at < ?
+       ORDER BY occurred_at ASC, created_at ASC LIMIT ?`,
+      spaceId,
+      from,
+      to,
+      limit,
+    )
+    .map(mapEvent)
+}
+
 export function setEventStatus(db: Database, eventId: EventId, status: EventStatus): void {
   db.run('UPDATE events SET status = ?, updated_at = ? WHERE id = ?', status, nowSeconds(), eventId)
 }

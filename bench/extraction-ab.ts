@@ -348,7 +348,11 @@ function countsBy<T>(items: readonly T[], key: (item: T) => string): Record<stri
 
 class CountingExtractionProvider implements ExtractionProvider {
   readonly version: string
-  readonly totals: ExtractionDiagnostics = { evidenceFallbacks: 0, evidenceDropped: 0 }
+  readonly totals: ExtractionDiagnostics = {
+    evidenceFallbacks: 0,
+    evidenceDropped: 0,
+    claimsDroppedBarePredicate: 0,
+  }
   calls = 0
   private readonly inner: ExtractionProvider
 

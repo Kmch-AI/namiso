@@ -19,11 +19,13 @@ import { asDocumentId, asMessageId, newId, nowSeconds } from '../ids.ts'
 import { getMessagesByIds, latestUserSpeakerId } from '../storage/conversation-repo.ts'
 import {
   listClaimsForEntities,
+  listDatedEventsBetween,
   listEventsForEntities,
   listRecentEvents,
 } from '../storage/memory-repo.ts'
 import { getDocument, searchFts, searchFtsNgrams } from '../storage/search-repo.ts'
 import { segment, toNgramTerms } from '../text.ts'
+import { dayStart } from '../time.ts'
 import {
   candidateFromSource,
   claimCandidate,
@@ -63,6 +65,8 @@ const TIME_BOOST = 0.1
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 const CONTEXT_MENTION_LIMIT = 2
 const CONTEXT_TAIL_CHARS = 240
+const UPCOMING_SLOTS = 2
+const UPCOMING_SCAN = 24
 const CONTEXT_PERSON_REFERENCE = /(?:^|[^其])他(?!人)|她|对方|此人|这人|那人|这位|那位/
 const CONTEXT_THING_REFERENCE = /(?:^|[^其])它/
 
@@ -156,6 +160,18 @@ export class Retriever {
       entityIds: mentioned.coverageIds,
     })
     const selected = [...coverage.selected]
+    const upcoming =
+      options.timeRange === undefined
+        ? this.upcomingEvents(options.memorySpaceId, now, timeZone, allowed)
+        : []
+    const chosen = new Set(selected.map((candidate) => candidate.key))
+    const extra = upcoming.filter((candidate) => !chosen.has(candidate.key))
+    if (extra.length > 0) {
+      selected.push(
+        ...extra.slice(0, UPCOMING_SLOTS).map((candidate) => ({ ...candidate, pinned: true })),
+      )
+      notes.push('临近事项：已补入当天或次日的事项。')
+    }
     if (selected.length < topK) {
       selected.push(...sourceOnly.slice(0, topK - selected.length))
       notes.push('可渲染记录不足，已用原始对话补足 topK。')
@@ -489,6 +505,20 @@ export class Retriever {
       }
     }
     return { candidates: kept, notes: notes.slice(0, 10) }
+  }
+
+  private upcomingEvents(
+    spaceId: MemorySpaceId,
+    now: number,
+    timeZone: string,
+    allowed: ReadonlySet<CandidateRecord['kind']>,
+  ): MemoryCandidate[] {
+    if (!allowed.has('event')) return []
+    const from = dayStart(now, timeZone)
+    const to = dayStart(now, timeZone, 2)
+    return listDatedEventsBetween(this.db, spaceId, from, to, UPCOMING_SCAN)
+      .map((event) => eventCandidate(this.db, event))
+      .filter((candidate): candidate is MemoryCandidate => candidate !== null)
   }
 
   private async rank(

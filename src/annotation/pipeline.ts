@@ -42,6 +42,7 @@ import {
 import { normalizeAttribute, normalizeName } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
 import { isRestricted, mergeRestriction, restrictionOf } from './restriction.ts'
+import { resolveStatedDayPhrase } from './temporal.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
 const KNOWN_ATTRIBUTE_LIMIT = 24
@@ -218,7 +219,7 @@ export class AnnotationPipeline {
         const result = this.linker.applyClaim(
           spaceId,
           {
-            extracted: claim,
+            extracted: this.dateClaim(claim, evidenceIds, validEvidence),
             attribute: attribute.key,
             cardinality: attribute.cardinality,
             change,
@@ -255,10 +256,14 @@ export class AnnotationPipeline {
       for (const event of extraction.events) {
         const evidenceIds = event.evidenceMessageIds.filter((id) => validEvidence.has(id))
         if (evidenceIds.length === 0) continue
-        const result = this.linker.applyEvent(spaceId, event, {
-          extractorVersion: this.extractor.version,
-          evidenceIds,
-        })
+        const result = this.linker.applyEvent(
+          spaceId,
+          this.dateEvent(event, evidenceIds, validEvidence),
+          {
+            extractorVersion: this.extractor.version,
+            evidenceIds,
+          },
+        )
         if (result.created) {
           this.linker.linkEventOccurrence(spaceId, result.event, evidenceIds)
         }
@@ -385,6 +390,47 @@ export class AnnotationPipeline {
           haystack.includes(attribute.key) || haystack.includes(attribute.label.toLowerCase()),
       )
       .slice(0, KNOWN_ATTRIBUTE_LIMIT)
+  }
+
+  private dateClaim(
+    claim: ExtractedClaim,
+    evidenceIds: readonly MessageId[],
+    validEvidence: Map<MessageId, Message>,
+  ): ExtractedClaim {
+    if (claim.validFrom !== undefined) return claim
+    const object = claim.object.kind === 'literal' ? claim.object.value : claim.object.name
+    const day = this.statedDay(`${claim.predicate} ${object}`, evidenceIds, validEvidence)
+    if (day === null) return claim
+    return { ...claim, validFrom: day }
+  }
+
+  private dateEvent(
+    event: ExtractedEvent,
+    evidenceIds: readonly MessageId[],
+    validEvidence: Map<MessageId, Message>,
+  ): ExtractedEvent {
+    if (event.timePrecision === 'day' || event.timePrecision === 'exact') return event
+    const text =
+      event.description === undefined ? event.summary : `${event.summary} ${event.description}`
+    const day = this.statedDay(text, evidenceIds, validEvidence)
+    if (day === null) return event
+    return { ...event, occurredAt: day, timePrecision: 'day' }
+  }
+
+  private statedDay(
+    text: string,
+    evidenceIds: readonly MessageId[],
+    validEvidence: Map<MessageId, Message>,
+  ): number | null {
+    const messages = evidenceIds
+      .map((id) => validEvidence.get(id))
+      .filter((message): message is Message => message !== undefined)
+      .toSorted((left, right) => left.occurredAt - right.occurredAt)
+    for (const message of messages) {
+      const hit = resolveStatedDayPhrase(text, message.occurredAt)
+      if (hit !== null && message.content.includes(hit.phrase)) return hit.day
+    }
+    return null
   }
 
   private validEvidenceMap(

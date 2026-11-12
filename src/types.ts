@@ -286,6 +286,7 @@ export interface MemoryCandidate {
   channels: RetrievalChannel[]
   occurredAt: number | null
   status: string | null
+  pinned?: boolean
   evidenceMessageIds: MessageId[]
   closureEvidenceMessageIds: MessageId[]
   relations: MemoryRelationView[]

@@ -41,6 +41,7 @@ export type ExtractionWireFormat = 'compact' | 'legacy'
 export interface ExtractionDiagnostics {
   evidenceFallbacks: number
   evidenceDropped: number
+  claimsDroppedBarePredicate: number
 }
 
 export interface ExtractionMessage {

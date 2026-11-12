@@ -354,7 +354,7 @@ Return one JSON object with keys entities, claims, events.
 entities: [{name, type, aliases?, description?, sensitivity?, disclosure?}]. type is person, group, place, animal, object, artifact, activity, topic, or other. The assistant itself uses the special type self.
 The assistant itself is the only self entity. knownEntities includes it first when it exists. Use its exact name for claims and event roles about the assistant, including persona, background, and preferences. Models, tools, other agents, and AI products are artifact; companies and institutions are group.
 claims: [{subject: {name, type}, predicate, attribute, cardinality?, change?, object: {kind: "literal", value} | {kind: "entity", name, type}, validFrom?, modality, confidence, sensitivity?, disclosure?, evidenceMessageIds}].
-attribute is a short stable key reused across mentions. predicate is the human-readable label.
+attribute is a short stable key reused across mentions. predicate is the human-readable label; never use a reporting verb or copula such as 说, 表示, 提到, 认为, or 是 as the predicate, and name the relation instead.
 cardinality is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit it when reusing a known attribute.
 change is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute. Use retracts when it explicitly denies the recorded value. Use disputes when sources disagree and the record cannot decide.
 events: [{type, summary, occurredAt?, timePrecision?, participants: [{name, type, role}], modality, confidence, sensitivity?, disclosure?, evidenceMessageIds}].
@@ -374,6 +374,7 @@ e: [{"n": name, "t": type, "al"?: [aliases], "d"?: description, "ev"?: [indices]
 c: [{"s": subject name, "p": predicate, "a": attribute, "o": {"k": "l", "v": value} | {"k": "e", "n": name, "t"?: type}, "ev": [indices], "k"?: "one" | "many", "ch"?: change, "m"?: modality, "validFrom"?: validFrom, "z"?: sensitivity, "w"?: disclosure, "c"?: confidence}]
 v: [{"t": event type, "sum": summary, "ev": [indices], "at"?: occurredAt, "pr"?: precision, "m"?: modality, "who"?: [[name, role]], "z"?: sensitivity, "w"?: disclosure, "c"?: confidence, "d"?: description}]
 ev lists indices into messages for the focus messages that support the item; entity items use it when the mention has a clear source. Omit a field when it has its default: m asserted, c 0.8, pr unknown, z normal, w allowed. k is one when the attribute holds a single current value, such as a name, location, or job; it is many when values accumulate, such as likes or friends. Omit k when reusing a known attribute.
+p is a readable label that names the relation, such as 喜欢, 计划去, 对花生过敏. Never emit a reporting verb or copula as the predicate (说, 表示, 提到, 告诉, 认为, 是); when the message only reports speech, make the predicate say what was reported, and put the state key in a.
 ch is new, adds, replaces, retracts, or disputes. Use replaces when a focus message changes a one-valued attribute; retracts when it explicitly denies a recorded value; disputes when sources disagree and the record cannot decide.
 at and validFrom are absolute epoch seconds. Set validFrom when the focus message gives or implies when the value became true; omit it when no time can be resolved. Resolve every relative expression such as yesterday, next Wednesday, or 前天 against the occurredAt of the message that states it. If it cannot be resolved, omit the field; for an event, also use pr unknown or approximate.
 m is asserted, reported, uncertain, negated, hypothetical, or quoted. Use reported when the speaker relays someone else's statement; uncertain when the speaker is not asserting the fact.
@@ -403,17 +404,28 @@ function parseExtractionResult(value: unknown, input: ExtractionInput): Extracti
   if (Array.isArray(root['e']) || Array.isArray(root['c']) || Array.isArray(root['v'])) {
     return parseCompactResult(root, input)
   }
+  const diagnostics: ExtractionDiagnostics = {
+    evidenceFallbacks: 0,
+    evidenceDropped: 0,
+    claimsDroppedBarePredicate: 0,
+  }
   const entities = parseItems(root['entities'], (item) => parseEntity(item, input.focusMessageIds))
-  const claims = parseItems(root['claims'], (item) => parseClaim(item, input.focusMessageIds))
+  const claims = parseItems(root['claims'], (item) =>
+    parseClaim(item, input.focusMessageIds, diagnostics),
+  )
   const events = parseItems(root['events'], (item) => parseEvent(item, input.focusMessageIds))
-  return { entities, claims, events }
+  return { entities, claims, events, diagnostics }
 }
 
 function parseCompactResult(
   root: Record<string, unknown>,
   input: ExtractionInput,
 ): ExtractionResult {
-  const diagnostics: ExtractionDiagnostics = { evidenceFallbacks: 0, evidenceDropped: 0 }
+  const diagnostics: ExtractionDiagnostics = {
+    evidenceFallbacks: 0,
+    evidenceDropped: 0,
+    claimsDroppedBarePredicate: 0,
+  }
   const types = new Map<string, EntityKind>()
   for (const known of input.knownEntities) {
     types.set(normalizeName(known.name), known.type)
@@ -503,6 +515,26 @@ function parseCompactEntity(item: unknown, input: ExtractionInput): ExtractedEnt
   }
 }
 
+const BARE_PREDICATES = new Set([
+  '说',
+  '说道',
+  '讲',
+  '问',
+  '回答',
+  '表示',
+  '提到',
+  '告诉',
+  '觉得',
+  '认为',
+  '听说',
+  '据说',
+  '是',
+])
+
+function isBarePredicate(predicate: string): boolean {
+  return BARE_PREDICATES.has(predicate.replaceAll(/\s+/g, ''))
+}
+
 function compactObject(value: unknown, types: Map<string, EntityKind>): ExtractedObject | null {
   if (typeof value === 'string') {
     const text = value.trim()
@@ -533,6 +565,10 @@ function parseCompactClaim(
   const subjectName = stringField(record, 's').trim()
   const predicate = stringField(record, 'p').trim()
   if (subjectName.length === 0 || predicate.length === 0) return null
+  if (isBarePredicate(predicate)) {
+    diagnostics.claimsDroppedBarePredicate += 1
+    return null
+  }
   const object = compactObject(record['o'], types)
   if (object === null) return null
   const attribute = optionalString(record, 'a')?.trim() ?? ''
@@ -700,6 +736,7 @@ function disclosureValue(value: unknown): MemoryDisclosure | undefined {
 function parseClaim(
   item: unknown,
   focusMessageIds: readonly [MessageId, ...MessageId[]],
+  diagnostics: ExtractionDiagnostics,
 ): ExtractedClaim | null {
   const record = asRecord(item, 'claim')
   const subject = asRecord(record['subject'], 'claim subject')
@@ -707,6 +744,10 @@ function parseClaim(
   const subjectName = stringField(subject, 'name').trim()
   const predicate = stringField(record, 'predicate').trim()
   if (subjectName.length === 0 || predicate.length === 0) return null
+  if (isBarePredicate(predicate)) {
+    diagnostics.claimsDroppedBarePredicate += 1
+    return null
+  }
   const parsedObject: ExtractedObject | null =
     object['kind'] === 'entity'
       ? {
