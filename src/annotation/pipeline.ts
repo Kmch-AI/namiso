@@ -42,7 +42,7 @@ import {
 import { normalizeAttribute, normalizeName } from '../text.ts'
 import { MemoryLinker } from './linker.ts'
 import { isRestricted, mergeRestriction, restrictionOf } from './restriction.ts'
-import { resolveStatedDayPhrase } from './temporal.ts'
+import { resolveStatedDayPhrase, type StatedDay } from './temporal.ts'
 
 const KNOWN_ENTITY_LIMIT = 50
 const KNOWN_ATTRIBUTE_LIMIT = 24
@@ -399,9 +399,9 @@ export class AnnotationPipeline {
   ): ExtractedClaim {
     if (claim.validFrom !== undefined) return claim
     const object = claim.object.kind === 'literal' ? claim.object.value : claim.object.name
-    const day = this.statedDay(`${claim.predicate} ${object}`, evidenceIds, validEvidence)
-    if (day === null) return claim
-    return { ...claim, validFrom: day }
+    const hit = this.statedDay(`${claim.predicate} ${object}`, evidenceIds, validEvidence)
+    if (hit === null) return claim
+    return { ...claim, validFrom: hit.day, validFromDay: hit.dayKey }
   }
 
   private dateEvent(
@@ -410,25 +410,34 @@ export class AnnotationPipeline {
     validEvidence: Map<MessageId, Message>,
   ): ExtractedEvent {
     if (event.timePrecision === 'day' || event.timePrecision === 'exact') return event
-    const text =
-      event.description === undefined ? event.summary : `${event.summary} ${event.description}`
-    const day = this.statedDay(text, evidenceIds, validEvidence)
-    if (day === null) return event
-    return { ...event, occurredAt: day, timePrecision: 'day' }
+    const texts =
+      event.description === undefined
+        ? [event.summary]
+        : [event.summary, `${event.summary} ${event.description}`]
+    for (const text of texts) {
+      const hit = this.statedDay(text, evidenceIds, validEvidence)
+      if (hit === null) continue
+      return { ...event, occurredAt: hit.day, occurredDay: hit.dayKey, timePrecision: 'day' }
+    }
+    return event
   }
 
   private statedDay(
     text: string,
     evidenceIds: readonly MessageId[],
     validEvidence: Map<MessageId, Message>,
-  ): number | null {
-    const messages = evidenceIds
-      .map((id) => validEvidence.get(id))
-      .filter((message): message is Message => message !== undefined)
-      .toSorted((left, right) => left.occurredAt - right.occurredAt)
-    for (const message of messages) {
+  ): StatedDay | null {
+    const preferred = new Set(evidenceIds.map(String))
+    const ordered = [...validEvidence.values()].toSorted(
+      (left, right) => left.occurredAt - right.occurredAt,
+    )
+    const candidates = [
+      ...ordered.filter((message) => preferred.has(String(message.id))),
+      ...ordered.filter((message) => !preferred.has(String(message.id))),
+    ]
+    for (const message of candidates) {
       const hit = resolveStatedDayPhrase(text, message.occurredAt)
-      if (hit !== null && message.content.includes(hit.phrase)) return hit.day
+      if (hit !== null && message.content.includes(hit.phrase)) return hit
     }
     return null
   }

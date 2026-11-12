@@ -89,6 +89,31 @@ export function compareCivil(left: Civil, right: Civil): number {
   return left.year - right.year || left.month - right.month || left.day - right.day
 }
 
+export function formatDay(epoch: number, timeZone: string, key: number | null = null): string {
+  return formatDayKey(key === null ? dayKey(epoch, timeZone) : key)
+}
+
 export function dayStart(epoch: number, timeZone: string, offsetDays = 0): number {
   return zonedEpoch(addDays(civilOf(epoch, timeZone), offsetDays), timeZone)
+}
+
+export function dayKey(epoch: number, timeZone: string): number {
+  const civil = civilOf(epoch, timeZone)
+  return civil.year * 10_000 + civil.month * 100 + civil.day
+}
+
+export function dayKeyOf(civil: Civil): number {
+  return civil.year * 10_000 + civil.month * 100 + civil.day
+}
+
+export function civilOfDayKey(key: number): Civil {
+  return { year: Math.trunc(key / 10_000), month: Math.trunc(key / 100) % 100, day: key % 100 }
+}
+
+export function formatDayKey(key: number): string {
+  const civil = civilOfDayKey(key)
+  const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: 'UTC', weekday: 'short' }).format(
+    new Date(Date.UTC(civil.year, civil.month - 1, civil.day) * 1000),
+  )
+  return `${civil.year}-${String(civil.month).padStart(2, '0')}-${String(civil.day).padStart(2, '0')}（${weekday}）`
 }

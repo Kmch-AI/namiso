@@ -19,13 +19,13 @@ import { asDocumentId, asMessageId, newId, nowSeconds } from '../ids.ts'
 import { getMessagesByIds, latestUserSpeakerId } from '../storage/conversation-repo.ts'
 import {
   listClaimsForEntities,
-  listDatedEventsBetween,
   listEventsForEntities,
   listRecentEvents,
+  listUpcomingEvents,
 } from '../storage/memory-repo.ts'
 import { getDocument, searchFts, searchFtsNgrams } from '../storage/search-repo.ts'
 import { segment, toNgramTerms } from '../text.ts'
-import { dayStart } from '../time.ts'
+import { dayKey, dayStart } from '../time.ts'
 import {
   candidateFromSource,
   claimCandidate,
@@ -514,9 +514,13 @@ export class Retriever {
     allowed: ReadonlySet<CandidateRecord['kind']>,
   ): MemoryCandidate[] {
     if (!allowed.has('event')) return []
-    const from = dayStart(now, timeZone)
-    const to = dayStart(now, timeZone, 2)
-    return listDatedEventsBetween(this.db, spaceId, from, to, UPCOMING_SCAN)
+    return listUpcomingEvents(this.db, spaceId, {
+      fromDay: dayKey(now, timeZone),
+      toDay: dayKey(dayStart(now, timeZone, 2), timeZone),
+      fromEpoch: dayStart(now, timeZone),
+      toEpoch: dayStart(now, timeZone, 2),
+      limit: UPCOMING_SCAN,
+    })
       .map((event) => eventCandidate(this.db, event))
       .filter((candidate): candidate is MemoryCandidate => candidate !== null)
   }

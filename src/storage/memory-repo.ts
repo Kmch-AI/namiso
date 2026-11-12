@@ -267,6 +267,7 @@ export interface InsertClaimInput {
   sensitivity?: MemorySensitivity
   disclosure?: MemoryDisclosure
   validFrom?: number
+  validFromDay?: number
   validUntil?: number
   confidence?: number
   metadata?: Record<string, unknown>
@@ -285,8 +286,8 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     `INSERT INTO claims (
       id, memory_space_id, subject_id, predicate, attribute, cardinality, object_type,
       object_value, object_entity_id, status, modality, polarity, sensitivity, disclosure,
-      valid_from, valid_until, confidence, created_at, updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      valid_from, valid_until, valid_from_day, confidence, created_at, updated_at, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.subjectId,
@@ -303,6 +304,7 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     disclosure,
     input.validFrom ?? null,
     input.validUntil ?? null,
+    input.validFromDay ?? null,
     input.confidence ?? 1,
     timestamp,
     timestamp,
@@ -322,6 +324,7 @@ export function insertClaim(db: Database, input: InsertClaimInput): Claim {
     sensitivity,
     disclosure,
     validFrom: input.validFrom ?? null,
+    validFromDay: input.validFromDay ?? null,
     validUntil: input.validUntil ?? null,
     confidence: input.confidence ?? 1,
     createdAt: timestamp,
@@ -478,6 +481,7 @@ export interface InsertEventInput {
   summary: string
   description?: string
   occurredAt?: number
+  occurredDay?: number
   timePrecision?: TimePrecision
   status?: EventStatus
   modality?: MemoryModality
@@ -498,15 +502,16 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
   const disclosure = input.disclosure ?? 'allowed'
   db.run(
     `INSERT INTO events (
-      id, memory_space_id, type, summary, description, occurred_at, time_precision,
+      id, memory_space_id, type, summary, description, occurred_at, occurred_day, time_precision,
       status, modality, sensitivity, disclosure, confidence, created_at, updated_at, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.spaceId,
     input.type,
     input.summary,
     input.description ?? null,
     input.occurredAt ?? null,
+    input.occurredDay ?? null,
     timePrecision,
     status,
     modality,
@@ -524,6 +529,7 @@ export function insertEvent(db: Database, input: InsertEventInput): Event {
     summary: input.summary,
     description: input.description ?? null,
     occurredAt: input.occurredAt ?? null,
+    occurredDay: input.occurredDay ?? null,
     timePrecision,
     status,
     modality,
@@ -732,24 +738,29 @@ export function listRecentEvents(db: Database, spaceId: MemorySpaceId, limit: nu
     .map(mapEvent)
 }
 
-export function listDatedEventsBetween(
+export function listUpcomingEvents(
   db: Database,
   spaceId: MemorySpaceId,
-  from: number,
-  to: number,
-  limit: number,
+  input: { fromDay: number; toDay: number; fromEpoch: number; toEpoch: number; limit: number },
 ): Event[] {
   return db
     .all(
       `SELECT * FROM events WHERE memory_space_id = ? AND status = 'active'
        AND modality = 'asserted'
-       AND time_precision IN ('exact', 'day', 'month')
-       AND occurred_at >= ? AND occurred_at < ?
-       ORDER BY occurred_at ASC, created_at ASC LIMIT ?`,
+       AND (
+         (occurred_day IS NOT NULL AND occurred_day >= ? AND occurred_day < ?)
+         OR (
+           occurred_day IS NULL AND time_precision IN ('exact', 'month')
+           AND occurred_at >= ? AND occurred_at < ?
+         )
+       )
+       ORDER BY COALESCE(occurred_day, 0) ASC, occurred_at ASC, created_at ASC LIMIT ?`,
       spaceId,
-      from,
-      to,
-      limit,
+      input.fromDay,
+      input.toDay,
+      input.fromEpoch,
+      input.toEpoch,
+      input.limit,
     )
     .map(mapEvent)
 }

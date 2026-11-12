@@ -147,6 +147,7 @@ export class MemoryLinker {
         confidence: extracted.confidence,
         ...(status === undefined ? {} : { status }),
         ...(extracted.validFrom === undefined ? {} : { validFrom: extracted.validFrom }),
+        ...(extracted.validFromDay === undefined ? {} : { validFromDay: extracted.validFromDay }),
         ...(validUntil === undefined ? {} : { validUntil }),
         metadata,
       })
@@ -396,6 +397,7 @@ export class MemoryLinker {
       summary: extracted.summary,
       ...(extracted.description === undefined ? {} : { description: extracted.description }),
       ...(extracted.occurredAt === undefined ? {} : { occurredAt: extracted.occurredAt }),
+      ...(extracted.occurredDay === undefined ? {} : { occurredDay: extracted.occurredDay }),
       timePrecision: extracted.timePrecision ?? 'unknown',
       modality: extracted.modality,
       confidence: extracted.confidence,

@@ -106,6 +106,7 @@ export interface ExtractedClaim {
   modality: ExtractionModality
   confidence: number
   validFrom?: number
+  validFromDay?: number
   sensitivity?: MemorySensitivity
   disclosure?: MemoryDisclosure
   evidenceMessageIds: readonly MessageId[]
@@ -122,6 +123,7 @@ export interface ExtractedEvent {
   summary: string
   description?: string
   occurredAt?: number
+  occurredDay?: number
   timePrecision?: TimePrecision
   participants: readonly ExtractedParticipant[]
   modality: ExtractionModality

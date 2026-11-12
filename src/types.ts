@@ -151,6 +151,7 @@ export interface Claim {
   sensitivity: MemorySensitivity
   disclosure: MemoryDisclosure
   validFrom: number | null
+  validFromDay: number | null
   validUntil: number | null
   confidence: number
   createdAt: number
@@ -165,6 +166,7 @@ export interface Event {
   summary: string
   description: string | null
   occurredAt: number | null
+  occurredDay: number | null
   timePrecision: TimePrecision
   status: EventStatus
   modality: MemoryModality

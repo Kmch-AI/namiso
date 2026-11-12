@@ -19,6 +19,7 @@ import { isRestricted, restrictionOf } from '../annotation/restriction.ts'
 import { asMessageId } from '../ids.ts'
 import { getMessagesByIds, listMessages } from '../storage/conversation-repo.ts'
 import { estimateTokens, excerpt, segment, truncate } from '../text.ts'
+import { formatDayKey } from '../time.ts'
 
 export interface BuildContextInput {
   memorySpaceId: MemorySpaceId
@@ -84,12 +85,18 @@ interface RenderState {
 
 interface ClaimDate {
   at: number
+  day: number | null
   fromValidFrom: boolean
+}
+
+interface EventDate {
+  at: number
+  day: number | null
 }
 
 interface DateLookup {
   claims: Map<string, ClaimDate | null>
-  events: Map<string, number | null>
+  events: Map<string, EventDate | null>
 }
 
 export function buildContext(db: Database, input: BuildContextInput): MemoryContext {
@@ -333,7 +340,7 @@ function claimLine(
   const recorded =
     date === null
       ? ''
-      : `，${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, state.timeZone)}`
+      : `，${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, state.timeZone, date.day)}`
   const privacy =
     section === 'private' ? `${privacyLabel(claim.sensitivity, claim.disclosure)}，` : ''
   const status =
@@ -389,8 +396,8 @@ function eventLine(
     event.occurredAt === null
       ? mentioned === null
         ? '时间未知'
-        : `时间未知（提及于 ${formatDate(mentioned, state.timeZone)}）`
-      : formatDate(event.occurredAt, state.timeZone)
+        : `时间未知（提及于 ${formatDate(mentioned.at, state.timeZone)}）`
+      : formatDate(event.occurredAt, state.timeZone, event.occurredDay)
   const modality = event.modality
   const qualifier =
     MODALITY_LABELS[modality] === undefined ? '' : `（${MODALITY_LABELS[modality]}）`
@@ -473,25 +480,31 @@ function collectDates(db: Database, candidates: readonly MemoryCandidate[]): Dat
     return min
   }
   const claims = new Map<string, ClaimDate | null>()
-  const events = new Map<string, number | null>()
+  const events = new Map<string, EventDate | null>()
   for (const candidate of candidates) {
     if (candidate.record.kind === 'claim') {
       const claim = candidate.record.claim
       claims.set(
         claim.id,
         claim.validFrom === null
-          ? claimDate(earliest(candidate.evidenceMessageIds), false)
-          : { at: claim.validFrom, fromValidFrom: true },
+          ? claimDate(earliest(candidate.evidenceMessageIds), null, false)
+          : { at: claim.validFrom, day: claim.validFromDay, fromValidFrom: true },
       )
     } else if (candidate.record.kind === 'event') {
-      events.set(candidate.record.event.id, earliest(candidate.evidenceMessageIds))
+      const event = candidate.record.event
+      const mentioned = earliest(candidate.evidenceMessageIds)
+      events.set(event.id, mentioned === null ? null : { at: mentioned, day: event.occurredDay })
     }
   }
   return { claims, events }
 }
 
-function claimDate(at: number | null, fromValidFrom: boolean): ClaimDate | null {
-  return at === null ? null : { at, fromValidFrom }
+function claimDate(
+  at: number | null,
+  day: number | null,
+  fromValidFrom: boolean,
+): ClaimDate | null {
+  return at === null ? null : { at, day, fromValidFrom }
 }
 
 function describedEntities(candidates: readonly MemoryCandidate[]): Set<string> {
@@ -551,7 +564,7 @@ function collectConflicts(
     const parts = [...group.values.entries()].map(([value, date]) =>
       date === null
         ? value
-        : `${value}（${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, timeZone)}）`,
+        : `${value}（${date.fromValidFrom ? '始于' : '记录于'} ${formatDate(date.at, timeZone, date.day)}）`,
     )
     lines.push(
       `- ${group.subject} ${group.predicate}：${parts.join('；')}。记录未判定哪个正确，不要自行选择。`,
@@ -612,7 +625,7 @@ function collectUncertainEvents(
     if (event.modality !== 'uncertain') continue
     const date = dates.events.get(event.id) ?? null
     lines.push(
-      `- ${date === null ? '时间未知' : formatDate(date, timeZone)} 事件来自不确定陈述：${event.summary}`,
+      `- ${date === null ? '时间未知' : formatDate(date.at, timeZone, date.day)} 事件来自不确定陈述：${event.summary}`,
     )
   }
   return lines.slice(0, 8)
@@ -780,7 +793,8 @@ function formatDay(seconds: number, timeZone: string): string {
   return `${part('year')}-${part('month')}-${part('day')}`
 }
 
-function formatDate(seconds: number, timeZone: string): string {
+function formatDate(seconds: number, timeZone: string, day: number | null = null): string {
+  if (day !== null) return formatDayKey(day)
   const date = new Date(seconds * 1000)
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,

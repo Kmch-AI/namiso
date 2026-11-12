@@ -1,5 +1,13 @@
 import { resolveTimeExpressions } from '../retrieval/time-expression.ts'
-import { addDays, civilOf, daysInMonth, DEFAULT_TIME_ZONE, dayStart, zonedEpoch } from '../time.ts'
+import {
+  addDays,
+  civilOf,
+  dayKeyOf,
+  daysInMonth,
+  DEFAULT_TIME_ZONE,
+  dayStart,
+  zonedEpoch,
+} from '../time.ts'
 
 const MAX_DAY_OFFSET = 90
 const MAX_APPROXIMATE_OFFSET = 7
@@ -9,6 +17,7 @@ const BARE_MONTH_DAY = /^\d{1,2}月\d{1,2}[日号]$/
 
 export interface StatedDay {
   day: number
+  dayKey: number
   phrase: string
 }
 
@@ -38,7 +47,7 @@ export function resolveStatedDayPhrase(
     ? MAX_APPROXIMATE_OFFSET
     : MAX_DAY_OFFSET
   if (offset > limit) return null
-  return { day, phrase }
+  return { day, dayKey: dayKeyOf(civilOf(day, timeZone)), phrase }
 }
 
 export function resolveStatedDay(

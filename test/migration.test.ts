@@ -389,3 +389,82 @@ test('schema migration keeps one self entity per memory space', () => {
     rmSync(directory, { recursive: true, force: true })
   }
 })
+
+test('schema version 12 backfills day keys from the stored epochs', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'namiso-migration-'))
+  const databasePath = join(directory, 'memory.db')
+  let db: Database | undefined
+  try {
+    db = new Database(databasePath)
+    db.run(
+      'INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)',
+      'workspace',
+      'workspace',
+      1,
+    )
+    db.run(
+      `INSERT INTO memory_spaces (id, workspace_id, name, created_at)
+       VALUES (?, ?, ?, ?)`,
+      'space',
+      'workspace',
+      'space',
+      1,
+    )
+    db.run(
+      `INSERT INTO entities (id, memory_space_id, type, name, created_at, updated_at)
+       VALUES (?, ?, 'person', ?, ?, ?)`,
+      'entity-1',
+      'space',
+      'entity-1',
+      1,
+      1,
+    )
+    db.run(
+      `INSERT INTO events (
+        id, memory_space_id, type, summary, occurred_at, time_precision, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      'event-1',
+      'space',
+      'errand',
+      '取快递',
+      1_788_601_500,
+      'day',
+      1,
+      1,
+    )
+    db.run(
+      `INSERT INTO claims (
+        id, memory_space_id, subject_id, predicate, object_type, object_value,
+        valid_from, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      'claim-1',
+      'space',
+      'entity-1',
+      '体检',
+      'literal',
+      '下周一',
+      1_788_601_500,
+      1,
+      1,
+    )
+    db.exec('ALTER TABLE events DROP COLUMN occurred_day')
+    db.exec('ALTER TABLE claims DROP COLUMN valid_from_day')
+    db.exec('PRAGMA user_version = 11')
+    db.close()
+    db = undefined
+
+    db = new Database(databasePath)
+    assert.equal(
+      db.get('SELECT occurred_day FROM events WHERE id = ?', 'event-1')?.['occurred_day'],
+      20_260_905,
+    )
+    assert.equal(
+      db.get('SELECT valid_from_day FROM claims WHERE id = ?', 'claim-1')?.['valid_from_day'],
+      20_260_905,
+    )
+    assert.equal(readNumber(db.get('PRAGMA user_version'), 'user_version'), SCHEMA_VERSION)
+  } finally {
+    db?.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

@@ -83,6 +83,8 @@ Events are historical. A state change adds a new event and a `supersedes` link t
 
 `time_precision` is `exact`, `day`, `month`, `approximate`, or `unknown`. The rule extractor uses `day` for message time and `approximate` for relative phrases such as `上周`. It never presents a guessed time as exact.
 
+A day-precision record also stores the calendar day itself. `events.occurred_day` and `claims.valid_from_day` hold `YYYYMMDD` as an integer, and the context renders that number instead of converting the epoch. The epoch stays midnight in the writer's time zone, so a reader in another zone would otherwise render the previous day. Schema version 12 adds both columns and backfills them from the stored epochs.
+
 ## Sensitivity and disclosure
 
 `entities`, `claims`, and `events` store `sensitivity` (`normal` or `private`) and `disclosure` (`allowed`, `alias_only`, or `do_not_volunteer`). Both default to `normal` and `allowed`. A private record defaults to `do_not_volunteer` when the provider omits disclosure.

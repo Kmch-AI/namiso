@@ -9,14 +9,17 @@ import {
   CLAIM_ATTRIBUTE_INDEX_SQL,
   CLAIM_CARDINALITY_COLUMN_SQL,
   CLAIM_DISCLOSURE_COLUMN_SQL,
+  CLAIM_DAY_KEY_COLUMN_SQL,
   CLAIM_MODALITY_COLUMN_SQL,
   CLAIM_OBJECT_INDEX_SQL,
   CLAIM_POLARITY_COLUMN_SQL,
   CLAIM_SENSITIVITY_COLUMN_SQL,
+  DAY_KEY_BACKFILL_SQL,
   ENTITY_DISCLOSURE_COLUMN_SQL,
   ENTITY_SENSITIVITY_COLUMN_SQL,
   ENTITY_TYPE_MIGRATION_SQL,
   EVENT_DISCLOSURE_COLUMN_SQL,
+  EVENT_DAY_KEY_COLUMN_SQL,
   EVENT_MODALITY_COLUMN_SQL,
   EVENT_SENSITIVITY_COLUMN_SQL,
   FTS_KEYS_BACKFILL_SQL,
@@ -122,6 +125,15 @@ export class Database {
       }
       if (version < 11) {
         this.raw.exec(SINGLE_SELF_MIGRATION_SQL)
+      }
+      if (version < 12) {
+        if (!this.hasColumn('events', 'occurred_day')) {
+          this.raw.exec(EVENT_DAY_KEY_COLUMN_SQL)
+        }
+        if (!this.hasColumn('claims', 'valid_from_day')) {
+          this.raw.exec(CLAIM_DAY_KEY_COLUMN_SQL)
+        }
+        this.raw.exec(DAY_KEY_BACKFILL_SQL)
       }
       if (version < SCHEMA_VERSION) {
         this.raw.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 
 export const FTS_KEYS_SQL = `
 CREATE TABLE IF NOT EXISTS fts_keys (
@@ -149,6 +149,18 @@ export const EVENT_SENSITIVITY_COLUMN_SQL =
 export const EVENT_DISCLOSURE_COLUMN_SQL =
   "ALTER TABLE events ADD COLUMN disclosure TEXT NOT NULL DEFAULT 'allowed'"
 
+export const EVENT_DAY_KEY_COLUMN_SQL = 'ALTER TABLE events ADD COLUMN occurred_day INTEGER'
+
+export const CLAIM_DAY_KEY_COLUMN_SQL = 'ALTER TABLE claims ADD COLUMN valid_from_day INTEGER'
+
+export const DAY_KEY_BACKFILL_SQL = `
+UPDATE events SET occurred_day = CAST(strftime('%Y%m%d', occurred_at, 'unixepoch') AS INTEGER)
+WHERE occurred_day IS NULL AND occurred_at IS NOT NULL
+  AND time_precision IN ('exact', 'day', 'month');
+UPDATE claims SET valid_from_day = CAST(strftime('%Y%m%d', valid_from, 'unixepoch') AS INTEGER)
+WHERE valid_from_day IS NULL AND valid_from IS NOT NULL;
+`
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
   key TEXT PRIMARY KEY,
@@ -258,6 +270,7 @@ CREATE TABLE IF NOT EXISTS claims (
   disclosure TEXT NOT NULL DEFAULT 'allowed',
   valid_from INTEGER,
   valid_until INTEGER,
+  valid_from_day INTEGER,
   confidence REAL NOT NULL DEFAULT 1.0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -289,6 +302,7 @@ CREATE TABLE IF NOT EXISTS events (
   summary TEXT NOT NULL,
   description TEXT,
   occurred_at INTEGER,
+  occurred_day INTEGER,
   time_precision TEXT NOT NULL DEFAULT 'unknown',
   status TEXT NOT NULL DEFAULT 'active',
   modality TEXT NOT NULL DEFAULT 'asserted',
