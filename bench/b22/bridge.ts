@@ -24,6 +24,7 @@ const DUE_REMINDERS = process.env['NAMISO_DUE_REMINDERS'] === '1'
 const SALIENT_PROFILE = process.env['NAMISO_PROFILE'] === '1'
 const CHUNK_EXPANSION = process.env['NAMISO_CHUNK_EXPANSION'] !== '0'
 const BENCH_CONTRACT = process.env['NAMISO_BENCH_CONTRACT'] !== '0'
+const CONSOLIDATE_BATCH = Number(process.env['NAMISO_CONSOLIDATE_BATCH'] ?? 64) || 64
 const BENCH_ANSWER_CONTRACT = [
   '回答前先在 [Evidence] 中找出与问题直接相关的原句；涉及数字、时长、条件时，必须使用原句中的值。',
   '证据原文明确写过的事，直接按原文回答，不要标成未确认或假设。',
@@ -31,6 +32,7 @@ const BENCH_ANSWER_CONTRACT = [
   '描述做法或经过时，按顺序说清原来的问题、缺少的条件、替代办法和结果；引用经历时保留证据中的数字、时长和关键动作。',
   '事件摘要只是压缩，若 [Evidence] 原文有更完整的做法、数字或结果，以原文为准。',
   '回答时间点相关的问题时，先核对证据日期，不要把不同日期的数字套到问题所指的时间。',
+  '问题问某个具体日期时的状态或进度，而证据只记录了另一个日期，必须明确说“该日期没有记录”，不能把已有数字当成该日期的状态。',
   '不要编造人物没说过的话、金句、工具品牌或师徒关系。',
   '只回答用户问到的内容，不要主动补充无关记录，除非用户要求扩展。',
   '问题问虚构作品、书里角色或假设情节时，只能说“可以借鉴记录里的……”，不要把记录中的人说成书中角色，也不要补写书里的情节。',
@@ -182,7 +184,10 @@ async function consolidate(session: Session): Promise<void> {
   const namiso = session.namiso
   if (namiso === null || session.conversationId === null) return
   await namiso.drain()
-  const report = await namiso.consolidate({ conversationId: session.conversationId, batchSize: 64 })
+  const report = await namiso.consolidate({
+    conversationId: session.conversationId,
+    batchSize: CONSOLIDATE_BATCH,
+  })
   session.extractionBatches += report.batches
 }
 

@@ -36,6 +36,7 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
   if (extraction !== undefined) {
     const reasoningEffort = optionalReasoningEffort(env, 'NAMISO_EXTRACTION_REASONING_EFFORT')
     const wireFormat = optionalWireFormat(env, 'NAMISO_EXTRACTION_WIRE_FORMAT')
+    const passes = optionalPositiveInteger(env, 'NAMISO_EXTRACTION_PASSES')
     result.extraction = new HttpExtractionProvider({
       endpoint: extraction.endpoint,
       model: extraction.model,
@@ -44,6 +45,7 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
       ...(extraction.timeoutMs === undefined ? {} : { timeoutMs: extraction.timeoutMs }),
       ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
       ...(wireFormat === undefined ? {} : { wireFormat }),
+      ...(passes === undefined ? {} : { passes }),
     })
   }
 

@@ -146,6 +146,7 @@ export interface HttpExtractionOptions extends HttpBaseOptions {
   version?: string
   wireFormat?: ExtractionWireFormat
   reasoningEffort?: ReasoningEffort
+  passes?: number
   onUsage?: (usage: ExtractionUsage, total: ExtractionUsage) => void
 }
 
@@ -179,33 +180,66 @@ export class HttpExtractionProvider implements ExtractionProvider {
       input.knownFacts === undefined || input.knownFacts.length === 0
         ? ''
         : '\nknownFacts are current values already recorded for mentioned entities. Do not restate an unchanged fact; when a focus message changes one, emit the change; when it confirms one, omit it.'
-    const body: Record<string, unknown> = {
-      model: this.options.model,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: `${basePrompt}${factPrompt}` },
-        {
-          role: 'user',
-          content: JSON.stringify(compact ? compactRequest(input) : legacyRequest(input)),
-        },
-      ],
+    const userMessage = {
+      role: 'user',
+      content: JSON.stringify(compact ? compactRequest(input) : legacyRequest(input)),
     }
-    if (this.options.reasoningEffort !== undefined) {
-      body['reasoning_effort'] = this.options.reasoningEffort
+    const passes = Math.max(1, Math.min(3, this.options.passes ?? 1))
+    let best: ExtractionResult | null = null
+    let bestScore = -1
+    for (let pass = 0; pass < passes; pass += 1) {
+      const completeness =
+        pass === 0
+          ? ''
+          : '\nThis is a completeness pass. Re-read every focus message and include any durable fact or event omitted earlier, especially numbers, durations, conditions, and outcomes.'
+      const body: Record<string, unknown> = {
+        model: this.options.model,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: `${basePrompt}${factPrompt}${completeness}` },
+          userMessage,
+        ],
+      }
+      if (this.options.reasoningEffort !== undefined) {
+        body['reasoning_effort'] = this.options.reasoningEffort
+      }
+      const result = await this.extractBody(body, input)
+      const score = result.claims.length + result.events.length
+      if (score > bestScore) {
+        best = result
+        bestScore = score
+      }
     }
-    const payload = await postJson(this.options.endpoint, body, this.options)
-    const root = asRecord(payload, 'extraction response')
-    this.recordUsage(parseExtractionUsage(root['usage']))
-    const choices = asArray(root['choices'], 'choices')
-    const first = asRecord(choices[0], 'first choice')
-    const message = asRecord(first['message'], 'choice message')
-    const content = message['content']
-    if (typeof content !== 'string') {
-      throw new ProviderError('extraction response has no string content')
+    if (best === null) throw new ProviderError('extraction failed')
+    return best
+  }
+
+  private async extractBody(
+    body: Record<string, unknown>,
+    input: ExtractionInput,
+  ): Promise<ExtractionResult> {
+    let lastError: ProviderError | undefined
+    for (let attempt = 0; attempt < EXTRACTION_ATTEMPTS; attempt += 1) {
+      const payload = await postJson(this.options.endpoint, body, this.options)
+      const root = asRecord(payload, 'extraction response')
+      this.recordUsage(parseExtractionUsage(root['usage']))
+      try {
+        const choices = asArray(root['choices'], 'choices')
+        const first = asRecord(choices[0], 'first choice')
+        const message = asRecord(first['message'], 'choice message')
+        const content = message['content']
+        if (typeof content !== 'string') {
+          throw new ProviderError('extraction response has no string content')
+        }
+        const parsed = parseJsonContent(content)
+        return parseExtractionResult(parsed, input)
+      } catch (error) {
+        if (!(error instanceof ProviderError)) throw error
+        lastError = error
+      }
     }
-    const parsed = parseJsonContent(content)
-    return parseExtractionResult(parsed, input)
+    throw lastError ?? new ProviderError('extraction failed')
   }
 
   private recordUsage(usage: ExtractionUsage | null): void {
@@ -345,6 +379,8 @@ function compactRequest(input: ExtractionInput): Record<string, unknown> {
     ]),
   }
 }
+
+const EXTRACTION_ATTEMPTS = 3
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract long-term memory from a batch of focus messages.
 focusMessageIds lists the messages to extract from. The other messages are context for resolving references; do not extract facts from them.

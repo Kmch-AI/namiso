@@ -493,6 +493,61 @@ test('HTTP providers parse boundary payloads', async () => {
   ])
 })
 
+test('HTTP extraction retries invalid JSON content', async () => {
+  let calls = 0
+  const flakyFetch: typeof fetch = async (input, init) => {
+    calls += 1
+    if (calls === 1) {
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"entities": [' } }], usage: {} }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+    return extractionFetch(input, init)
+  }
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    fetch: flakyFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [],
+    knownEntities: [],
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.claims[0]?.predicate, 'uses')
+})
+
+test('HTTP extraction keeps the richer result across passes', async () => {
+  let calls = 0
+  const twoPassFetch: typeof fetch = async (input, init) => {
+    calls += 1
+    if (calls === 1) {
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"e":[],"c":[],"v":[]}' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+    return extractionFetch(input, init)
+  }
+  const provider = new HttpExtractionProvider({
+    endpoint: 'https://example.test/chat',
+    model: 'test-chat',
+    passes: 2,
+    fetch: twoPassFetch,
+  })
+  const result = await provider.extract({
+    memorySpaceId: asMemorySpaceId('space-1'),
+    focusMessageIds: [asMessageId('message-1')],
+    messages: [],
+    knownEntities: [],
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.claims.length, 1)
+})
+
 test('HTTP extraction stores times as seconds and drops unresolved times', async () => {
   const provider = new HttpExtractionProvider({
     endpoint: 'https://example.test/chat',
