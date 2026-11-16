@@ -278,6 +278,15 @@ export function listMessages(db: Database, query: MessageQuery): Message[] {
   return rows.map(mapMessage)
 }
 
+export function listSpaceMessages(db: Database, spaceId: MemorySpaceId): Message[] {
+  return db
+    .all(
+      'SELECT * FROM messages WHERE memory_space_id = ? ORDER BY occurred_at ASC, message_index ASC',
+      spaceId,
+    )
+    .map(mapMessage)
+}
+
 export function listConversationMessages(db: Database, conversationId: ConversationId): Message[] {
   return db
     .all(

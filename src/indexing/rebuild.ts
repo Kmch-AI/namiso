@@ -5,6 +5,7 @@ import type { MemorySpaceId } from '../types.ts'
 import type { Indexer, IndexItem } from './indexer.ts'
 
 import { listChunks } from '../storage/chunk-repo.ts'
+import { listSpaceMessages } from '../storage/conversation-repo.ts'
 import {
   getEntitiesByIds,
   listClaims,
@@ -12,8 +13,13 @@ import {
   listEventParticipants,
   listEvents,
 } from '../storage/memory-repo.ts'
-import { clearFts, listDocuments } from '../storage/search-repo.ts'
-import { claimDocumentText, entityDocumentText, eventDocumentText } from './documents.ts'
+import { clearFts, indexFtsOnly, listDocuments } from '../storage/search-repo.ts'
+import {
+  claimDocumentText,
+  entityDocumentText,
+  eventDocumentText,
+  messageDocumentText,
+} from './documents.ts'
 
 export async function rebuildIndexes(
   db: Database,
@@ -57,7 +63,7 @@ export async function rebuildIndexes(
     items.push({
       sourceType: 'claim',
       sourceId: claim.id,
-      content: claimDocumentText(claim, subject, objectEntity),
+      content: claimDocumentText(claim, subject, objectEntity, aliases),
     })
   }
 
@@ -80,7 +86,7 @@ export async function rebuildIndexes(
     items.push({
       sourceType: 'event',
       sourceId: item.event.id,
-      content: eventDocumentText(item.event, participants),
+      content: eventDocumentText(item.event, participants, aliases),
     })
   }
 
@@ -93,5 +99,16 @@ export async function rebuildIndexes(
   }
 
   await indexer.sync(spaceId, items)
-  return { documents: items.length }
+  const messages = listSpaceMessages(db, spaceId)
+  db.transaction(() => {
+    for (const message of messages) {
+      indexFtsOnly(db, {
+        spaceId,
+        sourceType: 'message',
+        sourceId: message.id,
+        content: messageDocumentText(message),
+      })
+    }
+  })
+  return { documents: items.length + messages.length }
 }

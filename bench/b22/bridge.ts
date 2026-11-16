@@ -8,6 +8,7 @@ import {
   HttpExtractionProvider,
   HttpRerankerProvider,
 } from '../../src/providers/http.ts'
+import { SystemOneEvidenceJudge } from '../../src/providers/systemone.ts'
 
 interface Turn {
   turn: number
@@ -17,6 +18,24 @@ interface Turn {
 }
 
 type Board = 'exam' | 'natural'
+
+const MULTIHOP = process.env['NAMISO_MULTIHOP'] === '1'
+const DUE_REMINDERS = process.env['NAMISO_DUE_REMINDERS'] === '1'
+const SALIENT_PROFILE = process.env['NAMISO_PROFILE'] === '1'
+const CHUNK_EXPANSION = process.env['NAMISO_CHUNK_EXPANSION'] !== '0'
+const BENCH_CONTRACT = process.env['NAMISO_BENCH_CONTRACT'] !== '0'
+const BENCH_ANSWER_CONTRACT = [
+  '回答前先在 [Evidence] 中找出与问题直接相关的原句；涉及数字、时长、条件时，必须使用原句中的值。',
+  '证据原文明确写过的事，直接按原文回答，不要标成未确认或假设。',
+  '问题问“第一次”或“最早”时，若记录只能确定最早一条，回答“按现有记录，最早能对应上的是……”，不要断言“唯一一次”。',
+  '描述做法或经过时，按顺序说清原来的问题、缺少的条件、替代办法和结果；引用经历时保留证据中的数字、时长和关键动作。',
+  '事件摘要只是压缩，若 [Evidence] 原文有更完整的做法、数字或结果，以原文为准。',
+  '回答时间点相关的问题时，先核对证据日期，不要把不同日期的数字套到问题所指的时间。',
+  '不要编造人物没说过的话、金句、工具品牌或师徒关系。',
+  '只回答用户问到的内容，不要主动补充无关记录，除非用户要求扩展。',
+  '问题问虚构作品、书里角色或假设情节时，只能说“可以借鉴记录里的……”，不要把记录中的人说成书中角色，也不要补写书里的情节。',
+  '问题涉及虚构作品或创作时，先明确“记录里没有作品情节”，再只陈述记录中可作为素材的事实；不要说“可以借鉴/可以写进书里”，也不要把素材说成作品内容。',
+].join('\n')
 
 interface Scope {
   run: string
@@ -41,6 +60,9 @@ const PORT = Number(process.env.BRIDGE_PORT ?? 18878)
 const GATEWAY = process.env.SHIM_GATEWAY ?? 'http://127.0.0.1:18877/v1'
 const CHAT_KEY = process.env.NAMISO_EXTRACTION_API_KEY ?? ''
 const EMBED_DIM = Number(process.env.NAMISO_EMBEDDING_DIMENSIONS ?? 1024)
+const SYSTEMONE_URL = process.env.NAMISO_SYSTEMONE_URL ?? ''
+const SYSTEMONE_MODEL = process.env.NAMISO_SYSTEMONE_MODEL ?? 'jev-latest'
+const SYSTEMONE_KEY = process.env.NAMISO_SYSTEMONE_API_KEY ?? ''
 const DATA_DIR = process.env.B22_DATA ?? join(import.meta.dirname, 'db')
 const DB_TAG = process.env.B22_DB_TAG ?? ''
 
@@ -95,6 +117,16 @@ function providers(scope: Scope) {
       model: process.env.NAMISO_RERANK_MODEL ?? 'Qwen3-Reranker-0.6B.Q4_K_M',
       timeoutMs: 180_000,
     }),
+    ...(SYSTEMONE_URL.length === 0
+      ? {}
+      : {
+          evidenceJudge: new SystemOneEvidenceJudge({
+            endpoint: SYSTEMONE_URL,
+            model: SYSTEMONE_MODEL,
+            ...(SYSTEMONE_KEY.length === 0 ? {} : { apiKey: SYSTEMONE_KEY }),
+            timeoutMs: 60_000,
+          }),
+        }),
   }
 }
 
@@ -170,8 +202,12 @@ async function retrieve(
   if (namiso === null) throw new Error('memory not open')
   const context = await namiso.getContext({
     query: input.question,
-    maxTokens: 1600,
+    maxTokens: 2000,
     topK: 12,
+    dueReminders: DUE_REMINDERS,
+    salientProfile: SALIENT_PROFILE,
+    chunkExpansion: CHUNK_EXPANSION,
+    ...(MULTIHOP ? { multiHop: true } : {}),
     now: Math.floor(Date.parse(input.now) / 1000),
     timeZone: 'Asia/Shanghai',
   })
@@ -180,6 +216,7 @@ async function retrieve(
     '你是用户长期聊天的伴侣，下面是你们过去的聊天片段和最近的对话，请根据记忆自然地回答用户这句话。',
     '【记忆摘录】',
     context.text.trim(),
+    ...(BENCH_CONTRACT ? [`【回答要求】\n${BENCH_ANSWER_CONTRACT}`] : []),
     '【最近的对话】',
     ...recent.map(renderTurn),
   ].join('\n\n')

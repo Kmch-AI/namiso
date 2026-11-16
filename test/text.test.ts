@@ -24,3 +24,11 @@ test('excerpt keeps the start of a token longer than the window', () => {
   assert.ok(result.includes(token.slice(0, 10)))
   assert.ok(!result.includes('前情提要'))
 })
+
+test('excerpt keeps head and tail when no query token matches', () => {
+  const body = `${'开头'.repeat(100)}结论在最后：不弄好不罢休`
+  const result = excerpt(body, new Set(['无关词']), 40)
+  assert.ok(result.startsWith('开头'))
+  assert.ok(result.includes('不弄好不罢休'))
+  assert.ok(result.includes('…'))
+})

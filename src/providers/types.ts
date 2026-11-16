@@ -34,6 +34,27 @@ export interface RerankerProvider {
   rerank(input: RerankInput): Promise<RerankScore[]>
 }
 
+export interface EvidenceJudgeCandidate {
+  id: string
+  text: string
+}
+
+export interface EvidenceJudgeInput {
+  query: string
+  context?: string
+  candidates: readonly EvidenceJudgeCandidate[]
+}
+
+export interface EvidenceJudgeScore {
+  id: string
+  score: number
+}
+
+export interface EvidenceJudgeProvider {
+  readonly model: string
+  judge(input: EvidenceJudgeInput): Promise<EvidenceJudgeScore[]>
+}
+
 export type ExtractionModality = MemoryModality
 
 export type ExtractionWireFormat = 'compact' | 'legacy'

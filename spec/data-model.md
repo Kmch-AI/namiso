@@ -111,7 +111,7 @@ An evidence row names its source. The first version uses `source_type = 'message
 
 ## Derived indexes
 
-`embedding_documents` stores the retrieval text, its content hash, model name and version, dimensions, and a float32 vector blob. FTS rows are keyed by the document ID. `vec_documents` uses the document ID as its primary key and `memory_space_id` as a partition key, so a nearest-neighbour search only scans the requested space before it applies `k`.
+`embedding_documents` stores the retrieval text, its content hash, model name and version, dimensions, and a float32 vector blob. Raw messages are the exception: they have FTS rows with the deterministic key `fts:message:<message id>` and no `embedding_documents` row, so they never trigger an embedding call. `reindex()` rebuilds these FTS-only rows from the `messages` table. FTS rows are keyed by the document ID. `vec_documents` uses the document ID as its primary key and `memory_space_id` as a partition key, so a nearest-neighbour search only scans the requested space before it applies `k`.
 
 `fts_keys` maps a document key to the FTS rowid in each table. Deleting a document looks up the rowid instead of scanning the `UNINDEXED` key column; a missing mapping falls back to the key scan.
 

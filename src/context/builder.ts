@@ -17,9 +17,11 @@ import type {
 
 import { isRestricted, restrictionOf } from '../annotation/restriction.ts'
 import { asMessageId } from '../ids.ts'
+import { eventCandidate } from '../retrieval/candidates.ts'
 import { getMessagesByIds, listMessages } from '../storage/conversation-repo.ts'
+import { listUpcomingEvents } from '../storage/memory-repo.ts'
 import { estimateTokens, excerpt, segment, truncate } from '../text.ts'
-import { formatDayKey } from '../time.ts'
+import { dayKey, dayStart, formatDayKey } from '../time.ts'
 
 export interface BuildContextInput {
   memorySpaceId: MemorySpaceId
@@ -30,9 +32,73 @@ export interface BuildContextInput {
   includeEvidence?: boolean
   idMode?: 'short' | 'full'
   timeZone?: string
+  rawEvidence?: readonly Message[]
+  now?: number
+  dueReminders?: boolean
+}
+
+const DUE_TYPES = new Set([
+  '提醒',
+  'reminder',
+  '任务',
+  'task',
+  'todo',
+  '待办',
+  '截止',
+  'deadline',
+  '到期',
+  'due',
+  '还款',
+  'repay',
+  'payment',
+  '缴费',
+  '预约',
+  'appointment',
+  '考试',
+  'exam',
+  '面试',
+  'interview',
+  '承诺',
+  'promise',
+  'commitment',
+  '约定',
+  '交付',
+  'delivery',
+])
+const PURCHASE_TYPES = new Set(['购买', '购物', 'purchase', 'shopping', '下单', 'order', '快递'])
+const PLAN_TYPES = new Set(['计划', 'plan', '安排', 'schedule', '延期'])
+const GENERIC_EVENT_TYPES = new Set(['event', 'life', '生活', '生活事件', '对话', 'conversation'])
+const PLAN_DAY =
+  /今天|今晚|明天|后天|这周|本周|周末|下周|周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]/
+const PLAN_ACTION =
+  /要|得|该|需要|去|来|交|还|取|送|见|办|做|买|吃|看|开会|面试|考试|提醒|别忘|记得/
+const DUE_OBLIGATION =
+  /要交|要还|还钱|还款|得去|要去|截止|到期|提醒|别忘|记得|答应|约定|预约|考试|面试|缴费/
+const PURCHASE_DUE = /到货|到驿站|取件|签收|送达|派送|快递.*到|到.*驿站|收货|取快递|驿站.*取/
+const PAST_EVENT = /已经|已完成|已还|已交|已取|已办|去过|吃过|看过/
+
+function isDueEvent(event: { type: string; summary: string }): boolean {
+  const type = event.type.toLowerCase().trim()
+  const text = event.summary
+  if (PAST_EVENT.test(text)) return false
+  if (DUE_TYPES.has(type)) return true
+  if (PURCHASE_TYPES.has(type)) return PURCHASE_DUE.test(text)
+  if (PLAN_TYPES.has(type)) return PLAN_DAY.test(text) && PLAN_ACTION.test(text)
+  if (PURCHASE_DUE.test(text)) return true
+  if (GENERIC_EVENT_TYPES.has(type)) return false
+  return DUE_OBLIGATION.test(text) && PLAN_DAY.test(text)
+}
+
+function wantsDueReminder(query: string): boolean {
+  const text = query.trim()
+  if (text.length <= 24) return true
+  return /今天|今晚|明天|后天|这周|本周|周末|下周|周[一二三四五六日天]|星期[一二三四五六日天]|到期|提醒|别忘|约好|要交|要还|取件|考试|面试|缴费/.test(
+    text,
+  )
 }
 
 const MAX_EVENTS = 12
+const MAX_DUE_EVENTS = 3
 const MAX_EVIDENCE = 12
 const MAX_RELATIONS = 12
 
@@ -134,12 +200,70 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     .filter((candidate) => isRestricted(candidateRestriction(candidate)))
     .slice(0, MAX_EVENTS)
     .toSorted(compareEvents)
+  const today = input.now === undefined ? null : dayKey(input.now, state.timeZone)
+  const dueCandidates =
+    input.dueReminders !== true ||
+    input.now === undefined ||
+    today === null ||
+    !wantsDueReminder(input.query)
+      ? []
+      : listUpcomingEvents(db, input.memorySpaceId, {
+          fromDay: today,
+          toDay: dayKey(dayStart(input.now, state.timeZone, 1), state.timeZone),
+          fromEpoch: dayStart(input.now, state.timeZone),
+          toEpoch: dayStart(input.now, state.timeZone, 1),
+          limit: 24,
+        }).flatMap((event) => {
+          const candidate = eventCandidate(db, event)
+          return candidate === null ? [] : [candidate]
+        })
+  const dueEvents =
+    input.dueReminders !== true || !wantsDueReminder(input.query)
+      ? []
+      : [
+          ...new Map(
+            [...dueCandidates, ...orderedEvents].map((candidate) => [candidate.key, candidate]),
+          ).values(),
+        ]
+          .filter((candidate) => {
+            if (candidate.record.kind !== 'event') return false
+            if (isRestricted(candidateRestriction(candidate))) return false
+            if (candidate.status !== 'active') return false
+            const event = candidate.record.event
+            const eventDay =
+              event.occurredDay ??
+              (event.occurredAt === null ? null : dayKey(event.occurredAt, state.timeZone))
+            return eventDay === today && event.modality === 'asserted' && isDueEvent(event)
+          })
+          .slice(0, MAX_DUE_EVENTS)
   const restrictedEvidenceIds = collectRestrictedEvidenceIds(claims, events)
+  const dueKeys = new Set(dueEvents.map((candidate) => candidate.key))
+  const queryTokens = new Set(segment(input.query))
+  const pinnedEvidenceIds = new Set(
+    input.candidates.flatMap((candidate) => {
+      if (candidate.record.kind !== 'event' || dueKeys.has(candidate.key)) return []
+      const matches =
+        candidate.pinned === true ||
+        segment(candidate.record.event.summary).some((token) => queryTokens.has(token))
+      return matches ? candidate.evidenceMessageIds : []
+    }),
+  )
+  const priorityEvidenceIds = new Set([
+    ...pinnedEvidenceIds,
+    ...(input.rawEvidence ?? []).map((message) => message.id),
+  ])
   const relations = collectRelations(input.candidates, state)
   const evidence =
     input.includeEvidence === false
       ? []
-      : collectEvidence(db, input.memorySpaceId, input.candidates, input.query)
+      : collectEvidence(
+          db,
+          input.memorySpaceId,
+          input.candidates,
+          input.query,
+          input.rawEvidence,
+          pinnedEvidenceIds,
+        )
   const dates = collectDates(db, input.candidates)
   const described = describedEntities(input.candidates)
   const renderedEntities = entities.filter((candidate) => entityHasDetails(candidate, described))
@@ -155,10 +279,12 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     privateEvents,
     entities: renderedEntities,
     events: publicEvents,
+    dueEvents,
     historicalClaims,
     relations,
     evidence,
     restrictedEvidenceIds,
+    priorityEvidenceIds,
     conflicts,
     uncertainEvents,
     dates,
@@ -167,17 +293,19 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     state,
   })
 
+  const items = [
+    ...activeClaims,
+    ...unconfirmedClaims,
+    ...renderedEntities,
+    ...dueEvents,
+    ...publicEvents,
+    ...historicalClaims,
+    ...privateClaims,
+    ...privateEvents,
+  ]
   return {
     text: text.text,
-    items: [
-      ...activeClaims,
-      ...unconfirmedClaims,
-      ...renderedEntities,
-      ...publicEvents,
-      ...historicalClaims,
-      ...privateClaims,
-      ...privateEvents,
-    ],
+    items: [...new Map(items.map((candidate) => [candidate.key, candidate])).values()],
     evidence,
     tokenEstimate: estimateTokens(text.text),
     compressed: text.compressed,
@@ -197,10 +325,12 @@ interface SectionsInput {
   privateEvents: readonly MemoryCandidate[]
   entities: readonly MemoryCandidate[]
   events: readonly MemoryCandidate[]
+  dueEvents: readonly MemoryCandidate[]
   historicalClaims: readonly MemoryCandidate[]
   relations: readonly string[]
   evidence: readonly Message[]
   restrictedEvidenceIds: ReadonlySet<MessageId>
+  priorityEvidenceIds: ReadonlySet<MessageId>
   conflicts: readonly string[]
   uncertainEvents: readonly string[]
   dates: DateLookup
@@ -260,7 +390,7 @@ function renderSections(
   tokens: ReadonlySet<string>,
 ): Rendered {
   const blocks: string[] = [
-    '[Memory Contract]\n以下区块是本次检索到的记录。不要补充未出现的事实、日期、原因或状态。记录不完整时，按已有内容回答；没有记录时，说“没有记录”，不要推断“从未发生”。',
+    '[Memory Contract]\n以下区块是本次检索到的记录。以 [Evidence] 原文为准，不要补充未出现的事实、日期、原因或状态。记录不完整时，按已有内容回答；没有记录时，说“没有记录”，不要推断“从未发生”。',
   ]
   const addSection = (header: string, lines: readonly string[]): void => {
     if (lines.length === 0) return
@@ -268,6 +398,17 @@ function renderSections(
   }
 
   addSection('[Query Time]', queryTimeLines(input.time))
+  addSection(
+    '[今天到期]',
+    input.dueEvents.length === 0
+      ? []
+      : [
+          '用户当前没有明确询问别的事时，先用一句自然的话提醒今天到期的事项；用户在问具体的事时，直接回答，不要插入提醒。',
+          ...input.dueEvents.map((candidate) =>
+            eventLine(candidate, detail, tokens, input.state, input.dates),
+          ),
+        ],
+  )
   addSection(
     '[Current Claims]',
     input.activeClaims.map((candidate) => claimLine(candidate, detail, input.state, input.dates)),
@@ -286,9 +427,12 @@ function renderSections(
   )
   addSection('[Unresolved Conflicts]', input.conflicts)
   addSection('[Uncertain Events]', input.uncertainEvents)
+  const dueKeys = new Set(input.dueEvents.map((candidate) => candidate.key))
   addSection(
     '[Historical Events]',
-    input.events.map((candidate) => eventLine(candidate, detail, tokens, input.state, input.dates)),
+    input.events
+      .filter((candidate) => !dueKeys.has(candidate.key))
+      .map((candidate) => eventLine(candidate, detail, tokens, input.state, input.dates)),
   )
   addSection(
     '[Historical Claims]',
@@ -315,7 +459,14 @@ function renderSections(
     input.evidence
       .slice(0, MAX_EVIDENCE)
       .map((message) =>
-        evidenceLine(message, detail, tokens, input.state, input.restrictedEvidenceIds),
+        evidenceLine(
+          message,
+          detail,
+          tokens,
+          input.state,
+          input.restrictedEvidenceIds,
+          input.priorityEvidenceIds,
+        ),
       ),
   )
   const text = blocks.join('\n\n')
@@ -393,11 +544,13 @@ function eventLine(
   const { event, participants } = candidate.record
   const mentioned = dates.events.get(event.id) ?? null
   const date =
-    event.occurredAt === null
-      ? mentioned === null
-        ? '时间未知'
-        : `时间未知（提及于 ${formatDate(mentioned.at, state.timeZone)}）`
-      : formatDate(event.occurredAt, state.timeZone, event.occurredDay)
+    event.occurredDay !== null
+      ? formatDayKey(event.occurredDay)
+      : event.occurredAt === null
+        ? mentioned === null
+          ? '时间未知'
+          : `时间未知（提及于 ${formatDate(mentioned.at, state.timeZone)}）`
+        : formatDate(event.occurredAt, state.timeZone)
   const modality = event.modality
   const qualifier =
     MODALITY_LABELS[modality] === undefined ? '' : `（${MODALITY_LABELS[modality]}）`
@@ -445,10 +598,12 @@ function evidenceLine(
   tokens: ReadonlySet<string>,
   state: RenderState,
   restrictedIds: ReadonlySet<MessageId>,
+  priorityIds: ReadonlySet<MessageId>,
 ): string {
   const date = formatDate(message.occurredAt, state.timeZone)
   const marker = restrictedIds.has(message.id) ? '私密原文 ' : ''
-  return `- [message:${refOf(state, 'message', message.id)}] ${date} ${marker}${message.speakerId}：${excerpt(message.content, tokens, detail.evidence)}`
+  const evidenceDetail = priorityIds.has(message.id) ? FULL_DETAIL.evidence : detail.evidence
+  return `- [message:${refOf(state, 'message', message.id)}] ${date} ${marker}${message.speakerId}：${excerpt(message.content, tokens, evidenceDetail)}`
 }
 
 function refOf(state: RenderState, kind: MemoryRef['kind'], id: string): string {
@@ -669,8 +824,15 @@ function collectEvidence(
   spaceId: MemorySpaceId,
   candidates: readonly MemoryCandidate[],
   query: string,
+  rawEvidence: readonly Message[] = [],
+  pinnedEvidenceIds: ReadonlySet<MessageId> = new Set(),
 ): Message[] {
   const ids = new Set<MessageId>()
+  for (const id of pinnedEvidenceIds) {
+    ids.add(id)
+    if (ids.size >= 120) break
+  }
+  for (const message of rawEvidence) ids.add(message.id)
   for (const candidate of candidates) {
     for (const id of candidate.evidenceMessageIds) ids.add(id)
     for (const id of candidate.closureEvidenceMessageIds) ids.add(id)
@@ -690,18 +852,45 @@ function collectEvidence(
         if (left.score !== right.score) return right.score - left.score
         return right.message.occurredAt - left.message.occurredAt
       })
-  const prepared = candidates.map((candidate) => {
-    const perCandidateLimit = candidate.kind === 'chunk' ? 3 : 4
-    const linked = candidate.kind === 'claim' || candidate.kind === 'event'
-    const closure = scored(candidate.closureEvidenceMessageIds).slice(0, 1)
-    return {
-      messages: [...closure, ...scored(candidate.evidenceMessageIds)],
-      perCandidateLimit,
-      linked,
-    }
-  })
+  const prepared = candidates
+    .toSorted((left, right) => Number(right.pinned === true) - Number(left.pinned === true))
+    .map((candidate) => {
+      const perCandidateLimit = candidate.kind === 'event' ? 6 : candidate.kind === 'chunk' ? 3 : 4
+      const linked = candidate.kind === 'claim' || candidate.kind === 'event'
+      const direct = candidate.kind === 'message'
+      const closure = scored(candidate.closureEvidenceMessageIds).slice(0, 1)
+      return {
+        messages: [...closure, ...scored(candidate.evidenceMessageIds)],
+        perCandidateLimit,
+        linked,
+        direct,
+      }
+    })
   const chosen: Message[] = []
-  const seen = new Set<string>()
+  const pinnedMessages = [...pinnedEvidenceIds]
+    .flatMap((id) => {
+      const message = byId.get(asMessageId(id))
+      return message === undefined || message.memorySpaceId !== spaceId ? [] : [message]
+    })
+    .map((message) => ({ message, score: overlapScore(message, queryTokens) }))
+    .toSorted((left, right) => {
+      if (left.score !== right.score) return right.score - left.score
+      return right.message.occurredAt - left.message.occurredAt
+    })
+    .map((entry) => entry.message)
+  for (const message of pinnedMessages) {
+    chosen.push(message)
+    if (chosen.length >= 6) break
+  }
+  const seedLimit = pinnedMessages.length > 0 ? 10 : 4
+  for (const message of rawEvidence) {
+    if (chosen.length >= seedLimit) break
+    if (message.memorySpaceId !== spaceId || overlapScore(message, queryTokens) === 0) continue
+    if (chosen.some((item) => item.id === message.id)) continue
+    chosen.push(message)
+  }
+  const seen = new Set(chosen.map((message) => message.id))
+  let directChosen = chosen.length
   const take = (onlyMatching: boolean): void => {
     const cursors = prepared.map(() => 0)
     const added = prepared.map(() => 0)
@@ -711,16 +900,18 @@ function collectEvidence(
       for (const [index, item] of prepared.entries()) {
         if (chosen.length >= MAX_EVIDENCE) return
         if ((added[index] ?? 0) >= item.perCandidateLimit) continue
+        if (item.direct && directChosen >= 8) continue
         while ((cursors[index] ?? 0) < item.messages.length) {
           const cursor = cursors[index] ?? 0
           const entry = item.messages[cursor]
           cursors[index] = cursor + 1
           if (entry === undefined) break
-          if (onlyMatching && entry.score === 0 && !item.linked) continue
+          if (onlyMatching && entry.score === 0 && !item.linked && !item.direct) continue
           if (seen.has(entry.message.id)) continue
           seen.add(entry.message.id)
           chosen.push(entry.message)
           added[index] = (added[index] ?? 0) + 1
+          if (item.direct) directChosen += 1
           progress = true
           break
         }

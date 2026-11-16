@@ -1,6 +1,6 @@
 # Providers
 
-Namiso calls three model interfaces. The core stores only the interface outputs and the provider identity.
+Namiso calls four optional model interfaces. The core stores only the interface outputs and the provider identity.
 
 ## Extraction
 
@@ -76,6 +76,23 @@ interface RerankerProvider {
 
 The engine expects scores on a comparable scale. The final ranking uses 0.7 × reranker score + 0.3 × normalized RRF. A cross-encoder that returns logits should normalize its scores before returning them.
 
+## Evidence judge
+
+```ts
+interface EvidenceJudgeProvider {
+  readonly model: string
+  judge(input: {
+    query: string
+    context?: string
+    candidates: readonly { id: string; text: string }[]
+  }): Promise<Array<{ id: string; score: number }>>
+}
+```
+
+The evidence judge scores whether each candidate itself supplies a necessary fact for the answer. It is optional and only used by the opt-in multi-hop channel. When present, it ranks the seeds and rescores the expanded candidates; when absent, multi-hop keeps its lexical ranking.
+
+`SystemOneEvidenceJudge` posts `{ model, state, questions }` to a SystemOne-compatible endpoint. Each candidate becomes a `noul` question with `instructions` and `criteria: { true, false }`; `state` carries the query and optional context. The provider batches at most 32 questions per request and reads `answers[cN].noul`. A missing or out-of-range answer throws `ProviderError`.
+
 ## Environment wiring
 
 `providersFromEnv()` maps environment variables to HTTP providers. It returns an empty object when no provider is configured, so `Namiso.open()` keeps the offline defaults.
@@ -85,9 +102,10 @@ The engine expects scores on a comparable scale. The final ranking uses 0.7 × r
 | Extraction | `NAMISO_EXTRACTION_URL`, `NAMISO_EXTRACTION_MODEL`, `NAMISO_EXTRACTION_API_KEY`, `NAMISO_EXTRACTION_VERSION`, `NAMISO_EXTRACTION_REASONING_EFFORT`, `NAMISO_EXTRACTION_WIRE_FORMAT` |
 | Embedding  | `NAMISO_EMBEDDING_URL`, `NAMISO_EMBEDDING_MODEL`, `NAMISO_EMBEDDING_DIMENSIONS`, `NAMISO_EMBEDDING_API_KEY`, `NAMISO_EMBEDDING_VERSION`, `NAMISO_EMBEDDING_BATCH_SIZE`              |
 | Reranker   | `NAMISO_RERANK_URL`, `NAMISO_RERANK_MODEL`, `NAMISO_RERANK_API_KEY`, `NAMISO_RERANK_MAX_DOCUMENTS`, `NAMISO_RERANK_MAX_DOCUMENT_CHARS`                                              |
+| Judge      | `NAMISO_SYSTEMONE_URL`, `NAMISO_SYSTEMONE_MODEL`, `NAMISO_SYSTEMONE_API_KEY`, `NAMISO_SYSTEMONE_VERSION`, `NAMISO_SYSTEMONE_TIMEOUT_MS`, `NAMISO_SYSTEMONE_BATCH_SIZE`              |
 | Shared     | `NAMISO_MODEL_TIMEOUT_MS`                                                                                                                                                           |
 
-An endpoint and model must be set together. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset. `NAMISO_EXTRACTION_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, or `high`. `NAMISO_EXTRACTION_WIRE_FORMAT` accepts `compact` or `legacy`.
+An endpoint and model must be set together for extraction, embedding, and reranking. The SystemOne model is optional and defaults to `jev-latest`. An embedding endpoint also requires dimensions. Values are trimmed; empty values count as unset. `NAMISO_EXTRACTION_REASONING_EFFORT` accepts `none`, `minimal`, `low`, `medium`, or `high`. `NAMISO_EXTRACTION_WIRE_FORMAT` accepts `compact` or `legacy`.
 
 Where the code connects:
 
@@ -96,6 +114,7 @@ Where the code connects:
 | Provider contracts                | `src/providers/types.ts`                                              |
 | HTTP payload parsing and requests | `src/providers/http.ts`, `src/providers/http-util.ts`                 |
 | Environment factory               | `src/providers/from-env.ts`                                           |
+| SystemOne judge                   | `src/providers/systemone.ts`                                          |
 | Injection into the engine         | `src/namiso.ts`, `Namiso.open()` options                              |
 | Benchmark injection               | `bench/run.ts` `--models`, passed in `bench/chat-memory-benchmark.ts` |
 | Opt-in real-model test            | `test/models.integration.test.ts`                                     |

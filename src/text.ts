@@ -165,7 +165,24 @@ export function excerpt(text: string, tokens: ReadonlySet<string>, maxChars: num
       matchLength = token.length
     }
   }
-  if (matchIndex === -1) return truncate(text, limit)
+  const part = Math.floor((limit - 2) / 3)
+  const midPart = Math.min(limit - 2, Math.max(part, matchLength + 24))
+  if (text.length >= limit * 1.5 && part > 0 && matchLength < part) {
+    const head = text.slice(0, Math.floor((limit - 2 - midPart) / 2))
+    const tail = text.slice(-Math.ceil((limit - 2 - midPart) / 2))
+    const midCenter = matchIndex === -1 ? Math.floor(text.length / 2) : matchIndex
+    const midStart = Math.max(
+      head.length,
+      Math.min(midCenter - Math.floor(midPart / 2), text.length - midPart - tail.length),
+    )
+    const middle = text.slice(midStart, midStart + midPart)
+    return `${head}…${middle}…${tail}`
+  }
+  if (matchIndex === -1) {
+    const head = Math.ceil(limit / 2)
+    const tail = limit - head
+    return `${text.slice(0, head)}…${text.slice(-tail)}`
+  }
   const centered = Math.max(0, matchIndex - Math.max(0, Math.floor((limit - matchLength) / 2)))
   const start = Math.min(centered, Math.max(0, text.length - limit))
   const end = Math.min(text.length, start + limit)

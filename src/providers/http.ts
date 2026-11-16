@@ -445,7 +445,7 @@ function compactEvidence(
 ): MessageId[] {
   if (!Array.isArray(value) || value.length === 0) {
     diagnostics.evidenceFallbacks += 1
-    return [input.focusMessageIds[0]]
+    return []
   }
   const focus = new Set<MessageId>(input.focusMessageIds)
   const ids: MessageId[] = []

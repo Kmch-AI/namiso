@@ -32,11 +32,15 @@ The windows are a soft signal. A claim or event in a window gains 0.5 in the SQL
 
 **SQL** returns mentioned entities, claims for those entities, and events with those participants. Claims and events are ranked by query overlap with their document text, then by status or intent boosts and recency, before the channel cap. This keeps recent but unrelated records from displacing a relevant older one. With no mentioned entity, an event or history query returns recent events.
 
-**FTS5** searches pre-segmented document text. Chinese text is segmented with `Intl.Segmenter('zh', { granularity: 'word' })`; the index stores words separated by spaces. The default SQLite tokenizer then handles each word. Query terms are ORed with quotes. This avoids relying on a tokenizer that does not segment Chinese.
+**FTS5** searches pre-segmented document text. Chinese text is segmented with `Intl.Segmenter('zh', { granularity: 'word' })`; the index stores words separated by spaces. The default SQLite tokenizer then handles each word. Query terms are ORed with quotes. This avoids relying on a tokenizer that does not segment Chinese. Raw messages are indexed at ingest with a deterministic FTS-only key, `fts:message:<id>`, and again during a rebuild. They are not embedded, so exact older messages are searchable before chunking or extraction without an extra provider call. Claim documents include subject and object aliases, and event documents include participant aliases, so a question that uses a nickname reaches the structured record that stores the canonical name.
 
 A second index stores CJK bigrams. The FTS channel runs the word query first, filtered to the requested memory types. It then checks each bigram of the query against the word hits: a bigram that matches none of them triggers the bigram query, whose new candidates are appended after the word hits. This recovers a substring such as `州西` from a document that segmented as `杭州` and `西湖`, even when the word hits are plentiful. The trace notes when the fallback ran.
 
 **Vector** embeds the query and searches `sqlite-vec` for the nearest documents in the current memory space. The virtual table is partitioned by `memory_space_id`, so the search applies `k` after the partition filter. If the extension is unavailable, the engine scans stored float32 vectors and computes cosine similarity. Both backends return document IDs; the engine maps them to chunk, entity, claim, or event candidates. When the query has facets, the same batched `embed` call also embeds each facet, and the best rank per candidate across the facet searches forms one **facet** channel.
+
+**Message** expands chunk hits into the messages they contain. It reuses the chunk hits from FTS, CJK bigram FTS, and vector search, keeps messages whose text overlaps the query tokens, and ranks them by the parent chunk score scaled by that overlap. The channel runs only when both `chunk` and `message` are allowed and `chunkExpansion` is not false. It adds no index and no embedding call.
+
+**Multi-hop** is opt-in with `multiHop: true` or `multiHop: { seeds, terms, perTerm }`. It takes message FTS hits as seeds, extracts bridge terms from their segmented words and CJK bigrams, excludes query tokens, stopwords, numeric-only terms, and single characters, then searches the message FTS index once per term. Hits are interleaved by rank, deduped, and tagged with the `multihop` channel. It adds no index and no embedding call. Seeds default to 6, terms to 8, and hits per term to 3. When an `EvidenceJudgeProvider` is configured, it judges the seeds before term extraction and rescores the expanded candidates; without one, ranking stays lexical.
 
 Channels return at most 80 candidates. The FTS channel asks for the top 30 matches before that cap.
 
@@ -66,6 +70,8 @@ The reranker judges relevance only. It does not decide whether a claim is curren
 
 Selection runs over the renderable candidates (entity, claim, and event) first. Conversation chunks and message candidates are source-only: they never render as lines of their own, so they cannot occupy a visible slot while a structured record is available. The source-only pool still contributes evidence messages, up to the first eight ranked entries.
 
+Chunk-to-message expansion is enabled by default and can be disabled with `chunkExpansion: false`. Raw message full-text search stays active either way.
+
 The renderable pool feeds coverage selection, which returns `min(topK, pool length)` items:
 
 1. Take rank 1.
@@ -75,7 +81,9 @@ The renderable pool feeds coverage selection, which returns `min(topK, pool leng
 
 If fewer renderable candidates exist than `topK`, the remaining slots fill from the ranked source-only pool and the trace notes it. Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
 
-After selection, up to two asserted events dated today or tomorrow may append to the selection. They come from `listUpcomingEvents`, which compares the stored `occurred_day` against today's key and falls back to the epoch only for `exact` and `month` records that predate the day column, so a statement-time event stored as `unknown` never poses as a scheduled item. The append is skipped when the caller passes a `timeRange`, and appended events are marked `pinned` so the event section keeps them even when a dozen other events compete for slots. They do not displace a selected candidate, so `topK` bounds the coverage selection but the result can exceed it by two.
+After selection, up to two asserted events dated today or tomorrow may append when the caller enables `dueReminders` and supplies `now`. They come from `listUpcomingEvents`, which compares the stored `occurred_day` against today's key and falls back to the epoch only for `exact` and `month` records that predate the day column, so a statement-time event stored as `unknown` never poses as a scheduled item. The append is skipped when the caller passes a `timeRange`, and appended events are marked `pinned` so the event section keeps them even when a dozen other events compete for slots. They do not displace a selected candidate, so `topK` bounds the coverage selection but the result can exceed it by two.
+
+A salient entity profile is opt-in with `salientProfile: true`. It appends the strongest entity FTS hit and one of its events when the entity is not already selected. The event comes from the entity itself or from an entity named in its description, so an alias split across records does not hide the event. A process question (`怎么写`, `怎么做`, `干活`, `过程`, or similar) prefers an event with actions and numeric detail; other questions prefer the latest event.
 
 ## Validation
 
@@ -102,7 +110,9 @@ Expansion can add superseded claims to a current-query result. That is intention
 
 ## Evidence selection
 
-The context builder chooses at most 12 evidence messages. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in three passes:
+The retrieval result also exposes `evidence`: up to four raw full-text message hits, ranked by the density of unique query tokens rather than raw token count, so a short focused message is not buried under a long general one. For page, count, number, or date questions, one slot goes to the message with the most numeric spans. These messages are returned even when they share no query token with the selected structured records, because a direct message can answer a detail that extraction did not preserve. The builder seeds these messages before structured evidence and renders each at the full evidence excerpt length. When a pinned event carries priority evidence, the builder seeds the earliest four of those messages before the raw hits, so a compressed event summary cannot starve its own source.
+
+The context builder chooses at most 12 evidence messages including the raw seed. A naive earliest-first selection loses the anchor when a relevant chunk ranks below an irrelevant one. Selection works in three passes:
 
 1. For each candidate in rank order, take its highest-overlap closure message before its own messages, then choose its messages with the highest query-token overlap. Chunks contribute up to three messages; claims and events up to four, including the closure message. Linked claim or event evidence is kept even when it shares no query token, because the follow-up that resolves a question is often short. The pass advances one message per candidate per round, so a high-ranked claim cannot fill every slot with its own evidence.
 2. Add the messages adjacent to each chosen message when slots remain.
@@ -116,18 +126,21 @@ Sections appear in this order:
 
 1. Memory contract
 2. Query time, when a bounded expression resolved
-3. Current claims
-4. Unconfirmed claims
-5. Relevant entities
-6. Unresolved conflicts
-7. Uncertain events
-8. Historical events
-9. Historical claims
-10. Memory relations
-11. Private records
-12. Evidence messages
+3. Today's due events, when the query day has active asserted events
+4. Current claims
+5. Unconfirmed claims
+6. Relevant entities
+7. Unresolved conflicts
+8. Uncertain events
+9. Historical events
+10. Historical claims
+11. Memory relations
+12. Private records
+13. Evidence messages
 
-The contract states that the sections are the retrieved record, that the answer must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened.
+The core contract states that the sections are the retrieved record, that the answer must use `[Evidence]` as the source of truth, that it must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened. Longer benchmark-specific answer policies belong to the caller, not the memory engine.
+
+The due section is opt-in with `dueReminders: true`. It holds active asserted events whose `occurred_day` equals the query day. The builder queries them directly, so a casual query that never retrieves the event still sees it. The section is capped at three events and tells the model to mention them only when the user is not asking a specific question. A due event also leaves the historical event list, so it renders once. The section appears only when the caller sets `dueReminders`, supplies `now`, at least one event falls on that day, and the query is either short (at most 24 characters) or contains an explicit time or due intent.
 
 Current claims are asserted claims. A negative fact renders with `≠` before the object. Claims with uncertain, hypothetical, quoted, or reported modality render in the unconfirmed section with their modality label instead of `当前有效`. Conflicts are computed only from asserted positive claims.
 
@@ -152,7 +165,7 @@ Every result includes a trace with:
 - query and parsed intent; `intent` is the older single-label projection;
 - multi-label aspects and facet strings;
 - resolved entity IDs;
-- per-channel counts and top five keys, including the facet channel;
+- per-channel counts and top five keys, including the message, multihop, and facet channels;
 - fused, reranked, and expanded counts; `rerankedCount` is the number sent to the reranker and is 0 when reranking is off;
 - the coverage floor and each facet or entity quota result;
 - the interpreted time windows, clock, and zone when a query has a bounded time expression;

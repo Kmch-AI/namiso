@@ -38,13 +38,13 @@ The raw message commits before any model call. A failed extraction leaves the me
 ## Read path
 
 1. Parse the query intent and resolve mentioned entities. A first-person query adds the latest user speaker, so `我现在用什么` finds the user's active claims.
-2. Run three channels: structured SQL, FTS5, and vector search.
+2. Run the default channels: structured SQL, FTS5, and vector search. Raw messages are indexed directly in FTS. Optional channels are message expansion, multi-hop expansion with an evidence judge, and a salient entity profile.
 3. Fuse channel rankings with RRF, k = 60.
 4. Rerank the first 50 candidates. The final score is 0.7 × reranker score + 0.3 × normalized RRF.
 5. Apply current-state and time-range filters, and collect conflict and uncertainty notes.
 6. Expand linked claims and events, then add timeline neighbours. Expansion is bounded.
 7. Select evidence messages with query overlap first, then fill remaining slots.
-8. Assemble sections against a soft token target, shortening excerpts before it drops anything.
+8. Assemble sections against a soft token target, shortening excerpts before it drops anything. Due reminders are opt-in.
 
 `retrieve()` stops before context assembly and returns the trace. `getContext()` adds the context.
 

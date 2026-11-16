@@ -7,10 +7,11 @@ Routes
   /v1/rerank           -> llama-server Qwen3-Reranker-0.6B Q4_K_M (127.0.0.1:8082)
 
 Reasoning policy requested by the user
-  ingest (extraction): reasoning_effort=none, set by Namiso itself; left untouched
-  answer / judge / gen: provider default. The official harness sends
-    thinking={"type":"disabled"}, so those fields are dropped here, and max_tokens is
-    raised so the reasoning budget does not eat the answer.
+  ingest (extraction): thinking disabled and reasoning_effort=none, forced here so the
+    policy does not depend on the upstream provider. B22_EXTRACT_THINKING_BUDGET can
+    re-enable a capped thinking budget for experiments.
+  answer / judge / gen: thinking disabled and reasoning_effort=none. max_tokens is
+    raised as a safety cap so a stray reasoning budget cannot eat the answer.
 
 Ledgers
   official line format -> harness/runs/bench22[/natural]/spend-ledger.jsonl, priced with
@@ -42,9 +43,10 @@ FLASH_MODEL = "workbuddy2api/cn:deepseek-v4.1-flash"
 PRICE_CHAT = "deepseek-v4.1-flash"
 PRICE_EMBED = "qwen3.7-text-embedding"
 PRICE_RERANK = "qwen3.7-text-rerank"
-REASONING_PHASES = ("answer", "judge", "gen", "review")
+REASONING_PHASES = ("answer", "judge", "gen", "review", "ingest")
 DEFAULT_REASONING_MAX_TOKENS = int(os.environ.get("B22_REASONING_MAX_TOKENS", "8192"))
 REASONING_MAX_CAP = 16384
+EXTRACT_THINKING_BUDGET = int(os.environ.get("B22_EXTRACT_THINKING_BUDGET", "0"))
 
 
 def read_env_key():
@@ -208,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
             **fields,
             "cost_list_cny": round(cost, 8),
             "seconds": round(seconds, 3),
-            "reasoning_stripped": extra.get("reasoning_stripped", False),
+            "reasoning_forced_none": extra.get("reasoning_forced_none", False),
             "max_tokens": extra.get("max_tokens"),
         }
         State.ledger_for(meta["system"]).add(official, detail)
@@ -218,18 +220,25 @@ class Handler(BaseHTTPRequestHandler):
     def chat(self, body, meta):
         payload = dict(body)
         payload["model"] = FLASH_MODEL
-        stripped = False
+        forced_none = False
         if meta["phase"] in REASONING_PHASES:
-            payload.pop("thinking", None)
-            payload.pop("reasoning_effort", None)
+            if meta["phase"] == "ingest" and EXTRACT_THINKING_BUDGET > 0:
+                payload["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": EXTRACT_THINKING_BUDGET,
+                }
+                payload.pop("reasoning_effort", None)
+            else:
+                payload["thinking"] = {"type": "disabled"}
+                payload["reasoning_effort"] = "none"
             current = payload.get("max_tokens")
             if current is None or current < DEFAULT_REASONING_MAX_TOKENS:
                 payload["max_tokens"] = DEFAULT_REASONING_MAX_TOKENS
                 State.stats["budget_raised"] += 1
-            stripped = True
+            forced_none = True
         out = upstream(CHAT_URL, payload, {"Authorization": "Bearer " + CHAT_KEY})
         used = [out.get("usage")]
-        if stripped:
+        if forced_none:
             for _ in range(2):
                 msg = (out.get("choices") or [{}])[0].get("message") or {}
                 if (msg.get("content") or "").strip():
@@ -252,7 +261,7 @@ class Handler(BaseHTTPRequestHandler):
             "route": "chat",
             "served_model": FLASH_MODEL,
             "price_model": PRICE_CHAT,
-            "reasoning_stripped": stripped,
+            "reasoning_forced_none": forced_none,
             "max_tokens": payload.get("max_tokens"),
         }
         return out, fields, extra

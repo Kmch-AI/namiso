@@ -17,8 +17,8 @@ namiso_system.py  ──►  bridge.ts  :18902  ──►  Namiso（sqlite + 抽
 
 | 项                | 官方                           | 本次                                                                             | 原因                                         |
 | ----------------- | ------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------- |
-| 答题/判分思考强度 | `thinking:{"type":"disabled"}` | 默认强度（剥掉 `thinking`/`reasoning_effort`），`max_tokens` 提到 4096           | 用户要求                                     |
-| 抽取思考强度      | 无（系统自定）                 | `reasoning_effort=none`                                                          | 用户要求                                     |
+| 答题/判分思考强度 | `thinking:{"type":"disabled"}` | `reasoning_effort=none`，`max_tokens` 提到 8192 兜底                             | 用户要求                                     |
+| 抽取思考强度      | 无（系统自定）                 | `thinking` 关闭 + `reasoning_effort=none`，在 gateway 强制                       | 用户要求                                     |
 | 嵌入 / 重排       | qwen3.7 API                    | 本地 llama.cpp：Qwen3-Embedding-0.6B-Q8_0（1024 维）、Qwen3-Reranker-0.6B-Q4_K_M | 本地无 embedding/rerank 网关                 |
 | 记忆文本成本      | 按 flash 输入价                | 同（prices.json 口径）                                                           | 与榜单可比                                   |
 | 自然榜尾段        | 尾部真实写库后 `rewind`        | 尾段只留在 bridge 内存，`tailStart` 之后不落库                                   | 避免每个探针重建库；对模型可见内容与官方一致 |
@@ -50,6 +50,8 @@ python bench/b22/finish.py
 ```
 
 `finish.py` 依次执行：拆账本 → 自然榜 judge → summarize → `final_report.py` → `bill.py`。
+
+`launch_runner.py` / `launch_natural.py` 通过 `NAMISO_BRIDGE` 找 bridge（代码默认 18878）。按上面的 18902 启动 bridge 时，先执行 `$env:NAMISO_BRIDGE='http://127.0.0.1:18902'`；`finish.py` 已内置该默认值。
 
 ## 产物
 

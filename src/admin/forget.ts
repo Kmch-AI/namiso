@@ -11,6 +11,7 @@ import {
   listConversationMessages,
 } from '../storage/conversation-repo.ts'
 import { getEntity, invalidateUnsupportedMemories } from '../storage/memory-repo.ts'
+import { removeFtsOnly } from '../storage/search-repo.ts'
 
 export type ForgetInput =
   | { scope: 'message'; messageIds: readonly string[] }
@@ -49,6 +50,7 @@ export async function forget(
     if (ids.length > 0) {
       const placeholders = ids.map(() => '?').join(', ')
       db.transaction(() => {
+        for (const id of ids) removeFtsOnly(db, 'message', id)
         db.run(
           `DELETE FROM evidence
            WHERE memory_space_id = ? AND source_type = 'message'
@@ -77,6 +79,7 @@ export async function forget(
     for (const chunk of chunkRows) indexer.remove('chunk', chunk.id)
     db.transaction(() => {
       for (const message of messages) {
+        removeFtsOnly(db, 'message', message.id)
         db.run(
           `DELETE FROM evidence
            WHERE memory_space_id = ? AND source_type = 'message' AND source_id = ?`,

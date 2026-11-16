@@ -569,7 +569,7 @@ test('compact evidence never points at a context message', async () => {
   })
   assert.deepEqual(result.claims[0]?.evidenceMessageIds, [])
   assert.deepEqual(result.claims[1]?.evidenceMessageIds, ['message-focus'])
-  assert.deepEqual(result.claims[2]?.evidenceMessageIds, ['message-focus'])
+  assert.deepEqual(result.claims[2]?.evidenceMessageIds, [])
   assert.deepEqual(result.diagnostics, {
     evidenceFallbacks: 1,
     evidenceDropped: 1,

@@ -29,6 +29,8 @@ export {
   HttpExtractionProvider,
   HttpRerankerProvider,
 } from './providers/http.ts'
+export { SystemOneEvidenceJudge } from './providers/systemone.ts'
+export type { SystemOneEvidenceJudgeOptions } from './providers/systemone.ts'
 export type {
   HttpEmbeddingOptions,
   HttpExtractionOptions,
@@ -36,6 +38,10 @@ export type {
 } from './providers/http.ts'
 export type {
   EmbeddingProvider,
+  EvidenceJudgeCandidate,
+  EvidenceJudgeInput,
+  EvidenceJudgeProvider,
+  EvidenceJudgeScore,
   ExtractedClaim,
   ExtractedEntity,
   ExtractedEvent,

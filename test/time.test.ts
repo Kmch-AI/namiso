@@ -12,7 +12,7 @@ test('a calendar day reads the same in every time zone', () => {
 })
 
 test('a day key renders without a zone shift', () => {
-  assert.equal(formatDayKey(20_260_905), '2026-09-05（周二）')
+  assert.equal(formatDayKey(20_260_905), '2026-09-05（周六）')
   assert.deepEqual(civilOfDayKey(20_260_905), { year: 2026, month: 9, day: 5 })
 })
 

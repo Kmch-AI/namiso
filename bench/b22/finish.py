@@ -35,7 +35,7 @@ def main():
     score_md = os.path.join(out, f"{RUN}-score.md")
     bill_md = os.path.join(out, f"{RUN}-bill.md")
     run(PY, os.path.join(HERE, "final_report.py"), "--run", RUN, "--out", score_md)
-    run(PY, os.path.join(HERE, "bill.py"), "--run", RUN, "--out", bill_md)
+    run(PY, os.path.join(HERE, "bill.py"), "--run", RUN, "--detail-run", RUN, "--out", bill_md)
     combined = os.path.join(out, f"{RUN}-report.md")
     with open(combined, "w", encoding="utf-8") as handle:
         for path in (score_md, bill_md):

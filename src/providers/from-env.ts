@@ -1,5 +1,6 @@
 import type {
   EmbeddingProvider,
+  EvidenceJudgeProvider,
   ExtractionProvider,
   ExtractionWireFormat,
   ReasoningEffort,
@@ -8,6 +9,7 @@ import type {
 
 import { ValidationError } from '../errors.ts'
 import { HttpEmbeddingProvider, HttpExtractionProvider, HttpRerankerProvider } from './http.ts'
+import { SystemOneEvidenceJudge } from './systemone.ts'
 
 export type ProviderEnvironment = Readonly<Record<string, string | undefined>>
 
@@ -15,6 +17,7 @@ export interface ProviderSet {
   embedding?: EmbeddingProvider
   extraction?: ExtractionProvider
   reranker?: RerankerProvider
+  evidenceJudge?: EvidenceJudgeProvider
 }
 
 interface EndpointConfig {
@@ -70,6 +73,23 @@ export function providersFromEnv(env: ProviderEnvironment = process.env): Provid
       ...(reranker.timeoutMs === undefined ? {} : { timeoutMs: reranker.timeoutMs }),
       ...(maxDocuments === undefined ? {} : { maxDocuments }),
       ...(maxDocumentChars === undefined ? {} : { maxDocumentChars }),
+    })
+  }
+
+  const systemOne = clean(env['NAMISO_SYSTEMONE_URL'])
+  if (systemOne !== undefined) {
+    const model = clean(env['NAMISO_SYSTEMONE_MODEL'])
+    const apiKey = clean(env['NAMISO_SYSTEMONE_API_KEY'])
+    const version = clean(env['NAMISO_SYSTEMONE_VERSION'])
+    const judgeTimeout = optionalPositiveInteger(env, 'NAMISO_SYSTEMONE_TIMEOUT_MS')
+    const batchSize = optionalPositiveInteger(env, 'NAMISO_SYSTEMONE_BATCH_SIZE')
+    result.evidenceJudge = new SystemOneEvidenceJudge({
+      endpoint: systemOne,
+      ...(model === undefined ? {} : { model }),
+      ...(apiKey === undefined ? {} : { apiKey }),
+      ...(version === undefined ? {} : { version }),
+      ...(judgeTimeout === undefined ? {} : { timeoutMs: judgeTimeout }),
+      ...(batchSize === undefined ? {} : { batchSize }),
     })
   }
 

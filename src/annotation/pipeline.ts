@@ -39,7 +39,8 @@ import {
   setClaimRestriction,
   setEventRestriction,
 } from '../storage/memory-repo.ts'
-import { normalizeAttribute, normalizeName } from '../text.ts'
+import { normalizeAttribute, normalizeName, segment } from '../text.ts'
+import { civilOfDayKey } from '../time.ts'
 import { MemoryLinker } from './linker.ts'
 import { isRestricted, mergeRestriction, restrictionOf } from './restriction.ts'
 import { resolveStatedDayPhrase, type StatedDay } from './temporal.ts'
@@ -198,7 +199,12 @@ export class AnnotationPipeline {
       }
 
       for (const claim of extraction.claims) {
-        const evidenceIds = claim.evidenceMessageIds.filter((id) => validEvidence.has(id))
+        const object = claim.object.kind === 'literal' ? claim.object.value : claim.object.name
+        const evidenceIds = this.relinkEvidence(
+          `${claim.predicate} ${object}`,
+          claim.evidenceMessageIds,
+          focus,
+        )
         if (evidenceIds.length === 0) continue
         const attributeKey =
           normalizeAttribute(claim.attribute ?? claim.predicate) ||
@@ -254,11 +260,17 @@ export class AnnotationPipeline {
       }
 
       for (const event of extraction.events) {
-        const evidenceIds = event.evidenceMessageIds.filter((id) => validEvidence.has(id))
+        const text =
+          event.description === undefined ? event.summary : `${event.summary} ${event.description}`
+        const evidenceIds = this.relinkEvidence(text, event.evidenceMessageIds, focus)
         if (evidenceIds.length === 0) continue
         const result = this.linker.applyEvent(
           spaceId,
-          this.dateEvent(event, evidenceIds, validEvidence),
+          this.normalizeEventSummary(
+            this.dateEvent(event, evidenceIds, validEvidence),
+            evidenceIds,
+            validEvidence,
+          ),
           {
             extractorVersion: this.extractor.version,
             evidenceIds,
@@ -392,6 +404,75 @@ export class AnnotationPipeline {
       .slice(0, KNOWN_ATTRIBUTE_LIMIT)
   }
 
+  private relinkEvidence(
+    text: string,
+    evidenceIds: readonly MessageId[],
+    focus: readonly Message[],
+  ): MessageId[] {
+    const focusById = new Map(focus.map((message) => [String(message.id), message]))
+    const tokens = new Set(segment(text))
+    const score = (message: Message): number => {
+      const messageTokens = new Set(segment(message.content))
+      let count = 0
+      for (const token of tokens) {
+        if (messageTokens.has(token)) count += 1
+      }
+      return count
+    }
+    const better = (next: Message, current: Message | undefined): boolean => {
+      if (current === undefined) return true
+      const nextScore = score(next)
+      const currentScore = score(current)
+      if (nextScore !== currentScore) return nextScore > currentScore
+      const nextIsUser = next.role === 'user'
+      const currentIsUser = current.role === 'user'
+      if (nextIsUser !== currentIsUser) return nextIsUser
+      return next.occurredAt < current.occurredAt
+    }
+    const valid = evidenceIds.filter((id) => focusById.has(String(id)))
+    let validBestMessage: Message | undefined
+    for (const id of valid) {
+      const message = focusById.get(String(id))
+      if (message !== undefined && better(message, validBestMessage)) validBestMessage = message
+    }
+    let best: Message | undefined
+    for (const message of focus) {
+      if (better(message, best)) best = message
+    }
+    const bestScore = best === undefined ? 0 : score(best)
+    const validScore = validBestMessage === undefined ? 0 : score(validBestMessage)
+    if (best === undefined || bestScore === 0) {
+      return validBestMessage === undefined ? [] : [...valid]
+    }
+    const bestIsUser = best.role === 'user'
+    const validIsUser = validBestMessage?.role === 'user'
+    if (bestScore > validScore || (bestScore === validScore && bestIsUser && !validIsUser)) {
+      const corroborating = valid.filter((id) => {
+        const message = focusById.get(String(id))
+        return message !== undefined && score(message) > 0 && String(id) !== String(best.id)
+      })
+      return [best.id, ...corroborating]
+    }
+    return [...valid]
+  }
+
+  private normalizeEventSummary(
+    event: ExtractedEvent,
+    evidenceIds: readonly MessageId[],
+    validEvidence: Map<MessageId, Message>,
+  ): ExtractedEvent {
+    if (event.occurredDay === undefined) return event
+    const hit = this.statedDay(event.summary, evidenceIds, validEvidence)
+    if (hit === null || hit.dayKey !== event.occurredDay || !event.summary.includes(hit.phrase)) {
+      return event
+    }
+    const civil = civilOfDayKey(hit.dayKey)
+    return {
+      ...event,
+      summary: event.summary.replaceAll(hit.phrase, `${civil.month}月${civil.day}日`),
+    }
+  }
+
   private dateClaim(
     claim: ExtractedClaim,
     evidenceIds: readonly MessageId[],
@@ -409,7 +490,6 @@ export class AnnotationPipeline {
     evidenceIds: readonly MessageId[],
     validEvidence: Map<MessageId, Message>,
   ): ExtractedEvent {
-    if (event.timePrecision === 'day' || event.timePrecision === 'exact') return event
     const texts =
       event.description === undefined
         ? [event.summary]
@@ -417,7 +497,31 @@ export class AnnotationPipeline {
     for (const text of texts) {
       const hit = this.statedDay(text, evidenceIds, validEvidence)
       if (hit === null) continue
+      if (event.timePrecision === 'exact' && event.occurredDay === hit.dayKey) return event
       return { ...event, occurredAt: hit.day, occurredDay: hit.dayKey, timePrecision: 'day' }
+    }
+    const preferred = new Set(evidenceIds.map(String))
+    const eventTokens = new Set(segment(`${event.summary} ${event.description ?? ''}`))
+    const candidates = [...validEvidence.values()]
+      .filter((message) => preferred.has(String(message.id)))
+      .map((message) => {
+        const messageTokens = new Set(segment(message.content))
+        let overlap = 0
+        for (const token of messageTokens) {
+          if (eventTokens.has(token)) overlap += 1
+        }
+        return { message, overlap }
+      })
+      .filter((candidate) => candidate.overlap > 0)
+      .toSorted(
+        (left, right) =>
+          right.overlap - left.overlap || left.message.occurredAt - right.message.occurredAt,
+      )
+    for (const candidate of candidates) {
+      const hit = resolveStatedDayPhrase(candidate.message.content, candidate.message.occurredAt)
+      if (hit !== null && candidate.message.content.includes(hit.phrase)) {
+        return { ...event, occurredAt: hit.day, occurredDay: hit.dayKey, timePrecision: 'day' }
+      }
     }
     return event
   }
@@ -543,7 +647,7 @@ export class AnnotationPipeline {
       items.set(`claim:${claim.id}`, {
         sourceType: 'claim',
         sourceId: claim.id,
-        content: claimDocumentText(claim, subject, objectEntity),
+        content: claimDocumentText(claim, subject, objectEntity, aliases),
       })
     }
 
@@ -573,7 +677,7 @@ export class AnnotationPipeline {
       items.set(`event:${item.event.id}`, {
         sourceType: 'event',
         sourceId: item.event.id,
-        content: eventDocumentText(item.event, participants),
+        content: eventDocumentText(item.event, participants, aliases),
       })
     }
     return [...items.values()]

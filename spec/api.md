@@ -41,6 +41,10 @@ const memory = await Namiso.open({
 | `knownFacts`                         | `false`                   | Send up to 12 current facts to extraction          |
 | `self`                               | unset                     | Assistant identity: name, aliases, description     |
 | `reranker`                           | `LexicalReranker`         | Set `rerank: false` per query to skip              |
+| `evidenceJudge`                      | unset                     | Optional judge for opt-in multi-hop evidence       |
+| `dueReminders`                       | `false`                   | Render today's due events when `now` is supplied   |
+| `salientProfile`                     | `false`                   | Add a strong entity and its recent event           |
+| `chunkExpansion`                     | `true`                    | Expand chunk hits into message candidates          |
 | `vectorIndex`                        | `auto`                    | `auto`, `sqlite-vec`, or `exact`                   |
 | `chunking`                           | `{ size: 8, overlap: 2 }` | Size 1 to 64; overlap must be smaller              |
 
@@ -141,12 +145,17 @@ await memory.retrieve({
   rerankPool?: number,         // default 50, capped at 50
   includeEvidence?: boolean,
   includeRelations?: boolean,
+  multiHop?: boolean | { seeds?: number; terms?: number; perTerm?: number }, // opt-in SAG2-style expansion
+  salientProfile?: boolean,    // default from Namiso.open, off
+  chunkExpansion?: boolean,    // default from Namiso.open, on
   now?: number | Date,         // clock for relative time, default current time
   timeZone?: string,           // IANA zone, default process zone
 }): Promise<RetrieveResult>
 ```
 
-`RetrieveResult` contains `candidates`, `total`, and `trace`. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score. The trace adds `aspects`, `facets`, `coverage`, and, when the query has a bounded time expression, `time` with the interpreted windows.
+`RetrieveResult` contains `candidates`, `total`, `evidence`, and `trace`. `evidence` holds up to four raw full-text message hits that can be passed to `getContext` even when extraction did not attach them to a structured record. Candidate records are a discriminated union with `kind` of `message`, `chunk`, `entity`, `claim`, or `event`. Each candidate has a score, channels, status, evidence message IDs, and relations. `rerankPool` limits only the documents sent to the reranker; candidates beyond it keep their RRF score. The trace adds `aspects`, `facets`, `coverage`, and, when the query has a bounded time expression, `time` with the interpreted windows.
+
+`multiHop` enables the opt-in multi-hop channel. It expands the top message full-text hits with bridge terms and searches the message index once per term. It adds no embedding and no index. When an `evidenceJudge` provider is configured, it judges the seeds and rescores the expanded candidates; otherwise ranking stays lexical. Defaults are 6 seeds, 8 terms, and 3 hits per term; the trace records the `multihop` channel.
 
 `now` and `timeZone` control interpretation of relative time expressions. They never filter: a resolved window boosts matching records and appears in the trace and the context. Use `timeRange` for a deterministic filter.
 
@@ -161,6 +170,7 @@ await memory.getContext({
   includeEvidence?: boolean,   // default true
   idMode?: "short" | "full",  // default short
   timeZone?: string,           // IANA zone, default process zone
+  dueReminders?: boolean,      // default from Namiso.open, off
   ...retrieve options
 }): Promise<MemoryContext>
 ```

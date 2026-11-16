@@ -1,5 +1,10 @@
 import type { ChunkPolicy } from './ingestion/chunker.ts'
-import type { EmbeddingProvider, ExtractionProvider, RerankerProvider } from './providers/types.ts'
+import type {
+  EmbeddingProvider,
+  EvidenceJudgeProvider,
+  ExtractionProvider,
+  RerankerProvider,
+} from './providers/types.ts'
 import type { MessageRole, SelfIdentity } from './types.ts'
 
 import { ValidationError } from './errors.ts'
@@ -17,6 +22,10 @@ export interface NamisoOptions {
   embedding?: EmbeddingProvider
   extraction?: ExtractionProvider
   reranker?: RerankerProvider
+  evidenceJudge?: EvidenceJudgeProvider
+  dueReminders?: boolean
+  salientProfile?: boolean
+  chunkExpansion?: boolean
   extractRoles?: readonly MessageRole[]
   knownFacts?: boolean
   self?: SelfIdentity
@@ -31,6 +40,10 @@ export interface ResolvedNamisoOptions {
   embedding: EmbeddingProvider
   extraction: ExtractionProvider
   reranker: RerankerProvider
+  evidenceJudge?: EvidenceJudgeProvider
+  dueReminders: boolean
+  salientProfile: boolean
+  chunkExpansion: boolean
   extractRoles: readonly MessageRole[]
   knownFacts: boolean
   self?: SelfIdentity
@@ -54,6 +67,20 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
   assertProvider('extraction', extraction, ['extract'])
   const reranker = options.reranker ?? new LexicalReranker()
   assertProvider('reranker', reranker, ['rerank'])
+  const evidenceJudge = options.evidenceJudge
+  if (evidenceJudge !== undefined) assertProvider('evidenceJudge', evidenceJudge, ['judge'])
+  const dueReminders = options.dueReminders ?? false
+  const salientProfile = options.salientProfile ?? false
+  const chunkExpansion = options.chunkExpansion ?? true
+  for (const [name, value] of [
+    ['dueReminders', dueReminders],
+    ['salientProfile', salientProfile],
+    ['chunkExpansion', chunkExpansion],
+  ] as const) {
+    if (typeof value !== 'boolean') {
+      throw new ValidationError(`${name} must be a boolean`)
+    }
+  }
   const extractRoles = options.extractRoles ?? ['user', 'assistant']
   if (extractRoles.length === 0) {
     throw new ValidationError('extractRoles must contain at least one role')
@@ -95,6 +122,10 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     embedding,
     extraction,
     reranker,
+    ...(evidenceJudge === undefined ? {} : { evidenceJudge }),
+    dueReminders,
+    salientProfile,
+    chunkExpansion,
     extractRoles: uniqueExtractRoles,
     knownFacts,
     ...(self === undefined ? {} : { self }),

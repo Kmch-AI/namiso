@@ -33,7 +33,7 @@ import { normalizeSelfIdentity, resolveOptions } from './config.ts'
 import { buildContext } from './context/builder.ts'
 import { NotFoundError, ValidationError } from './errors.ts'
 import { asConversationId, asEntityId, asEventId, nowSeconds, timestampOf } from './ids.ts'
-import { entityDocumentText } from './indexing/documents.ts'
+import { entityDocumentText, messageDocumentText } from './indexing/documents.ts'
 import { Indexer } from './indexing/indexer.ts'
 import { rebuildIndexes } from './indexing/rebuild.ts'
 import { ChunkService } from './ingestion/chunk-service.ts'
@@ -74,7 +74,7 @@ import {
   listLinksFrom,
   listLinksTo,
 } from './storage/memory-repo.ts'
-import { documentCount, missingVectorCount } from './storage/search-repo.ts'
+import { documentCount, indexFtsOnly, missingVectorCount } from './storage/search-repo.ts'
 import { VectorStore } from './storage/vector-store.ts'
 
 export interface CreateConversationInput {
@@ -115,6 +115,9 @@ export interface RetrieveInput {
   rerankPool?: number
   includeEvidence?: boolean
   includeRelations?: boolean
+  multiHop?: boolean | { seeds?: number; terms?: number; perTerm?: number }
+  salientProfile?: boolean
+  chunkExpansion?: boolean
   now?: number | Date
   timeZone?: string
 }
@@ -123,6 +126,7 @@ export interface ContextInput extends RetrieveInput {
   maxTokens?: number
   idMode?: 'short' | 'full'
   timeZone?: string
+  dueReminders?: boolean
 }
 
 export interface TimelineInput {
@@ -178,6 +182,7 @@ export interface HealthReport {
   embedding: { model: string; version: string; dimensions: number }
   extraction: { version: string; usage?: ExtractionUsage }
   reranker: { model: string }
+  evidenceJudge?: { model: string }
   counts: {
     messages: number
     entities: number
@@ -238,6 +243,7 @@ export class Namiso {
       config.embedding,
       config.reranker,
       this.resolver,
+      config.evidenceJudge,
     )
   }
 
@@ -361,6 +367,12 @@ export class Namiso {
           : { externalMessageId: input.externalMessageId }),
       })
       enqueueChunk(this.db, this.memorySpace.id, stored.conversationId)
+      indexFtsOnly(this.db, {
+        spaceId: this.memorySpace.id,
+        sourceType: 'message',
+        sourceId: stored.id,
+        content: messageDocumentText(stored),
+      })
       return stored
     })
     return {
@@ -434,6 +446,9 @@ export class Namiso {
       ...(input.rerankPool === undefined ? {} : { rerankPool: input.rerankPool }),
       ...(input.includeEvidence === undefined ? {} : { includeEvidence: input.includeEvidence }),
       ...(input.includeRelations === undefined ? {} : { includeRelations: input.includeRelations }),
+      ...(input.multiHop === undefined ? {} : { multiHop: input.multiHop }),
+      salientProfile: input.salientProfile ?? this.config.salientProfile,
+      chunkExpansion: input.chunkExpansion ?? this.config.chunkExpansion,
       ...(now === undefined ? {} : { now }),
       ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
     })
@@ -441,8 +456,10 @@ export class Namiso {
 
   async getContext(input: ContextInput): Promise<MemoryContext> {
     if (input.timeZone !== undefined) validateTimeZone(input.timeZone)
+    const now = normalizeNow(input.now)
     const result = await this.retrieve({
       ...input,
+      ...(now === undefined ? {} : { now }),
       topK: input.topK ?? 12,
       includeRelations: input.includeRelations ?? true,
       includeEvidence: input.includeEvidence ?? true,
@@ -455,6 +472,9 @@ export class Namiso {
       ...(input.maxTokens === undefined ? {} : { maxTokens: input.maxTokens }),
       ...(input.idMode === undefined ? {} : { idMode: input.idMode }),
       ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+      ...(now === undefined ? {} : { now }),
+      ...(result.evidence === undefined ? {} : { rawEvidence: result.evidence }),
+      dueReminders: input.dueReminders ?? this.config.dueReminders,
       includeEvidence: input.includeEvidence ?? true,
     })
   }
@@ -669,6 +689,9 @@ export class Namiso {
           : { usage: { ...this.config.extraction.usage } }),
       },
       reranker: { model: this.config.reranker.model },
+      ...(this.config.evidenceJudge === undefined
+        ? {}
+        : { evidenceJudge: { model: this.config.evidenceJudge.model } }),
       counts,
       jobs,
       pendingJobs: pendingJobCount(this.db, this.memorySpace.id),

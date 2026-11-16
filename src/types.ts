@@ -44,7 +44,7 @@ export type TimePrecision = 'exact' | 'day' | 'month' | 'approximate' | 'unknown
 export type ClaimObjectKind = 'literal' | 'entity'
 export type AnnotationTargetType = 'entity' | 'claim' | 'event'
 export type MemoryType = 'claim' | 'event'
-export type MemorySourceType = 'chunk' | 'entity' | 'claim' | 'event'
+export type MemorySourceType = 'message' | 'chunk' | 'entity' | 'claim' | 'event'
 export type Relation =
   | 'supersedes'
   | 'updates'
@@ -259,7 +259,15 @@ export interface RetrievalTimeRange {
   to?: number
 }
 
-export type RetrievalChannel = 'sql' | 'fts' | 'vector' | 'facet' | 'graph' | 'timeline'
+export type RetrievalChannel =
+  | 'sql'
+  | 'fts'
+  | 'vector'
+  | 'facet'
+  | 'message'
+  | 'multihop'
+  | 'graph'
+  | 'timeline'
 
 export type CandidateRecord =
   | { kind: 'message'; message: Message }
@@ -346,6 +354,7 @@ export interface RetrieveResult {
   candidates: MemoryCandidate[]
   total: number
   trace: RetrievalTrace
+  evidence?: Message[]
 }
 
 export interface MemoryRef {

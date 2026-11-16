@@ -6,7 +6,7 @@ import { hashText, toFtsQuery, toIndexText, toNgramQuery, toNgramText } from '..
 import { count, oneOf, readNumber, text } from './database.ts'
 import { blobToVector } from './vector-store.ts'
 
-const SOURCE_TYPES = ['chunk', 'entity', 'claim', 'event'] as const
+const SOURCE_TYPES = ['message', 'chunk', 'entity', 'claim', 'event'] as const
 
 export interface EmbeddingDocument {
   id: DocumentId
@@ -262,6 +262,36 @@ export function indexDocument(db: Database, document: EmbeddingDocument): void {
     toNgramText(document.content),
   )
   recordFtsKey(db, 'fts_ngrams', document.id)
+}
+
+export function removeFtsOnly(db: Database, sourceType: MemorySourceType, sourceId: string): void {
+  deleteFtsDocument(db, asDocumentId(`fts:${sourceType}:${sourceId}`))
+}
+
+export function indexFtsOnly(
+  db: Database,
+  input: {
+    spaceId: MemorySpaceId
+    sourceType: MemorySourceType
+    sourceId: string
+    content: string
+  },
+): void {
+  const contentHash = hashText(input.content)
+  indexDocument(db, {
+    id: asDocumentId(`fts:${input.sourceType}:${input.sourceId}`),
+    memorySpaceId: input.spaceId,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    content: input.content,
+    contentHash,
+    modelName: 'fts-only',
+    modelVersion: '1',
+    dimensions: 0,
+    vector: null,
+    createdAt: 0,
+    updatedAt: 0,
+  })
 }
 
 function recordFtsKey(

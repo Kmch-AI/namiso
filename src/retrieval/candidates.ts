@@ -1,6 +1,7 @@
 import type { Database } from '../storage/database.ts'
 import type {
   Claim,
+  EntityId,
   Event,
   MemoryCandidate,
   MemoryRelationView,
@@ -9,9 +10,10 @@ import type {
   Message,
 } from '../types.ts'
 
-import { asChunkId, asEntityId, asEventId } from '../ids.ts'
+import { asChunkId, asEntityId, asEventId, asMessageId } from '../ids.ts'
 import { claimDocumentText, entityDocumentText, eventDocumentText } from '../indexing/documents.ts'
 import { getChunk } from '../storage/chunk-repo.ts'
+import { getMessage } from '../storage/conversation-repo.ts'
 import {
   evidenceMessageIds,
   getClaim,
@@ -30,6 +32,11 @@ export function candidateFromSource(
   sourceType: MemorySourceType,
   sourceId: string,
 ): MemoryCandidate | null {
+  if (sourceType === 'message') {
+    const message = getMessage(db, asMessageId(sourceId))
+    if (message === null || message.memorySpaceId !== spaceId) return null
+    return messageCandidate(message)
+  }
   if (sourceType === 'chunk') {
     const chunk = getChunk(db, asChunkId(sourceId))
     if (chunk === null || chunk.memorySpaceId !== spaceId) return null
@@ -86,11 +93,17 @@ export function claimCandidate(db: Database, claim: Claim): MemoryCandidate | nu
   if (subject === undefined) return null
   const objectEntity =
     claim.object.kind === 'entity' ? (entities.get(claim.object.entityId) ?? null) : null
+  const aliases = new Map<EntityId, string[]>()
+  for (const entity of [subject, objectEntity]) {
+    if (entity === null) continue
+    const values = listAliases(db, entity.id).map((alias) => alias.alias)
+    if (values.length > 0) aliases.set(entity.id, values)
+  }
   return {
     key: `claim:${claim.id}`,
     kind: 'claim',
     title: `${subject.name} ${claim.predicate}`,
-    text: claimDocumentText(claim, subject, objectEntity),
+    text: claimDocumentText(claim, subject, objectEntity, aliases),
     score: 0,
     channels: [],
     occurredAt: claim.validFrom,
@@ -112,11 +125,16 @@ export function eventCandidate(db: Database, event: Event): MemoryCandidate | nu
     const entity = entities.get(participant.entityId)
     return entity === undefined ? [] : [{ entity, role: participant.role }]
   })
+  const aliases = new Map<EntityId, string[]>()
+  for (const view of views) {
+    const values = listAliases(db, view.entity.id).map((alias) => alias.alias)
+    if (values.length > 0) aliases.set(view.entity.id, values)
+  }
   return {
     key: `event:${event.id}`,
     kind: 'event',
     title: event.type,
-    text: eventDocumentText(event, views),
+    text: eventDocumentText(event, views, aliases),
     score: 0,
     channels: [],
     occurredAt: event.occurredAt,

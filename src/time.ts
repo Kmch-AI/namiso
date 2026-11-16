@@ -113,7 +113,7 @@ export function civilOfDayKey(key: number): Civil {
 export function formatDayKey(key: number): string {
   const civil = civilOfDayKey(key)
   const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: 'UTC', weekday: 'short' }).format(
-    new Date(Date.UTC(civil.year, civil.month - 1, civil.day) * 1000),
+    new Date(Date.UTC(civil.year, civil.month - 1, civil.day)),
   )
   return `${civil.year}-${String(civil.month).padStart(2, '0')}-${String(civil.day).padStart(2, '0')}（${weekday}）`
 }

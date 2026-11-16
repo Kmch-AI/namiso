@@ -30,11 +30,66 @@ import {
   insertEvent,
   listClaimsBySubject,
   listEarlierEventsForEntities,
+  listEventParticipants,
+  listMergeCandidates,
   setClaimStatus,
 } from '../storage/memory-repo.ts'
 import { segment } from '../text.ts'
+import { DEFAULT_TIME_ZONE, dayKey } from '../time.ts'
 
 const OCCURRENCE_SUBJECT_TYPES: ReadonlySet<string> = new Set(['other', 'activity', 'topic'])
+const MERGE_SUMMARY_CONTAINMENT = 0.72
+const MERGE_SUMMARY_JACCARD = 0.42
+const MERGE_SYNONYM_CONTAINMENT = 0.5
+
+const SUMMARY_STOP_WORDS: ReadonlySet<string> = new Set([
+  '今天',
+  '昨天',
+  '明天',
+  '后天',
+  '上周',
+  '下周',
+  '这周',
+  '本周',
+  '早上',
+  '上午',
+  '中午',
+  '下午',
+  '晚上',
+  '时候',
+])
+
+function summaryTokens(text: string): Set<string> {
+  return new Set(
+    segment(text).filter((token) => token.length > 1 && !SUMMARY_STOP_WORDS.has(token)),
+  )
+}
+
+function summaryOverlap(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): { jaccard: number; containment: number; intersection: number } | null {
+  if (left.size === 0 || right.size === 0) return null
+  let intersection = 0
+  for (const token of left) {
+    if (right.has(token)) intersection += 1
+  }
+  if (intersection === 0) return null
+  return {
+    jaccard: intersection / (left.size + right.size - intersection),
+    containment: intersection / Math.min(left.size, right.size),
+    intersection,
+  }
+}
+
+function participantCompatible(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size === 0 || right.size === 0) return true
+  for (const id of left) {
+    if (right.has(id)) return true
+  }
+  return false
+}
+
 const OCCURRENCE_MIN_SCORE = 0.1
 const OCCURRENCE_CLAUSE = /[，；。：]/
 const OCCURRENCE_ORDINAL = /第[一二三四五六七八九十百\d]+[次回遍场]|头一回|头一次|首次|上回|上次/
@@ -377,14 +432,7 @@ export class MemoryLinker {
       })
       participants.push({ entity, role: participant.role })
     }
-    const occurredAt = extracted.occurredAt ?? null
-    const existing = findEventBySignature(
-      this.db,
-      spaceId,
-      extracted.type,
-      extracted.summary,
-      occurredAt,
-    )
+    const existing = this.findMergeTarget(spaceId, extracted, participants)
     if (existing !== null) {
       for (const participant of participants) {
         addParticipant(this.db, existing.id, participant.entity.id, participant.role)
@@ -453,6 +501,66 @@ export class MemoryLinker {
     }
 
     return { event, created: true, participants, affectedClaims }
+  }
+
+  private findMergeTarget(
+    spaceId: MemorySpaceId,
+    extracted: ExtractedEvent,
+    participants: readonly { entity: Entity; role: string }[],
+  ): Event | null {
+    const nextParticipants = new Set(participants.map((item) => item.entity.id))
+    const exact = findEventBySignature(
+      this.db,
+      spaceId,
+      extracted.type,
+      extracted.summary,
+      extracted.occurredAt ?? null,
+    )
+    if (
+      exact !== null &&
+      participantCompatible(
+        nextParticipants,
+        new Set(listEventParticipants(this.db, exact.id).map((item) => item.entityId)),
+      )
+    ) {
+      return exact
+    }
+    if (extracted.timePrecision === 'unknown' || extracted.timePrecision === undefined) {
+      return null
+    }
+    const anchorDay =
+      extracted.occurredDay ??
+      (extracted.occurredAt === undefined ? null : dayKey(extracted.occurredAt, DEFAULT_TIME_ZONE))
+    if (anchorDay === null) return null
+    const nextTokens = summaryTokens(extracted.summary)
+    let best: { event: Event; score: number } | null = null
+    for (const candidate of listMergeCandidates(this.db, spaceId, anchorDay)) {
+      const candidateDay =
+        candidate.occurredDay ??
+        (candidate.occurredAt === null ? null : dayKey(candidate.occurredAt, DEFAULT_TIME_ZONE))
+      if (candidateDay === null || candidateDay !== anchorDay) continue
+      const sameParticipants = participantCompatible(
+        nextParticipants,
+        new Set(listEventParticipants(this.db, candidate.id).map((item) => item.entityId)),
+      )
+      if (!sameParticipants) continue
+      const overlap = summaryOverlap(nextTokens, summaryTokens(candidate.summary))
+      if (overlap === null) continue
+      const sameType = candidate.type === extracted.type
+      const strong =
+        sameType &&
+        (overlap.jaccard >= MERGE_SUMMARY_JACCARD ||
+          overlap.containment >= MERGE_SUMMARY_CONTAINMENT)
+      const synonym =
+        !sameType &&
+        candidateDay === anchorDay &&
+        overlap.intersection >= 3 &&
+        overlap.containment >= MERGE_SYNONYM_CONTAINMENT
+      if (!strong && !synonym) continue
+      const score = Math.max(overlap.jaccard, overlap.containment)
+      if (best === null || score > best.score) best = { event: candidate, score }
+    }
+    return best?.event ?? null
   }
 
   private replaceUsesClaim(

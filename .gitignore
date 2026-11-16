@@ -6,6 +6,8 @@ dist/
 bench/out/
 temp/
 .vitest/
+__pycache__/
+*.pyc
 .DS_Store
 .env
 .env.*

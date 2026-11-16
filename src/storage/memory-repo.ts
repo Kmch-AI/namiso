@@ -583,6 +583,34 @@ export function findEventBySignature(
   return row === undefined ? null : mapEvent(row)
 }
 
+export function listMergeCandidates(
+  db: Database,
+  spaceId: MemorySpaceId,
+  anchorDay: number | null,
+): Event[] {
+  if (anchorDay === null) {
+    return db
+      .all(
+        `SELECT * FROM events
+         WHERE memory_space_id = ? AND status = 'active' AND occurred_day IS NULL
+         ORDER BY created_at DESC LIMIT 200`,
+        spaceId,
+      )
+      .map(mapEvent)
+  }
+  return db
+    .all(
+      `SELECT * FROM events
+       WHERE memory_space_id = ? AND status = 'active'
+         AND (occurred_day IS NULL OR occurred_day BETWEEN ? AND ?)
+       ORDER BY created_at DESC LIMIT 200`,
+      spaceId,
+      anchorDay - 1,
+      anchorDay + 1,
+    )
+    .map(mapEvent)
+}
+
 export function addParticipant(
   db: Database,
   eventId: EventId,

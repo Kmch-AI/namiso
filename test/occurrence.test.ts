@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
-import type { ExtractionProvider, MessageId } from '../src/index.ts'
+import type { Event, ExtractionProvider, MemoryCandidate, MessageId } from '../src/index.ts'
 
-import { USER, setup } from './helpers.ts'
+import { BASE_TIME, USER, setup } from './helpers.ts'
 
 const PARTICIPANT = '小林'
+
+function eventCandidates(candidates: readonly MemoryCandidate[]): Event[] {
+  return candidates.flatMap((item) => (item.record.kind === 'event' ? [item.record.event] : []))
+}
 
 function claimFrom(
   subject: string,
@@ -127,6 +131,170 @@ test('an occurrence claim links to an earlier participant event but an unrelated
     unrelatedRelations.some((item) => item.relation === 'same_occurrence'),
     false,
   )
+  namiso.close()
+})
+
+test('same-day synonym events merge into one occurrence', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'event-merge-test',
+    async extract(input) {
+      const messages = new Map(input.messages.map((message) => [message.id, message]))
+      const events = input.focusMessageIds.flatMap((id) => {
+        const message = messages.get(id)
+        if (message === undefined) return []
+        if (!message.content.includes('冬瓜排骨汤')) return []
+        return [
+          eventFrom(
+            '送汤',
+            message.content.includes('直夸')
+              ? '妈妈送来冬瓜排骨汤，李晶直夸清爽'
+              : '妈妈送来冬瓜排骨汤，李晶夸清爽',
+            ['妈妈', '李晶'],
+            [id],
+            message.occurredAt,
+          ),
+        ]
+      })
+      return { entities: [], claims: [], events }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '今天妈妈送来冬瓜排骨汤，李晶夸清爽。')
+  await say(USER, 'user', '今天妈妈又送来冬瓜排骨汤，李晶直夸清爽。')
+  await drain()
+
+  const events = eventCandidates(
+    (
+      await namiso.retrieve({
+        query: '冬瓜排骨汤 送汤',
+        memoryTypes: ['event'],
+        rerank: false,
+        topK: 50,
+      })
+    ).candidates,
+  ).filter((event) => event.type === '送汤')
+  assert.equal(events.length, 1)
+  assert.equal(namiso.getEventDetails(events[0]?.id ?? '')?.evidenceMessageIds.length, 2)
+  namiso.close()
+})
+
+test('cross-type synonym events merge into one occurrence', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'event-cross-type-test',
+    async extract(input) {
+      const messages = new Map(input.messages.map((message) => [message.id, message]))
+      const events = input.focusMessageIds.flatMap((id) => {
+        const message = messages.get(id)
+        if (message === undefined || !message.content.includes('冬瓜排骨汤')) return []
+        const repeat = message.content.includes('又送')
+        return [
+          eventFrom(
+            repeat ? '送汤' : '家庭互动',
+            repeat ? '妈妈又送冬瓜排骨汤来，李晶喝完直夸清爽' : '妈妈送来冬瓜排骨汤，李晶夸清爽',
+            repeat ? [] : ['妈妈', '李晶'],
+            [id],
+            message.occurredAt,
+          ),
+        ]
+      })
+      return { entities: [], claims: [], events }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '今天妈妈送来冬瓜排骨汤，李晶夸清爽。')
+  await say(USER, 'user', '今天妈妈又送冬瓜排骨汤来，李晶喝完直夸清爽。')
+  await drain()
+
+  const events = eventCandidates(
+    (
+      await namiso.retrieve({
+        query: '冬瓜排骨汤',
+        memoryTypes: ['event'],
+        rerank: false,
+        topK: 50,
+      })
+    ).candidates,
+  ).filter((event) => event.summary.includes('冬瓜排骨汤'))
+  assert.equal(events.length, 1)
+  assert.equal(events[0]?.type, '家庭互动')
+  assert.equal(namiso.getEventDetails(events[0]?.id ?? '')?.evidenceMessageIds.length, 2)
+  namiso.close()
+})
+
+test('same summary on the next day stays a separate occurrence', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'event-recurring-test',
+    async extract(input) {
+      const messages = new Map(input.messages.map((message) => [message.id, message]))
+      const events = input.focusMessageIds.flatMap((id) => {
+        const message = messages.get(id)
+        if (message === undefined || !message.content.includes('冬瓜排骨汤')) return []
+        return [
+          eventFrom(
+            '送汤',
+            '妈妈送来冬瓜排骨汤，李晶夸清爽',
+            ['妈妈', '李晶'],
+            [id],
+            message.occurredAt,
+          ),
+        ]
+      })
+      return { entities: [], claims: [], events }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '妈妈送来冬瓜排骨汤，李晶夸清爽。')
+  await namiso.ingest({
+    conversationId: namiso.listConversations()[0]?.id ?? '',
+    speakerId: USER,
+    role: 'user',
+    content: '妈妈送来冬瓜排骨汤，李晶夸清爽。',
+    occurredAt: BASE_TIME + 86_400,
+  })
+  await drain()
+
+  const events = namiso.getEntityDetails('李晶')?.events.filter((event) => event.type === '送汤')
+  assert.equal(events?.length, 2)
+  namiso.close()
+})
+
+test('same day but disjoint participants stays separate', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'event-participant-test',
+    async extract(input) {
+      const messages = new Map(input.messages.map((message) => [message.id, message]))
+      const events = input.focusMessageIds.flatMap((id) => {
+        const message = messages.get(id)
+        if (message === undefined || !message.content.includes('冬瓜排骨汤')) return []
+        return [
+          eventFrom(
+            '送汤',
+            '妈妈送来冬瓜排骨汤，大家夸清爽',
+            [message.content.includes('小赵') ? '小赵' : '李晶'],
+            [id],
+            message.occurredAt,
+          ),
+        ]
+      })
+      return { entities: [], claims: [], events }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '今天妈妈送来冬瓜排骨汤，李晶夸清爽。')
+  await say(USER, 'user', '今天妈妈送来冬瓜排骨汤，小赵夸清爽。')
+  await drain()
+
+  const events = eventCandidates(
+    (
+      await namiso.retrieve({
+        query: '冬瓜排骨汤 送汤',
+        memoryTypes: ['event'],
+        rerank: false,
+        topK: 50,
+      })
+    ).candidates,
+  ).filter((event) => event.type === '送汤')
+  assert.equal(events.length, 2)
   namiso.close()
 })
 
