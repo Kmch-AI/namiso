@@ -17,11 +17,9 @@ import type {
 
 import { isRestricted, restrictionOf } from '../annotation/restriction.ts'
 import { asMessageId } from '../ids.ts'
-import { eventCandidate } from '../retrieval/candidates.ts'
 import { getMessagesByIds, listMessages } from '../storage/conversation-repo.ts'
-import { listUpcomingEvents } from '../storage/memory-repo.ts'
 import { estimateTokens, excerpt, segment, truncate } from '../text.ts'
-import { dayKey, dayStart, formatDayKey } from '../time.ts'
+import { formatDayKey } from '../time.ts'
 
 export interface BuildContextInput {
   memorySpaceId: MemorySpaceId
@@ -33,72 +31,9 @@ export interface BuildContextInput {
   idMode?: 'short' | 'full'
   timeZone?: string
   rawEvidence?: readonly Message[]
-  now?: number
-  dueReminders?: boolean
-}
-
-const DUE_TYPES = new Set([
-  '提醒',
-  'reminder',
-  '任务',
-  'task',
-  'todo',
-  '待办',
-  '截止',
-  'deadline',
-  '到期',
-  'due',
-  '还款',
-  'repay',
-  'payment',
-  '缴费',
-  '预约',
-  'appointment',
-  '考试',
-  'exam',
-  '面试',
-  'interview',
-  '承诺',
-  'promise',
-  'commitment',
-  '约定',
-  '交付',
-  'delivery',
-])
-const PURCHASE_TYPES = new Set(['购买', '购物', 'purchase', 'shopping', '下单', 'order', '快递'])
-const PLAN_TYPES = new Set(['计划', 'plan', '安排', 'schedule', '延期'])
-const GENERIC_EVENT_TYPES = new Set(['event', 'life', '生活', '生活事件', '对话', 'conversation'])
-const PLAN_DAY =
-  /今天|今晚|明天|后天|这周|本周|周末|下周|周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]/
-const PLAN_ACTION =
-  /要|得|该|需要|去|来|交|还|取|送|见|办|做|买|吃|看|开会|面试|考试|提醒|别忘|记得/
-const DUE_OBLIGATION =
-  /要交|要还|还钱|还款|得去|要去|截止|到期|提醒|别忘|记得|答应|约定|预约|考试|面试|缴费/
-const PURCHASE_DUE = /到货|到驿站|取件|签收|送达|派送|快递.*到|到.*驿站|收货|取快递|驿站.*取/
-const PAST_EVENT = /已经|已完成|已还|已交|已取|已办|去过|吃过|看过/
-
-function isDueEvent(event: { type: string; summary: string }): boolean {
-  const type = event.type.toLowerCase().trim()
-  const text = event.summary
-  if (PAST_EVENT.test(text)) return false
-  if (DUE_TYPES.has(type)) return true
-  if (PURCHASE_TYPES.has(type)) return PURCHASE_DUE.test(text)
-  if (PLAN_TYPES.has(type)) return PLAN_DAY.test(text) && PLAN_ACTION.test(text)
-  if (PURCHASE_DUE.test(text)) return true
-  if (GENERIC_EVENT_TYPES.has(type)) return false
-  return DUE_OBLIGATION.test(text) && PLAN_DAY.test(text)
-}
-
-function wantsDueReminder(query: string): boolean {
-  const text = query.trim()
-  if (text.length <= 24) return true
-  return /今天|今晚|明天|后天|这周|本周|周末|下周|周[一二三四五六日天]|星期[一二三四五六日天]|到期|提醒|别忘|约好|要交|要还|取件|考试|面试|缴费/.test(
-    text,
-  )
 }
 
 const MAX_EVENTS = 12
-const MAX_DUE_EVENTS = 3
 const MAX_EVIDENCE = 12
 const MAX_RELATIONS = 12
 
@@ -200,48 +135,11 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     .filter((candidate) => isRestricted(candidateRestriction(candidate)))
     .slice(0, MAX_EVENTS)
     .toSorted(compareEvents)
-  const today = input.now === undefined ? null : dayKey(input.now, state.timeZone)
-  const dueCandidates =
-    input.dueReminders !== true ||
-    input.now === undefined ||
-    today === null ||
-    !wantsDueReminder(input.query)
-      ? []
-      : listUpcomingEvents(db, input.memorySpaceId, {
-          fromDay: today,
-          toDay: dayKey(dayStart(input.now, state.timeZone, 1), state.timeZone),
-          fromEpoch: dayStart(input.now, state.timeZone),
-          toEpoch: dayStart(input.now, state.timeZone, 1),
-          limit: 24,
-        }).flatMap((event) => {
-          const candidate = eventCandidate(db, event)
-          return candidate === null ? [] : [candidate]
-        })
-  const dueEvents =
-    input.dueReminders !== true || !wantsDueReminder(input.query)
-      ? []
-      : [
-          ...new Map(
-            [...dueCandidates, ...orderedEvents].map((candidate) => [candidate.key, candidate]),
-          ).values(),
-        ]
-          .filter((candidate) => {
-            if (candidate.record.kind !== 'event') return false
-            if (isRestricted(candidateRestriction(candidate))) return false
-            if (candidate.status !== 'active') return false
-            const event = candidate.record.event
-            const eventDay =
-              event.occurredDay ??
-              (event.occurredAt === null ? null : dayKey(event.occurredAt, state.timeZone))
-            return eventDay === today && event.modality === 'asserted' && isDueEvent(event)
-          })
-          .slice(0, MAX_DUE_EVENTS)
   const restrictedEvidenceIds = collectRestrictedEvidenceIds(claims, events)
-  const dueKeys = new Set(dueEvents.map((candidate) => candidate.key))
   const queryTokens = new Set(segment(input.query))
   const pinnedEvidenceIds = new Set(
     input.candidates.flatMap((candidate) => {
-      if (candidate.record.kind !== 'event' || dueKeys.has(candidate.key)) return []
+      if (candidate.record.kind !== 'event') return []
       const matches =
         candidate.pinned === true ||
         segment(candidate.record.event.summary).some((token) => queryTokens.has(token))
@@ -279,7 +177,6 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     privateEvents,
     entities: renderedEntities,
     events: publicEvents,
-    dueEvents,
     historicalClaims,
     relations,
     evidence,
@@ -297,7 +194,6 @@ export function buildContext(db: Database, input: BuildContextInput): MemoryCont
     ...activeClaims,
     ...unconfirmedClaims,
     ...renderedEntities,
-    ...dueEvents,
     ...publicEvents,
     ...historicalClaims,
     ...privateClaims,
@@ -325,7 +221,6 @@ interface SectionsInput {
   privateEvents: readonly MemoryCandidate[]
   entities: readonly MemoryCandidate[]
   events: readonly MemoryCandidate[]
-  dueEvents: readonly MemoryCandidate[]
   historicalClaims: readonly MemoryCandidate[]
   relations: readonly string[]
   evidence: readonly Message[]
@@ -399,17 +294,6 @@ function renderSections(
 
   addSection('[Query Time]', queryTimeLines(input.time))
   addSection(
-    '[今天到期]',
-    input.dueEvents.length === 0
-      ? []
-      : [
-          '用户当前没有明确询问别的事时，先用一句自然的话提醒今天到期的事项；用户在问具体的事时，直接回答，不要插入提醒。',
-          ...input.dueEvents.map((candidate) =>
-            eventLine(candidate, detail, tokens, input.state, input.dates),
-          ),
-        ],
-  )
-  addSection(
     '[Current Claims]',
     input.activeClaims.map((candidate) => claimLine(candidate, detail, input.state, input.dates)),
   )
@@ -427,12 +311,9 @@ function renderSections(
   )
   addSection('[Unresolved Conflicts]', input.conflicts)
   addSection('[Uncertain Events]', input.uncertainEvents)
-  const dueKeys = new Set(input.dueEvents.map((candidate) => candidate.key))
   addSection(
     '[Historical Events]',
-    input.events
-      .filter((candidate) => !dueKeys.has(candidate.key))
-      .map((candidate) => eventLine(candidate, detail, tokens, input.state, input.dates)),
+    input.events.map((candidate) => eventLine(candidate, detail, tokens, input.state, input.dates)),
   )
   addSection(
     '[Historical Claims]',

@@ -11,6 +11,7 @@ Read the document for the area you change. Do not load every file.
 | `retrieval.md`    | Explanation          | You change a retrieval channel, fusion, expansion, or context assembly |
 | `api.md`          | Reference            | You call or extend the public API                                      |
 | `providers.md`    | Reference            | You add or configure a model provider                                  |
+| `plugin.md`       | Explanation          | You build prompt assembly, reminders, or benchmark policy around it    |
 | `testing.md`      | How-to               | You add tests or run the suite                                         |
 | `benchmark.md`    | How-to and reference | You run the benchmark or report a result                               |
 | `roadmap.md`      | Reference            | You need the implemented scope or the deferred work                    |

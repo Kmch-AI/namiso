@@ -15,6 +15,7 @@ export type {
   RetrieveInput,
   TimelineEntry,
   TimelineInput,
+  UpcomingEventsInput,
 } from './namiso.ts'
 export type { NamisoOptions, VectorIndexMode } from './config.ts'
 export { NamisoError, NotFoundError, ProviderError, ValidationError } from './errors.ts'

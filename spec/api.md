@@ -42,7 +42,6 @@ const memory = await Namiso.open({
 | `self`                               | unset                     | Assistant identity: name, aliases, description     |
 | `reranker`                           | `LexicalReranker`         | Set `rerank: false` per query to skip              |
 | `evidenceJudge`                      | unset                     | Optional judge for opt-in multi-hop evidence       |
-| `dueReminders`                       | `false`                   | Render today's due events when `now` is supplied   |
 | `salientProfile`                     | `false`                   | Add a strong entity and its recent event           |
 | `chunkExpansion`                     | `true`                    | Expand chunk hits into message candidates          |
 | `vectorIndex`                        | `auto`                    | `auto`, `sqlite-vec`, or `exact`                   |
@@ -170,9 +169,19 @@ await memory.getContext({
   includeEvidence?: boolean,   // default true
   idMode?: "short" | "full",  // default short
   timeZone?: string,           // IANA zone, default process zone
-  dueReminders?: boolean,      // default from Namiso.open, off
   ...retrieve options
 }): Promise<MemoryContext>
+```
+
+`upcomingEvents` returns active asserted events with a stored day or exact time in the requested range. It is the engine-level primitive for reminders and schedules; prompt policy stays in the caller.
+
+```ts
+memory.upcomingEvents({
+  from?: number | Date,  // default now
+  to?: number | Date,    // default from + 1 day
+  limit?: number,        // default 50, max 200
+  timeZone?: string,     // IANA zone, default process zone
+}): Event[]
 ```
 
 `MemoryContext` contains:

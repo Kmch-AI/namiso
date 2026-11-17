@@ -25,113 +25,6 @@ test('raw evidence prefers a focused numeric message', async () => {
   namiso.close()
 })
 
-test('context renders due events for the query day', async () => {
-  const extraction: ExtractionProvider = {
-    version: 'due-test',
-    async extract(input) {
-      return {
-        entities: [],
-        claims: [],
-        events: [
-          {
-            type: '购物',
-            summary: '去驿站取猫饮水机',
-            occurredAt: BASE_TIME,
-            occurredDay: 20260921,
-            timePrecision: 'day',
-            participants: [],
-            modality: 'asserted',
-            confidence: 0.9,
-            evidenceMessageIds: [input.focusMessageIds[0]],
-          },
-        ],
-      }
-    },
-  }
-  const { namiso, say, drain } = await setup({ extraction })
-  await say(USER, 'user', '猫饮水机到驿站了，今天要去取。')
-  await drain()
-
-  const off = await namiso.getContext({ query: '今天好累', now: BASE_TIME })
-  assert.doesNotMatch(off.text, /\[今天到期\]/)
-
-  const context = await namiso.getContext({ query: '今天好累', now: BASE_TIME, dueReminders: true })
-  assert.match(context.text, /\[今天到期\]/)
-  assert.match(context.text, /用户当前没有明确询问别的事时，先用一句自然的话提醒今天到期的事项/)
-  assert.match(context.text, /以 \[Evidence\] 原文为准/)
-  assert.doesNotMatch(context.text, /第一次/)
-  assert.match(context.text, /去驿站取猫饮水机/)
-  assert.equal(
-    context.items.some((candidate) => candidate.kind === 'event'),
-    true,
-  )
-
-  const specific = await namiso.getContext({
-    query: '妈第一次送汤过来那回，是什么汤？李晶是什么反应，我妈那天又是什么样？',
-    now: BASE_TIME,
-    dueReminders: true,
-  })
-  assert.doesNotMatch(specific.text, /\[今天到期\]/)
-  namiso.close()
-})
-
-test('due section skips events that are not obligations', async () => {
-  const extraction: ExtractionProvider = {
-    version: 'due-filter-test',
-    async extract(input) {
-      return {
-        entities: [],
-        claims: [],
-        events: [
-          {
-            type: '生活事件',
-            summary: '下班路上喝豆浆烫到舌头',
-            occurredAt: BASE_TIME,
-            occurredDay: 20260921,
-            timePrecision: 'day',
-            participants: [],
-            modality: 'asserted',
-            confidence: 0.9,
-            evidenceMessageIds: [input.focusMessageIds[0]],
-          },
-          {
-            type: 'purchase',
-            summary: '猫饮水机今天到驿站',
-            occurredAt: BASE_TIME,
-            occurredDay: 20260921,
-            timePrecision: 'day',
-            participants: [],
-            modality: 'asserted',
-            confidence: 0.9,
-            evidenceMessageIds: [input.focusMessageIds[0]],
-          },
-          {
-            type: 'event',
-            summary: '快递9月21日到驿站',
-            occurredAt: BASE_TIME,
-            occurredDay: 20260921,
-            timePrecision: 'day',
-            participants: [],
-            modality: 'asserted',
-            confidence: 0.9,
-            evidenceMessageIds: [input.focusMessageIds[0]],
-          },
-        ],
-      }
-    },
-  }
-  const { namiso, say, drain } = await setup({ extraction })
-  await say(USER, 'user', '饮水机今天到驿站，下班路上喝豆浆烫到舌头。')
-  await drain()
-
-  const context = await namiso.getContext({ query: '今天好累', now: BASE_TIME, dueReminders: true })
-  const due = context.text.split('[今天到期]')[1]?.split('[Historical Events]')[0] ?? ''
-  assert.match(due, /猫饮水机9月21日到驿站/)
-  assert.match(due, /快递9月21日到驿站/)
-  assert.doesNotMatch(due, /喝豆浆烫到舌头/)
-  namiso.close()
-})
-
 test('event date resolves from evidence content when the summary has no date', async () => {
   const extraction: ExtractionProvider = {
     version: 'evidence-date-test',
@@ -705,5 +598,38 @@ test('raw message FTS is searchable before chunking', async () => {
   assert.ok(result.evidence?.some((message) => message.content.includes('Blue Whale')))
   const context = await namiso.getContext({ query: 'Blue Whale starts next week' })
   assert.match(context.text, /Blue Whale/)
+  namiso.close()
+})
+
+test('upcomingEvents returns dated events in the requested range', async () => {
+  const extraction: ExtractionProvider = {
+    version: 'upcoming-test',
+    async extract(input) {
+      return {
+        entities: [],
+        claims: [],
+        events: [
+          {
+            type: '购物',
+            summary: '猫饮水机到驿站',
+            occurredAt: BASE_TIME,
+            occurredDay: 20260921,
+            timePrecision: 'day',
+            participants: [],
+            modality: 'asserted',
+            confidence: 0.9,
+            evidenceMessageIds: [input.focusMessageIds[0]],
+          },
+        ],
+      }
+    },
+  }
+  const { namiso, say, drain } = await setup({ extraction })
+  await say(USER, 'user', '猫饮水机到驿站了')
+  await drain()
+
+  const events = namiso.upcomingEvents({ from: BASE_TIME, to: BASE_TIME + 86_400 })
+  assert.equal(events.length, 1)
+  assert.equal(events[0]?.occurredDay, 20260921)
   namiso.close()
 })

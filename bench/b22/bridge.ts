@@ -20,7 +20,6 @@ interface Turn {
 type Board = 'exam' | 'natural'
 
 const MULTIHOP = process.env['NAMISO_MULTIHOP'] === '1'
-const DUE_REMINDERS = process.env['NAMISO_DUE_REMINDERS'] === '1'
 const SALIENT_PROFILE = process.env['NAMISO_PROFILE'] === '1'
 const CHUNK_EXPANSION = process.env['NAMISO_CHUNK_EXPANSION'] !== '0'
 const BENCH_CONTRACT = process.env['NAMISO_BENCH_CONTRACT'] !== '0'
@@ -209,7 +208,6 @@ async function retrieve(
     query: input.question,
     maxTokens: 2000,
     topK: 12,
-    dueReminders: DUE_REMINDERS,
     salientProfile: SALIENT_PROFILE,
     chunkExpansion: CHUNK_EXPANSION,
     ...(MULTIHOP ? { multiHop: true } : {}),

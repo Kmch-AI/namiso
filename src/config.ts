@@ -23,7 +23,6 @@ export interface NamisoOptions {
   extraction?: ExtractionProvider
   reranker?: RerankerProvider
   evidenceJudge?: EvidenceJudgeProvider
-  dueReminders?: boolean
   salientProfile?: boolean
   chunkExpansion?: boolean
   extractRoles?: readonly MessageRole[]
@@ -41,7 +40,6 @@ export interface ResolvedNamisoOptions {
   extraction: ExtractionProvider
   reranker: RerankerProvider
   evidenceJudge?: EvidenceJudgeProvider
-  dueReminders: boolean
   salientProfile: boolean
   chunkExpansion: boolean
   extractRoles: readonly MessageRole[]
@@ -69,11 +67,9 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
   assertProvider('reranker', reranker, ['rerank'])
   const evidenceJudge = options.evidenceJudge
   if (evidenceJudge !== undefined) assertProvider('evidenceJudge', evidenceJudge, ['judge'])
-  const dueReminders = options.dueReminders ?? false
   const salientProfile = options.salientProfile ?? false
   const chunkExpansion = options.chunkExpansion ?? true
   for (const [name, value] of [
-    ['dueReminders', dueReminders],
     ['salientProfile', salientProfile],
     ['chunkExpansion', chunkExpansion],
   ] as const) {
@@ -123,7 +119,6 @@ export function resolveOptions(options: NamisoOptions): ResolvedNamisoOptions {
     extraction,
     reranker,
     ...(evidenceJudge === undefined ? {} : { evidenceJudge }),
-    dueReminders,
     salientProfile,
     chunkExpansion,
     extractRoles: uniqueExtractRoles,

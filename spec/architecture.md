@@ -26,7 +26,7 @@ The core does not import an HTTP client, a model SDK, or an agent harness. `Http
 ## Write path
 
 1. `ingest()` validates the input and resolves the conversation in the configured memory space.
-2. It appends the message and upserts `chunk:<conversationId>` in one transaction. No extraction job is enqueued.
+2. It appends the message, indexes it as an FTS-only message document, and upserts `chunk:<conversationId>` in one transaction. No extraction job is enqueued.
 3. `drain()` claims chunk jobs in creation order.
 4. A `chunk` job rebuilds deterministic conversation chunks, removes stale chunks, and syncs chunk documents.
 5. `consolidate()` collects messages with `consolidated_at` null, batches them per conversation, and sends one extraction request per batch.
@@ -44,9 +44,9 @@ The raw message commits before any model call. A failed extraction leaves the me
 5. Apply current-state and time-range filters, and collect conflict and uncertainty notes.
 6. Expand linked claims and events, then add timeline neighbours. Expansion is bounded.
 7. Select evidence messages with query overlap first, then fill remaining slots.
-8. Assemble sections against a soft token target, shortening excerpts before it drops anything. Due reminders are opt-in.
+8. Assemble sections against a soft token target, shortening excerpts before it drops anything.
 
-`retrieve()` stops before context assembly and returns the trace. `getContext()` adds the context.
+`retrieve()` stops before context assembly and returns the trace. `getContext()` adds the context. `upcomingEvents()` returns dated active events for plugin-level reminder policy.
 
 ## Runtime model
 

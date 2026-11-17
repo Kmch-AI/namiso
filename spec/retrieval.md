@@ -81,8 +81,6 @@ The renderable pool feeds coverage selection, which returns `min(topK, pool leng
 
 If fewer renderable candidates exist than `topK`, the remaining slots fill from the ranked source-only pool and the trace notes it. Quota slots stop at `topK`. The floor applies only to quota slots, so the result still reaches the requested size. An empty pool returns an empty selection. `trace.coverage` records the floor, each facet and entity quota, which candidate filled it, and whether it added a slot.
 
-After selection, up to two asserted events dated today or tomorrow may append when the caller enables `dueReminders` and supplies `now`. They come from `listUpcomingEvents`, which compares the stored `occurred_day` against today's key and falls back to the epoch only for `exact` and `month` records that predate the day column, so a statement-time event stored as `unknown` never poses as a scheduled item. The append is skipped when the caller passes a `timeRange`, and appended events are marked `pinned` so the event section keeps them even when a dozen other events compete for slots. They do not displace a selected candidate, so `topK` bounds the coverage selection but the result can exceed it by two.
-
 A salient entity profile is opt-in with `salientProfile: true`. It appends the strongest entity FTS hit and one of its events when the entity is not already selected. The event comes from the entity itself or from an entity named in its description, so an alias split across records does not hide the event. A process question (`怎么写`, `怎么做`, `干活`, `过程`, or similar) prefers an event with actions and numeric detail; other questions prefer the latest event.
 
 ## Validation
@@ -126,21 +124,18 @@ Sections appear in this order:
 
 1. Memory contract
 2. Query time, when a bounded expression resolved
-3. Today's due events, when the query day has active asserted events
-4. Current claims
-5. Unconfirmed claims
-6. Relevant entities
-7. Unresolved conflicts
-8. Uncertain events
-9. Historical events
-10. Historical claims
-11. Memory relations
-12. Private records
-13. Evidence messages
+3. Current claims
+4. Unconfirmed claims
+5. Relevant entities
+6. Unresolved conflicts
+7. Uncertain events
+8. Historical events
+9. Historical claims
+10. Memory relations
+11. Private records
+12. Evidence messages
 
 The core contract states that the sections are the retrieved record, that the answer must use `[Evidence]` as the source of truth, that it must not add facts, dates, causes, or status, and that a missing record is answered as missing rather than as never having happened. Longer benchmark-specific answer policies belong to the caller, not the memory engine.
-
-The due section is opt-in with `dueReminders: true`. It holds active asserted events whose `occurred_day` equals the query day. The builder queries them directly, so a casual query that never retrieves the event still sees it. The section is capped at three events and tells the model to mention them only when the user is not asking a specific question. A due event also leaves the historical event list, so it renders once. The section appears only when the caller sets `dueReminders`, supplies `now`, at least one event falls on that day, and the query is either short (at most 24 characters) or contains an explicit time or due intent.
 
 Current claims are asserted claims. A negative fact renders with `≠` before the object. Claims with uncertain, hypothetical, quoted, or reported modality render in the unconfirmed section with their modality label instead of `当前有效`. Conflicts are computed only from asserted positive claims.
 

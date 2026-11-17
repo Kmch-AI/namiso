@@ -36,13 +36,6 @@ test('invalid options fail at the boundary', async () => {
   await assert.rejects(
     Namiso.open({
       databasePath: ':memory:',
-      dueReminders: 'yes' as unknown as boolean,
-    }),
-    (error: unknown) => error instanceof ValidationError,
-  )
-  await assert.rejects(
-    Namiso.open({
-      databasePath: ':memory:',
       salientProfile: 1 as unknown as boolean,
     }),
     (error: unknown) => error instanceof ValidationError,

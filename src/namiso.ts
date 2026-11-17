@@ -72,10 +72,12 @@ import {
   listEventParticipants,
   listEventsForEntity,
   listLinksFrom,
+  listUpcomingEvents,
   listLinksTo,
 } from './storage/memory-repo.ts'
 import { documentCount, indexFtsOnly, missingVectorCount } from './storage/search-repo.ts'
 import { VectorStore } from './storage/vector-store.ts'
+import { dayKey, dayStart } from './time.ts'
 
 export interface CreateConversationInput {
   externalId?: string
@@ -126,7 +128,13 @@ export interface ContextInput extends RetrieveInput {
   maxTokens?: number
   idMode?: 'short' | 'full'
   timeZone?: string
-  dueReminders?: boolean
+}
+
+export interface UpcomingEventsInput {
+  from?: number | Date
+  to?: number | Date
+  limit?: number
+  timeZone?: string
 }
 
 export interface TimelineInput {
@@ -472,10 +480,30 @@ export class Namiso {
       ...(input.maxTokens === undefined ? {} : { maxTokens: input.maxTokens }),
       ...(input.idMode === undefined ? {} : { idMode: input.idMode }),
       ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
-      ...(now === undefined ? {} : { now }),
       ...(result.evidence === undefined ? {} : { rawEvidence: result.evidence }),
-      dueReminders: input.dueReminders ?? this.config.dueReminders,
       includeEvidence: input.includeEvidence ?? true,
+    })
+  }
+
+  upcomingEvents(input: UpcomingEventsInput = {}): Event[] {
+    this.assertOpen()
+    if (input.timeZone !== undefined) validateTimeZone(input.timeZone)
+    const timeZone = input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+    const from = input.from === undefined ? nowSeconds() : timestampOf(input.from)
+    const to = input.to === undefined ? from + 86_400 : timestampOf(input.to)
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
+      throw new ValidationError('upcomingEvents range must be finite and ordered')
+    }
+    const limit = input.limit ?? 50
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+      throw new ValidationError('upcomingEvents limit must be an integer between 1 and 200')
+    }
+    return listUpcomingEvents(this.db, this.memorySpace.id, {
+      fromDay: dayKey(from, timeZone),
+      toDay: dayKey(dayStart(to, timeZone, 1), timeZone),
+      fromEpoch: dayStart(from, timeZone),
+      toEpoch: dayStart(to, timeZone, 1),
+      limit,
     })
   }
 
