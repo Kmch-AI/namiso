@@ -3,7 +3,7 @@
 Import from the package root:
 
 ```ts
-import { Namiso } from 'namiso'
+import { Namiso } from '@kmchai/namiso'
 ```
 
 All methods operate on the memory space configured at `open()`. There is no cross-space query.

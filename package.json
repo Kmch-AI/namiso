@@ -1,12 +1,31 @@
 {
-  "name": "namiso",
+  "name": "@kmchai/namiso",
   "version": "0.1.0",
   "description": "Standalone long-term memory engine for AI agents",
+  "keywords": [
+    "agents",
+    "ai",
+    "long-term-memory",
+    "memory",
+    "retrieval",
+    "sqlite",
+    "typescript"
+  ],
+  "homepage": "https://github.com/Kmch-AI/namiso#readme",
+  "bugs": {
+    "url": "https://github.com/Kmch-AI/namiso/issues"
+  },
   "license": "MIT",
+  "author": "Kmch-AI",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kmch-AI/namiso.git"
+  },
   "files": [
     "dist",
     "spec",
-    "README.md"
+    "README.md",
+    "README.zh-CN.md"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +36,9 @@
       "import": "./dist/index.js"
     },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
